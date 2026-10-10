@@ -4,7 +4,7 @@
 **Last updated:** 2026-10-10
 **Integration branch:** `dev` (released to `main`)
 
-Until Backpack is deployed and can track itself (slice 4), this file is its
+Until Backpack is deployed and can track itself (slice 5), this file is its
 tracker.
 
 ---
@@ -18,114 +18,172 @@ lines, its "where are we" paragraph becomes a chain of "before that…" history,
 and the answer to "what is happening now" gets hard to find. A large share of
 the project's commits end up doing nothing but updating it.
 
-**Why it happens.** The document does six jobs at once:
-- the current checkpoint;
-- the in-flight marker;
-- the phase roadmap;
-- a session-by-session evidence log;
-- lists of known defects;
-- the source the session-start script reads.
+**Why it happens.** A document can't answer a question; it can only be read.
+To find the next task, an agent reads the whole thing. It can't enforce its own
+rules (what comes before what, what is blocked), and every change to it is a
+commit.
 
-Every one of those changes needs a commit. A document also can't enforce its
-own rules, such as "only one thing in flight", or keep the current state short
-while the history grows.
+**How we'll fix it.** Backpack is a Kanban board for agentic projects, built as
+a service. Each project has its own workspace. Agents ask it "what's next" or
+"where are we" and get a short, direct answer. People and a future UI use the
+same board through an API.
 
-**How we'll fix it.** A small service, Backpack, holds this information for any
-project. Agents and people read and update it over an HTTP API and an MCP
-server, so tracking no longer lives in, or depends on, the code.
+## How the board works
 
-## What Backpack holds, and what it doesn't
+**Workspaces.** Every project gets its own workspace, and nothing crosses
+between workspaces.
 
-**ClickUp stays the home of tasks.** Tasks are created there, move through
-their statuses there and are closed there, exactly as today. Backpack refers to
-a task by its ClickUp id. It never keeps its own copy of a task's status, which
-is the surest way for the two to disagree.
+**Ideas.** Everything starts as an idea: a rough thought with little context
+and no sense yet of where it fits. Ideas are worked through together. Once
+refined, an idea is **closed**, keeping links to the stories or phase it became.
 
-Backpack holds what ClickUp doesn't:
+**Phases.** A phase is a large body of work (an epic), with its own
+description, goals and stories. Phases are numbered in order.
+- A phase is **complete when all its stories are complete.**
+- Its goals are listed alongside, each marked as met when it is. If every goal
+  is met while stories are still open, Backpack flags the phase: something may
+  have gone sideways.
 
-| In-repo tracking document | In Backpack |
-|---|---|
-| Current checkpoint and next step | A short **checkpoint** per project. Setting a new one keeps the old ones in history, so the current one stays short. |
-| Phases with exit conditions | **Phases**: title, exit condition, order, and whether the exit condition has been met. |
-| `➡ CURRENT` and the work queue | **Work**: a ClickUp task id tied to a phase, a branch and, later, a pull request and its merge. Work is in flight from when it starts until its pull request merges. A merge is not "done": ClickUp's review → Closed stays the verification step. Backpack enforces the in-flight rule: one piece of work at a time unless it is marked as touching separate code, with the reason. |
-| Evidence and update log | **Log entries**: date, branch, linked ClickUp task, and a written account of the change, its decisions and the tests run. |
-| Git history of the tracker | **History**: every change is recorded and never edited or deleted. A correction is a new record. |
-| The session-start script's text scraping | An **orientation** read: plain text, built for the start of a session, giving the checkpoint, what is in flight, phases at a glance and the latest log entries. |
+**Stories.** Each story has:
+- a description, a goal and a plan;
+- a status;
+- the branch and pull request it lives in;
+- its own log.
+
+A story may belong to a phase, or sit directly in the backlog.
+
+**One backlog, in delivery order.** Each workspace has one ranked backlog. The
+top story is the next to be delivered. Rank is order, not urgency.
+
+**Dependencies are different from order.**
+- "A comes before B" is just rank.
+- "B can't be done until A is complete" is a dependency. It is recorded once
+  and read from both ends: A *blocks* B, and B is *blocked by* A.
+- A story must rank below everything it depends on.
+- A dependency can only point to the same or an earlier phase, never across
+  workspaces, and never in a circle.
+- Backpack refuses any change that breaks these rules.
+
+**Placing new work.** An agent proposes where a new story belongs, with its
+reasoning; a person confirms it or picks another spot. The dependency rules
+narrow the choice: the story must go below everything it depends on and above
+everything that depends on it.
+
+**Statuses.**
+
+| Column | Meaning | In this repo |
+|---|---|---|
+| Backlog | Ranked, not started | |
+| In progress | Being worked on | task branch |
+| In review | Pull request open | PR into `dev` |
+| Merged | In the integration branch — **complete** | merged to `dev` |
+| Released | In the release branch | `dev` → `main` merged |
+| Deployed | Running in production | |
+
+A workspace that releases straight from `main` skips **Released**.
+
+**What an in-progress story is doing:** Planning, Building, Testing, or Waiting
+on agents. "Blocked" is never set by hand; it is calculated from dependencies.
+
+**Story logs.** Every story keeps a short log. Each entry records who wrote it
+(person or agent), when, and what kind it is: a note, a decision and its
+reason, a commit (with its id), a pull request (with its link), a status
+change, or a correction. Entries are never edited or deleted. A mistake is
+fixed with a correction that points to the entry it corrects. That lets an
+agent see what was done in which commit, and what was later found wrong.
+
+**Two quick reads.**
+- **What's next:** the highest-ranked backlog story whose dependencies are all
+  complete, with its description, goal and plan. It reads nothing else.
+- **Where are we:**
+  - the current phase and how far along it is;
+  - what is in progress and what each story is doing;
+  - what is in review;
+  - the next three in the backlog.
+
+  The session-start hook shows this.
+
+**Search.** Ideas, phases, stories and logs can be searched by meaning as well
+as by keyword, for example "do we already have a story about this?"
 
 ## How it will be built
 
-- **One small Go service**, one Docker container. Data lives in a single SQLite
-  file on a Docker volume, which keeps backup down to copying one file.
-- **Two ways in, one service:** an HTTP API (for scripts and the session hook)
-  and an MCP server (for agents), both served by the same program and both
-  calling the same code underneath.
-- **Reached through a Cloudflare tunnel.** That makes it reachable from the
-  internet, so **every request is authenticated** and the token lives in the
-  environment, never in a repository. The only open route is a health check.
-- **Any project.** Every record belongs to a project, named by a short slug
-  (`my-app`, `backpack`, …). There are no user accounts or roles.
-- **Each project repo keeps one small committed file** naming its Backpack
-  project and address. It never holds a token.
-- **The session-start hook** reads the orientation with a short timeout. If
-  Backpack can't be reached, the session still starts, with a one-line notice.
+- **A Go service with two ways in:** an **MCP server** for AI agents and an
+  **HTTP API** for building a UI. Both call the same operations underneath.
+- **FalkorDB** is the board's store, as a graph: workspace, phase, story, idea,
+  dependency and log entry. Each workspace is its own graph, so workspaces never
+  hold each other up. Every board action is one query, so it either happens
+  completely or not at all. FalkorDB saves every write to disk before
+  confirming it, and takes regular snapshots for backup.
+- **Typesense** provides search. It creates the embeddings itself with a
+  built-in model running on our own machine, so no project's content is sent to
+  an outside service. It is only an index built from FalkorDB, and can be
+  rebuilt from it at any time.
+- **Access:** every request carries a token. Each token belongs to an actor, a
+  person or an agent, and every change records its actor. There is one person
+  today. Logins for more people can be added later without changing the
+  record.
+- **Where it runs:** on localhost for development, and on `nas` or
+  `lab-hermes`, behind a Cloudflare tunnel, for the shared dev and production
+  instances.
 
 ## Delivery, in slices
 
-Each slice is its own branch and pull request, reviewed and merged on its own.
+Each slice is its own branch and pull request into `dev`.
 
-1. **The empty service.** It runs, answers a health check, refuses
-   unauthenticated requests, keeps its data in SQLite and runs in Docker. Tests
-   and the build gates run on every pull request.
-2. **Projects, phases, work, checkpoint, log and history over HTTP, plus the
-   orientation read.** Usable locally from here; it takes over as the tracker
-   once deployed in slice 4.
-3. **The MCP server.** The same operations as tools agents can call: read the
-   orientation, set the checkpoint, start work on a ClickUp task, attach the
-   pull request, record that it merged, write a log entry, and list and update
-   phases.
-4. **Live behind the tunnel, with the reusable session hook.** The container
-   runs on its Docker host with Cloudflare in front of it. A drop-in hook
-   script and a short "how this project tracks" section can be copied into any
-   project's CLAUDE.md. From here Backpack tracks itself and this file stops
-   being the tracker.
+1. **The empty service.** The service, FalkorDB and Typesense run together
+   locally. The service answers a health check, refuses requests without a
+   token, and can create tokens. Tests and gates run on every pull request.
+2. **The board.** Workspaces, phases (with goals) and stories, the ranked
+   backlog, dependencies and the ordering rules, over the HTTP API.
+3. **Work moving across the board.** Statuses, what an in-progress story is
+   doing, story logs with corrections, phase completion and the goals-met
+   flag, **what's next** and **where are we**.
+4. **The MCP server.** The same operations as tools for agents.
+5. **Live, with the session hook.** Deployed to `nas` or `lab-hermes` behind
+   the tunnel, with a drop-in hook and a short "how this project tracks"
+   section any project can copy into its CLAUDE.md. **From here Backpack tracks
+   itself** and this file stops being the tracker. The remaining slices go in
+   as Backpack's own stories.
+6. **Ideas and placement proposals.** Ideas, refining them into stories or a
+   phase and closing them, and the propose-then-confirm placement of new
+   stories. Until this lands, a person places new stories directly.
+7. **Search.** Typesense indexing and hybrid search by meaning and keyword.
 
 **Out of scope, each needing its own approval:**
+- The UI. The API is shaped for it; building it is separate work.
 - Moving any existing project onto Backpack. Each move is its own task in that
-  project: it starts fresh in Backpack, its old document stays as history, and
-  its hook, CLAUDE.md and tracking rules are updated together.
-- Any ClickUp integration (agents already reach ClickUp directly).
-- A web interface.
+  project.
+- Logins for more than one person.
 
 ## Open questions
 
-**Needed before slice 1:** questions 1 and 2. **Needed before slice 2:**
-questions 3–5.
+**Needed before slice 1:**
+1. **Authentication in front of the tunnel.** Is Backpack's own token enough,
+   or do you also want Cloudflare Access in front? **Proposed:** Backpack's
+   token is required, and Cloudflare Access is optional extra protection.
 
-1. **Authentication.** Options:
-   - Backpack's own bearer token, which works anywhere, including for MCP
-     clients and curl;
-   - a Cloudflare Access service token in front;
-   - both.
-   **Proposed:** Backpack's token as the requirement, with Cloudflare Access as
-   optional extra protection.
-2. **Docker host and GitHub.** Which machine runs the container and
-   `cloudflared`, and which hostname should it use? (GitHub repository:
-   `lioneljmorrison/backpack`, settled 2026-10-10.)
-3. **How is a merge recorded?** With an in-repo tracker, a status change ships
-   in the same pull request as the code, so the tracker and the merge can't drift apart.
-   Once tracking leaves the repository, something has to record that work
-   merged. (Verification stays where it is: ClickUp's review → Closed.)
-   - **Proposed default:** the agent makes an explicit call when the pull
-     request merges, recording the pull request number and merge commit. Doing
-     this is written into the project's CLAUDE.md as part of delivery.
-   - **Alternatives:** a GitHub webhook that records it automatically on merge
-     (needs a public webhook route and a GitHub secret), or a check at session
-     start comparing tracked branches with git.
-4. **Known defects.** In-repo trackers often list defects as well as ClickUp.
-   Under "ClickUp owns tasks", defects become ClickUp tasks (for example tagged
-   `bug`) and Backpack keeps no defect list. Confirm.
-5. **Where does Backpack's own build get tracked until slice 4?** Either this
-   file alone, or ClickUp tasks too. If ClickUp, which list?
+**Needed before slice 3:**
+
+2. **How does a story reach Merged, Released and Deployed?**
+   - **Proposed:** the agent records it when it happens: the merge, with its
+     commit, or the release. Doing so is part of every project's delivery
+     rules.
+   - **Alternative:** a GitHub webhook that records merges automatically. It
+     needs a public webhook route and a GitHub secret.
+3. **Can a later phase's story be ranked above an earlier phase's stories**
+   when it doesn't depend on them? **Proposed:** yes. Only dependencies
+   constrain order, so a quick unrelated fix can jump ahead.
+
+**Needed before slice 5:**
+
+4. **Which host runs the shared instances:** `nas`, `lab-hermes`, or one each
+   for dev and production? And which hostname should the tunnel use?
+
+**Needed before slice 6:**
+
+5. **Are ideas ranked,** or simply listed newest first? **Proposed:** newest
+   first. Ideas have no delivery order until they become stories.
 
 ---
 
@@ -133,87 +191,118 @@ questions 3–5.
 
 ### Stack (versions checked 2026-10-10)
 
-- Go 1.26 (installed locally: `go1.26.0`).
-- HTTP: standard library `net/http` with method-and-path routing. No framework.
-- SQLite: `modernc.org/sqlite` v1.60.1, pure Go, so no cgo and a static binary
-  in a distroless or scratch image. WAL mode, one writer.
-- MCP: `github.com/modelcontextprotocol/go-sdk` v1.8.0 (official SDK),
-  streamable-HTTP transport mounted at `/mcp` on the same server.
-- Migrations: numbered `.sql` files embedded with `embed`, applied at start-up,
-  with the version kept in a `schema_migrations` table. No migration library.
+- Go 1.26 (installed locally: `go1.26.0`). HTTP via standard library
+  `net/http` routing; no framework.
+- FalkorDB server `falkordb/falkordb:v4.20.6` (2026-09-16). 6.0 shipped
+  2026-09-29 and is held back until it has settled; revisit once slice 2 is
+  done. Go client: `github.com/FalkorDB/falkordb-go/v2` v2.1.0.
+- Typesense server `typesense/typesense:30.2` (31.0 is still in release
+  candidates). Go client: `github.com/typesense/typesense-go/v3` v3.2.0.
+  Auto-embedding with the built-in `ts/all-MiniLM-L12-v2` model, on CPU.
+- MCP: `github.com/modelcontextprotocol/go-sdk` v1.8.0, streamable HTTP at
+  `/mcp` on the same server.
 
-### Data model (slice 2)
+### FalkorDB persistence
 
-| Table | Key columns |
+`appendonly yes`, `appendfsync always` (the default `everysec` can lose up to
+one second of writes; this is the only copy of the board), plus RDB snapshots on
+the data volume. Backup copies the RDB file off the host.
+
+### Graph model (one graph per workspace, `ws:<slug>`)
+
+| Node | Key properties |
 |---|---|
-| `projects` | `slug` (pk), `name`, `repo_url`, `integration_branch`, `clickup_list_id`, `created_at` |
-| `phases` | `id`, `project_slug`, `position`, `title`, `exit_condition`, `met_at` (null until met) |
-| `work` | `id`, `project_slug`, `phase_id`, `clickup_task_id`, `title_at_start` (a snapshot for readable history; ClickUp's title is authoritative), `branch`, `pr_url`, `started_at`, `merged_at`, `merge_commit`, `parallel_reason` |
-| `checkpoints` | `id`, `project_slug`, `body`, `next`, `created_at`. The newest row is current. |
-| `log_entries` | `id`, `project_slug`, `work_id` (nullable), `date`, `branch`, `body` (markdown) |
-| `events` | `id`, `project_slug`, `at`, `actor`, `kind`, `payload` (JSON). Insert-only, enforced by triggers that reject UPDATE and DELETE. |
+| `Workspace` | `slug`, `name`, `repo_url`, `integration_branch`, `release_branch`, `has_release_stage` |
+| `Phase` | `id`, `number`, `title`, `description`, `created_at` |
+| `Goal` | `id`, `text`, `met_at`, `met_by` |
+| `Story` | `id`, `title`, `description`, `goal`, `plan`, `rank`, `status`, `activity`, `waiting_on`, `branch`, `pr_url`, `created_at` |
+| `Idea` | `id`, `title`, `body`, `state` (`open`/`closed`), `closed_at` |
+| `LogEntry` | `id`, `at`, `actor`, `kind`, `text`, `commit`, `pr_url` |
 
-Every write goes through the store in one transaction with its event.
+| Edge | Meaning |
+|---|---|
+| `(Phase)-[:HAS_GOAL]->(Goal)` | |
+| `(Phase)-[:CONTAINS]->(Story)` | optional; a story without one sits directly in the backlog |
+| `(Story)-[:DEPENDS_ON]->(Story)` | read in reverse as "blocks" |
+| `(Story)-[:LOGGED]->(LogEntry)` | |
+| `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
+| `(Idea)-[:BECAME]->(Story\|Phase)` | |
 
-- **"In flight"** means `started_at` is set and `merged_at` is not. It is not
-  a status field, because ClickUp keeps the status.
-- **The in-flight rule:** starting work when other work is already in flight is
-  refused unless `parallel_reason` is given.
-- **`actor`** comes from the token's name, so the history says which agent or
-  person made each change.
+A separate `backpack` graph holds the workspace registry and actors with
+hashed tokens.
 
-### HTTP API sketch (slice 2; the contract lives in `api/openapi.yaml`)
+- **Rank** is a fractional string key (between two neighbours there is always
+  a key), so a move rewrites only the moved story.
+- **Ordering checks run inside the same Cypher query as the write.** For a
+  move: no `DEPENDS_ON` target may rank below the new position, and no
+  dependent may rank above it. For a new dependency: the target is in the same
+  or an earlier phase, ranks above the dependent, and adds no cycle.
+- **Status changes follow the column order.** Each change writes a `status`
+  log entry in the same query.
+
+### HTTP API sketch (contract in `api/openapi.yaml`)
 
 ```
-GET    /healthz                                   (unauthenticated)
-GET    /v1/projects                               POST /v1/projects
-GET    /v1/projects/{slug}/orientation            text/plain, for the hook
-GET    /v1/projects/{slug}/phases                 POST, PATCH /phases/{id}
-GET    /v1/projects/{slug}/work?inflight=true     POST /work (start)
-PATCH  /v1/projects/{slug}/work/{id}              branch, pr_url
-POST   /v1/projects/{slug}/work/{id}/merged       merge_commit, pr_url
-GET    /v1/projects/{slug}/checkpoint             PUT  (sets a new one)
-GET    /v1/projects/{slug}/log?limit=             POST
-GET    /v1/projects/{slug}/events?since=
+GET  /healthz                                        (unauthenticated)
+GET  /v1/workspaces                                  POST
+GET  /v1/workspaces/{ws}/next                        what's next
+GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook)
+GET  /v1/workspaces/{ws}/board                       stories by column, ranked
+GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{id}
+POST /v1/workspaces/{ws}/phases/{id}/goals           PATCH /goals/{id} (met)
+GET  /v1/workspaces/{ws}/stories                     POST (with position)
+PATCH /v1/workspaces/{ws}/stories/{id}               fields, activity
+POST /v1/workspaces/{ws}/stories/{id}/move           new position
+POST /v1/workspaces/{ws}/stories/{id}/status         next column (+ commit / pr)
+POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
+GET  /v1/workspaces/{ws}/stories/{id}/log            POST
+GET  /v1/workspaces/{ws}/ideas                       POST, /ideas/{id}/refine     (slice 6)
+POST /v1/workspaces/{ws}/stories/proposals           propose, confirm             (slice 6)
+GET  /v1/workspaces/{ws}/search?q=                                                (slice 7)
 ```
 
-Auth: `Authorization: Bearer <token>`. Tokens are created with a CLI
-subcommand (`backpack token create --name <actor>`), stored as SHA-256 hashes,
-and shown once.
+Auth: `Authorization: Bearer <token>`. Tokens are created with
+`backpack token create --actor <name>`, stored as SHA-256 hashes, and shown
+once.
 
-### MCP tools (slice 3)
+### MCP tools (slice 4)
 
-`orientation`, `set_checkpoint`, `start_work`, `update_work`, `record_merge`,
-`add_log_entry`, `list_log`, `list_phases`, `upsert_phase`, `mark_phase_met`.
-Each is a thin wrapper over the same store call as its HTTP twin. Clients
-connect with Claude Code's HTTP MCP config, passing the bearer token as a
-header.
+`whats_next`, `where_are_we`, `get_story`, `add_story`, `move_story`,
+`set_status`, `set_activity`, `add_dependency`, `log`, `list_phases`,
+`add_phase`, `mark_goal_met`. Ideas, proposals and search tools are added with
+slices 6 and 7.
 
-### Per-project config and hook (slice 4)
+### Per-project config and hook (slice 5)
 
-The committed file `.backpack.json` holds `{ "project": "my-app", "url":
+The committed file `.backpack.json` holds `{ "workspace": "my-app", "url":
 "https://backpack.<domain>" }`. The token comes from `BACKPACK_TOKEN` in the
-environment.
+environment. The hook is `curl -fsS --max-time 3` against `/status` as plain
+text. On any failure it prints "Backpack unreachable — orientation skipped" and
+exits 0.
 
-The hook is `curl -fsS --max-time 3` against the orientation route. On any
-failure it prints "Backpack unreachable — orientation skipped" and exits 0.
+### Deployment
 
-### Deployment (slice 4)
+`docker-compose.yml` runs four services:
+- `backpack`;
+- `falkordb`, with its data volume;
+- `typesense`, with its data volume and the API key from the environment;
+- `cloudflared`, under a compose profile so it is off on localhost.
 
-`docker-compose.yml` runs two services: `backpack` (named volume at `/data`)
-and `cloudflared` (tunnel token from the environment). Backpack is not
-published on a host port; only the tunnel reaches it.
+Only the tunnel reaches `backpack`. FalkorDB and Typesense are on the internal
+network only.
 
 ### Gates and CI (slice 1)
 
-`gofmt -l .`, `go vet ./...`, `go test -race ./...` and `go build ./...` in a
-GitHub Actions workflow on every pull request.
+`gofmt -l .`, `go vet ./...`, `go test -race ./...` and `go build ./...` in
+GitHub Actions, with FalkorDB and Typesense as service containers so storage
+tests run against the real thing.
 
 ### Layout
 
 ```
-cmd/backpack/        main: serve, token create, migrate
-internal/store/      SQLite, migrations, the event log
+cmd/backpack/        main: serve, token create, migrate, reindex
+internal/board/      the operations and their rules (Cypher)
+internal/search/     Typesense indexing and queries
 internal/httpapi/    handlers
 internal/mcpserver/  tool definitions
 api/openapi.yaml

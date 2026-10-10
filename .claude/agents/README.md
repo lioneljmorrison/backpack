@@ -15,8 +15,8 @@ definition here.
 ## When each is used
 
 - **Plan before you build.** Any change touching more than one file, or any new
-  endpoint, MCP tool, table or migration, goes through `planner` first and waits
-  for explicit approval. See CLAUDE.md.
+  endpoint, MCP tool, graph node or edge, index or migration, goes through
+  `planner` first and waits for explicit approval. See CLAUDE.md.
 - **One step at a time.** `executor` takes a single bounded step from an
   approved plan, writes the failing test first, and runs the gates. It stops and
   reports rather than widening scope.
