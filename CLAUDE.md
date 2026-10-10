@@ -79,4 +79,7 @@ Not yet built. The Go gates are in `docs/ENGINEERING-STANDARD.md` §7.3.
 ## Branching
 
 `<type>/<YYYYMMDD>-<short-name>` — type is `bug` or `feature`, kebab-case name.
-`main` is the integration branch.
+**`dev` is the integration branch.** Every task branch starts from `dev` and
+merges back into `dev` through a pull request — never a direct push. `main`
+holds released work: `dev` is merged into `main` by a pull request when it is
+ready to release. Neither `dev` nor `main` is committed to directly.

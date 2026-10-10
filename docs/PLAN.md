@@ -2,7 +2,7 @@
 
 **Status:** Draft, awaiting approval
 **Last updated:** 2026-10-10
-**Integration branch:** `main`
+**Integration branch:** `dev` (released to `main`)
 
 Until Backpack is deployed and can track itself (slice 4), this file is its
 tracker.
