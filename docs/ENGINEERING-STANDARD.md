@@ -114,7 +114,7 @@ session.
 Before implementation:
 
 1. Confirm the task has one clear outcome and definition of done.
-2. Start from `main` and update it safely.
+2. Start from `dev` and update it safely.
 3. Inspect the worktree and preserve unrelated or user-owned changes.
 4. Create a new task branch before changing code.
 5. Write the first failing test before production implementation.
@@ -132,18 +132,20 @@ features in the same branch.
 - `YYYYMMDD` is the branch-creation date.
 - `short-name` is concise, descriptive kebab-case describing the outcome.
 
-`main` is the integration branch and the sole exception to the pattern.
+`dev` (integration) and `main` (released) are the only exceptions to the
+pattern. Neither is committed to directly.
 
 ### 7.2 Delivery sequence
 
-1. Update local `main` and create the task branch from it.
+1. Update local `dev` from `origin/dev` and create the task branch from it.
 2. Develop through red-green-refactor TDD and YAGNI.
 3. Run the complete gate set before handoff.
 4. Review the diff for unrelated files, secrets and accidental data.
 5. Commit the complete task with its tests and documentation.
-6. Push the branch and open a pull request against `main` with test evidence
+6. Push the branch and open a pull request against `dev` with test evidence
    and known limitations.
 7. Merge once checks and review pass, then delete the task branch.
+8. To release, open a pull request from `dev` into `main`.
 
 Do not claim a task is tested when a required check was skipped or failed.
 
