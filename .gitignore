@@ -10,3 +10,5 @@ cloudflared/
 # Build output
 /bin/
 /backpack
+
+ENVs.txt

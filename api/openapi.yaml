@@ -1,0 +1,80 @@
+openapi: 3.1.0
+info:
+  title: Backpack
+  version: 0.1.0
+  description: >-
+    A Kanban board for agentic projects. Every route under /v1 requires a
+    bearer token issued with `backpack token create --actor <name>`.
+servers:
+  - url: http://localhost:8780
+    description: Local development
+security:
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      summary: Service and dependency health
+      description: >-
+        The only unauthenticated route. Reports each dependency as `ok` or
+        `unavailable`; failure details are logged, never returned.
+      security: []
+      responses:
+        "200":
+          description: Every dependency is healthy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: At least one dependency is unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /v1/whoami:
+    get:
+      summary: The actor the presented token belongs to
+      responses:
+        "200":
+          description: The token is live
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actor]
+                properties:
+                  actor: { type: string, example: lionel }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  schemas:
+    Health:
+      type: object
+      required: [status, checks]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        checks:
+          type: object
+          additionalProperties: { type: string, enum: [ok, unavailable] }
+          example: { falkordb: ok, typesense: ok }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+  responses:
+    Unauthorized:
+      description: Missing, malformed, unknown or revoked token
+      headers:
+        WWW-Authenticate:
+          schema: { type: string, const: Bearer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: Tokens cannot be checked because the store is unreachable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
