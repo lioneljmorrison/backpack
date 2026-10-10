@@ -1,0 +1,173 @@
+# Engineering Standard: TDD, YAGNI, and Small Solutions
+
+**Status:** Mandatory for new code and behavior changes
+**Applies to:** the Backpack service (HTTP API, MCP server, storage, migrations)
+and its supporting scripts, including the session hook other projects run
+
+There is deliberately no "update the tracking document in the same branch"
+rule: Backpack exists to replace that document.
+
+---
+
+## 1. Required Development Loop
+
+All production behavior must be developed test-first:
+
+1. Write the smallest test that describes one required behavior or boundary.
+2. Run it and confirm that it fails for the expected reason.
+3. Write the smallest clear implementation that makes it pass.
+4. Run the relevant suite and confirm that it passes.
+5. Refactor only when the tests remain green.
+
+A test written after the implementation does not, by itself, satisfy this TDD
+requirement. Bug fixes begin with a test that reproduces the defect.
+
+Exceptions are limited to non-executable documentation, generated artifacts, and
+disposable investigation spikes. Spike code must not enter production.
+
+---
+
+## 2. What Backpack stores, and what it never does
+
+Backpack is a record people and agents act on. A record that can be silently
+rewritten, or that disagrees with ClickUp, is worse than none.
+
+- **ClickUp owns tasks.** Backpack refers to a task by its ClickUp id. It never
+  stores, mirrors or infers a task's status, assignee or due date.
+- **History is append-only.** Every change is recorded as an event with who made
+  it and when. Events are never updated or deleted; a correction is a new event.
+- **Current state is derived from the record**, not a hand-maintained summary
+  that can drift from it.
+- **Every request is authenticated.** The service is reachable from the
+  internet through the tunnel; there is no unauthenticated route except health.
+- **Secrets come from the environment.** Never in code, tests, fixtures or any
+  file the repository tracks.
+
+---
+
+## 3. YAGNI
+
+Implement only behavior required by an accepted test, the current API contract,
+or the current plan.
+
+Do not add speculative:
+
+- Endpoints, MCP tools or fields with no present consumer.
+- Users, roles or permissions beyond the current authentication requirement.
+- A ClickUp integration — agents already reach ClickUp through its own MCP.
+- Storage abstractions for a second database before there is one.
+- Configuration switches without a current operational requirement.
+
+---
+
+## 4. Smallest Clear Implementation
+
+Prefer the standard library. Add a dependency only when it replaces substantial,
+error-prone code, and record why in the commit message.
+
+Prefer a one-line or one-expression solution when it is complete, obvious and
+testable. "One-liner" is a simplicity constraint, not a line-count target. Do
+not compress code when doing so would hide a rule, reduce error context, create
+dense boolean expressions or make a test harder to read.
+
+---
+
+## 5. Test Shape
+
+Tests are part of the specification and should remain direct and readable.
+
+- One behavior or boundary per test.
+- Descriptive names that state the rule and expected outcome.
+- Table-driven tests for equivalent input/output cases.
+- Storage tests run against a real SQLite database in a temporary directory —
+  never a mock of the store.
+- HTTP handlers are tested through `net/http/httptest`; MCP tools through an
+  in-process MCP client.
+- Fixtures are invented. Never copy another project's tracked content into one.
+
+Avoid tests that merely reproduce implementation structure or assert private
+helper calls.
+
+---
+
+## 6. Definition of Done for Code
+
+A code change is complete only when:
+
+- The new or changed behavior was introduced by a failing test.
+- The implementation is the smallest clear solution that passes it.
+- All gates pass (§7.3).
+- No speculative behavior or unused abstraction was added.
+- Every new HTTP endpoint is in the API contract with handler tests; every new
+  MCP tool has a test calling it.
+- Every schema change is a numbered migration that applies cleanly to an empty
+  database and to the previous version.
+- The plan or Backpack's own record is updated.
+
+---
+
+## 7. Task, Context, and Branch Hygiene
+
+One branch represents one bounded task. Start each new task in a fresh AI
+session.
+
+Before implementation:
+
+1. Confirm the task has one clear outcome and definition of done.
+2. Start from `main` and update it safely.
+3. Inspect the worktree and preserve unrelated or user-owned changes.
+4. Create a new task branch before changing code.
+5. Write the first failing test before production implementation.
+
+Do not combine unrelated fixes, cleanup, speculative refactoring, or future
+features in the same branch.
+
+### 7.1 Branch names
+
+```text
+<type>/<YYYYMMDD>-<short-name>
+```
+
+- `type` is exactly `bug` or `feature`.
+- `YYYYMMDD` is the branch-creation date.
+- `short-name` is concise, descriptive kebab-case describing the outcome.
+
+`main` is the integration branch and the sole exception to the pattern.
+
+### 7.2 Delivery sequence
+
+1. Update local `main` and create the task branch from it.
+2. Develop through red-green-refactor TDD and YAGNI.
+3. Run the complete gate set before handoff.
+4. Review the diff for unrelated files, secrets and accidental data.
+5. Commit the complete task with its tests and documentation.
+6. Push the branch and open a pull request against `main` with test evidence
+   and known limitations.
+7. Merge once checks and review pass, then delete the task branch.
+
+Do not claim a task is tested when a required check was skipped or failed.
+
+### 7.3 Gates
+
+| Gate | Must |
+|---|---|
+| `gofmt -l .` | print nothing |
+| `go vet ./...` | pass |
+| `go test -race ./...` | pass |
+| `go build ./...` | pass |
+
+### 7.4 Commit boundaries
+
+- Commits must belong only to the branch's task.
+- Include tests in the same commit series as the behavior they specify.
+- Never commit secrets, database files, environment files or tracked content
+  from other projects.
+- Do not rewrite shared branch history without explicit approval.
+
+### 7.5 AI handoff checkpoint
+
+Before ending a task session, record enough in the branch, the plan (or
+Backpack itself, once it tracks this repo) and the pull request to continue
+without the chat transcript: objective and acceptance criteria, decisions and
+their why, files and contracts changed, tests run and results, and known
+limitations or follow-ups.

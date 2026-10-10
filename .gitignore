@@ -1,0 +1,12 @@
+# Local data and secrets
+*.db
+*.db-shm
+*.db-wal
+data/
+.env
+.env.*
+cloudflared/
+
+# Build output
+/bin/
+/backpack
