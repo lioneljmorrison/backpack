@@ -163,26 +163,32 @@ Each slice is its own branch and pull request into `dev`.
    or do you also want Cloudflare Access in front? **Proposed:** Backpack's
    token is required, and Cloudflare Access is optional extra protection.
 
+**Needed before slice 2:**
+
+2. **Can a later phase's story be ranked above an earlier phase's stories**
+   when it doesn't depend on them? **Proposed:** yes. Only dependencies
+   constrain order, so a quick unrelated fix can jump ahead.
+3. **Dependencies involving a story with no phase.** The "same or an earlier
+   phase" rule doesn't say what happens when a backlog-only story depends on a
+   phase story, or the reverse. **Proposed:** a story with no phase is
+   constrained only by rank. It must still rank below what it depends on.
+
 **Needed before slice 3:**
 
-2. **How does a story reach Merged, Released and Deployed?**
+4. **How does a story reach Merged, Released and Deployed?**
    - **Proposed:** the agent records it when it happens: the merge, with its
      commit, or the release. Doing so is part of every project's delivery
      rules.
    - **Alternative:** a GitHub webhook that records merges automatically. It
      needs a public webhook route and a GitHub secret.
-3. **Can a later phase's story be ranked above an earlier phase's stories**
-   when it doesn't depend on them? **Proposed:** yes. Only dependencies
-   constrain order, so a quick unrelated fix can jump ahead.
-
 **Needed before slice 5:**
 
-4. **Which host runs the shared instances:** `nas`, `lab-hermes`, or one each
+5. **Which host runs the shared instances:** `nas`, `lab-hermes`, or one each
    for dev and production? And which hostname should the tunnel use?
 
 **Needed before slice 6:**
 
-5. **Are ideas ranked,** or simply listed newest first? **Proposed:** newest
+6. **Are ideas ranked,** or simply listed newest first? **Proposed:** newest
    first. Ideas have no delivery order until they become stories.
 
 ---
@@ -193,7 +199,8 @@ Each slice is its own branch and pull request into `dev`.
 
 - Go 1.26 (installed locally: `go1.26.0`). HTTP via standard library
   `net/http` routing; no framework.
-- FalkorDB server `falkordb/falkordb:v4.20.6` (2026-09-16). 6.0 shipped
+- FalkorDB server `falkordb/falkordb:v4.20.7` (2026-09-24), the latest 4.x
+  release more than two weeks old. 6.0 shipped
   2026-09-29 and is held back until it has settled; revisit once slice 2 is
   done. Go client: `github.com/FalkorDB/falkordb-go/v2` v2.1.0.
 - Typesense server `typesense/typesense:30.2` (31.0 is still in release
