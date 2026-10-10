@@ -16,5 +16,5 @@ Every agent is bound by `docs/ENGINEERING-STANDARD.md`. Two rules matter most:
 
 - **Test first.** Behavior is introduced by a failing test, and a task is not
   done until the gates pass. Never modify a test just to make it pass.
-- **ClickUp owns tasks.** Backpack refers to a task by its ClickUp id. It never
-  stores, mirrors or infers a task's status.
+- **One query per board action.** Every board change and its rule checks run as
+  a single FalkorDB query, so a rule can never be half-applied.
