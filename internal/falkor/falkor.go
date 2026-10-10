@@ -5,6 +5,7 @@ package falkor
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 )
@@ -45,13 +46,15 @@ func Version(g *falkordb.Graph) (int, error) {
 // Migration n (1-based) is ms[n-1]. Index and constraint changes cannot share
 // a query with a write, so each migration is followed by its own version
 // update; a failure leaves the version at the last migration that succeeded.
+// An index that already exists counts as applied: it is what a crash between
+// the two queries leaves behind.
 func Migrate(g *falkordb.Graph, ms []string) error {
 	v, err := Version(g)
 	if err != nil {
 		return err
 	}
 	for i := v; i < len(ms); i++ {
-		if _, err := g.Query(ms[i], nil, nil); err != nil {
+		if _, err := g.Query(ms[i], nil, nil); err != nil && !strings.Contains(err.Error(), "already indexed") {
 			return fmt.Errorf("migration %d: %w", i+1, err)
 		}
 		if _, err := g.Query("MERGE (s:SchemaVersion) SET s.v = $v", map[string]any{"v": i + 1}, nil); err != nil {

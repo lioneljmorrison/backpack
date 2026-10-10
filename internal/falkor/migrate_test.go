@@ -60,3 +60,18 @@ func TestMigrateStopsAtAFailingMigration(t *testing.T) {
 		t.Fatalf("version = %d, want 1 (the good migration only)", v)
 	}
 }
+
+// A crash between a migration and its version update leaves the index in
+// place with the version behind. The next start must finish the job, not fail.
+func TestMigrateCompletesWhenAnIndexAlreadyExists(t *testing.T) {
+	g := falkortest.Graph(t)
+	if _, err := g.Query("CREATE INDEX FOR (a:Alpha) ON (a.name)", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := falkor.Migrate(g, []string{"CREATE INDEX FOR (a:Alpha) ON (a.name)"}); err != nil {
+		t.Fatalf("migrate over an existing index: %v", err)
+	}
+	if v, _ := falkor.Version(g); v != 1 {
+		t.Fatalf("version = %d, want 1", v)
+	}
+}

@@ -11,7 +11,7 @@ tracker.
 
 | Slice | State |
 |---|---|
-| 1. The empty service | In review (`feature/20261010-empty-service`) |
+| 1. The empty service | In review (PR #3) |
 | 2–7 | Not started |
 
 ---
