@@ -24,6 +24,7 @@ jobs:
     env:
       BACKPACK_TEST_FALKORDB: falkor://localhost:6379
       BACKPACK_TEST_TYPESENSE: http://localhost:8108
+      BACKPACK_TEST_TYPESENSE_KEY: ci-only
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

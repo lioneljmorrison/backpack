@@ -4,7 +4,8 @@ COMPOSE := docker compose -f deploy/docker-compose.yml
 export TYPESENSE_API_KEY ?= local-dev-only
 
 TEST_ENV := BACKPACK_TEST_FALKORDB=falkor://localhost:16379 \
-            BACKPACK_TEST_TYPESENSE=http://localhost:18108
+            BACKPACK_TEST_TYPESENSE=http://localhost:18108 \
+            BACKPACK_TEST_TYPESENSE_KEY=$(TYPESENSE_API_KEY)
 
 .PHONY: up tunnel down logs test gates token
 

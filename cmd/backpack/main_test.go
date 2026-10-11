@@ -43,13 +43,14 @@ func TestConfigDefaults(t *testing.T) {
 
 func TestConfigReadsTheEnvironment(t *testing.T) {
 	c := loadConfig(env(map[string]string{
-		"BACKPACK_ADDR":          ":9000",
-		"BACKPACK_FALKORDB_URL":  "falkor://db:6379",
-		"BACKPACK_TYPESENSE_URL": "http://ts:8108",
-		"BACKPACK_SYSTEM_GRAPH":  "other",
+		"BACKPACK_ADDR":              ":9000",
+		"BACKPACK_FALKORDB_URL":      "falkor://db:6379",
+		"BACKPACK_TYPESENSE_URL":     "http://ts:8108",
+		"BACKPACK_TYPESENSE_API_KEY": "k",
+		"BACKPACK_SYSTEM_GRAPH":      "other",
 	}))
 	if c.Addr != ":9000" || c.FalkorURL != "falkor://db:6379" ||
-		c.TypesenseURL != "http://ts:8108" || c.SystemGraph != "other" {
+		c.TypesenseURL != "http://ts:8108" || c.TypesenseKey != "k" || c.SystemGraph != "other" {
 		t.Fatalf("config = %+v", c)
 	}
 }

@@ -13,6 +13,7 @@ services:
       BACKPACK_ADDR: ":8780"
       BACKPACK_FALKORDB_URL: "falkor://falkordb:6379"
       BACKPACK_TYPESENSE_URL: "http://typesense:8108"
+      BACKPACK_TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:?set TYPESENSE_API_KEY}
     ports:
       - "127.0.0.1:8780:8780"
     depends_on:

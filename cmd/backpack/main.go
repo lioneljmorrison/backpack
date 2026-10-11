@@ -23,6 +23,7 @@ import (
 	"github.com/lioneljmorrison/backpack/internal/falkor"
 	"github.com/lioneljmorrison/backpack/internal/health"
 	"github.com/lioneljmorrison/backpack/internal/httpapi"
+	"github.com/lioneljmorrison/backpack/internal/search"
 )
 
 const usage = `usage:
@@ -34,10 +35,18 @@ const usage = `usage:
 // workspacePrefix names each workspace's graph: ws:<slug>.
 const workspacePrefix = "ws:"
 
+// collectionPrefix names each workspace's search collection: ws_<slug>.
+const collectionPrefix = "ws_"
+
+// rebuildTimeout bounds a full rebuild of the search index. The first one on
+// a new Typesense volume also downloads the embedding model.
+const rebuildTimeout = 2 * time.Minute
+
 type config struct {
 	Addr         string
 	FalkorURL    string
 	TypesenseURL string
+	TypesenseKey string
 	SystemGraph  string
 }
 
@@ -52,6 +61,7 @@ func loadConfig(getenv func(string) string) config {
 		Addr:         or("BACKPACK_ADDR", ":8780"),
 		FalkorURL:    or("BACKPACK_FALKORDB_URL", "falkor://localhost:6379"),
 		TypesenseURL: or("BACKPACK_TYPESENSE_URL", "http://localhost:8108"),
+		TypesenseKey: getenv("BACKPACK_TYPESENSE_API_KEY"),
 		SystemGraph:  or("BACKPACK_SYSTEM_GRAPH", "backpack"),
 	}
 }
@@ -146,13 +156,16 @@ func serve(cfg config) error {
 	if err != nil {
 		return err
 	}
+	x := search.New(cfg.TypesenseURL, cfg.TypesenseKey, collectionPrefix, b)
+	b.OnChange(x.Report)
+	rebuild(x)
 	checks := map[string]health.Check{
 		"falkordb":  func(context.Context) error { return falkor.Ping(db) },
 		"typesense": health.Typesense(cfg.TypesenseURL),
 	}
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.New(checks, store.ActorFor, b),
+		Handler:           httpapi.New(checks, store.ActorFor, b, x),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -179,4 +192,16 @@ func serve(cfg config) error {
 		return err
 	}
 	return nil
+}
+
+// rebuild refills every workspace's search index from the board. The board
+// works without search, so a failure is logged and the service starts anyway.
+func rebuild(x *search.Index) {
+	ctx, cancel := context.WithTimeout(context.Background(), rebuildTimeout)
+	defer cancel()
+	if err := x.RebuildAll(ctx); err != nil {
+		log.Printf("search: rebuild failed, search may be incomplete until a reindex: %v", err)
+		return
+	}
+	log.Print("search: index rebuilt")
 }
