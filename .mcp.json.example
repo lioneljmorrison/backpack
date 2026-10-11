@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "backpack": {
+      "type": "http",
+      "url": "https://backpack.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${BACKPACK_TOKEN}" }
+    }
+  }
+}

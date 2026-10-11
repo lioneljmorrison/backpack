@@ -3,8 +3,8 @@ name: planner
 description: >-
   Designs implementation plans and breaks work into the smallest independently
   deliverable, reviewable steps before any code is written. Use for any change
-  touching more than one file, any new endpoint, MCP tool, table or migration,
-  or whenever the user asks for a plan or approach. Returns a step-by-step plan
+  touching more than one file, any new endpoint, MCP tool, graph node or edge,
+  index or migration, or whenever the user asks for a plan or approach. Returns a step-by-step plan
   with critical files, test strategy, and trade-offs. Does not modify code.
 model: opus
 effort: high
@@ -23,12 +23,13 @@ Follow the repository guardrails in CLAUDE.md and docs/ENGINEERING-STANDARD.md:
 - **Plans are written for people.** Plain language in the body: what's wrong →
   why it happens → how we'll fix it. No file paths, line numbers or API
   internals outside the "Technical appendix" at the end.
-- **ClickUp owns tasks.** Never plan a Backpack field that duplicates a ClickUp
-  task's status, assignee or due date.
+- **One query per board action.** FalkorDB has no multi-query transactions, so
+  every board change and its rule checks are planned as a single Cypher query.
+  Typesense is only an index; no board decision reads from it.
 - Every new HTTP endpoint appears in the API contract with handler tests; every
   MCP tool has a test calling it through the MCP server.
-- Every schema change is a numbered migration, and nothing in the event history
-  is ever updated or deleted.
+- Every index, constraint or search-schema change is a numbered migration, and
+  no story log entry is ever updated or deleted.
 - Update `docs/PLAN.md` (or, once it exists, Backpack's own record) as part of
   the plan.
 

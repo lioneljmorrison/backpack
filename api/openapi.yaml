@@ -1,0 +1,1036 @@
+openapi: 3.1.0
+info:
+  title: Backpack
+  version: 0.4.0
+  description: >-
+    A Kanban board for agentic projects. Every route under /v1, and the MCP
+    server at /mcp, requires a bearer token issued with `backpack token
+    create --actor <name>`.
+servers:
+  - url: http://localhost:8780
+    description: Local development
+security:
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      summary: Service and dependency health
+      description: >-
+        The only unauthenticated route. Reports each dependency as `ok` or
+        `unavailable`; failure details are logged, never returned.
+      security: []
+      responses:
+        "200":
+          description: Every dependency is healthy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: At least one dependency is unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /v1/whoami:
+    get:
+      summary: The actor the presented token belongs to
+      responses:
+        "200":
+          description: The token is live
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actor]
+                properties:
+                  actor: { type: string, example: lionel }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /mcp:
+    post:
+      summary: The MCP server, for agents
+      description: >-
+        MCP over streamable HTTP, stateless: no sessions are kept, and every
+        call carries its own token. Each tool takes the workspace slug, calls
+        the same board operation as its HTTP route and answers with the same
+        JSON. A board refusal is a tool error carrying its reason. The tools
+        are listed in docs/PLAN.md. Only POST is served.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: A JSON-RPC 2.0 message }
+      responses:
+        "200":
+          description: The JSON-RPC response, as JSON or an event stream
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/workspaces:
+    get:
+      summary: Every workspace, by slug
+      responses:
+        "200":
+          description: The workspaces
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspaces]
+                properties:
+                  workspaces:
+                    type: array
+                    items: { $ref: "#/components/schemas/Workspace" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      summary: Create a workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, name]
+              additionalProperties: false
+              properties:
+                slug: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", maxLength: 64, example: my-app }
+                name: { type: string, example: My app }
+                repo_url: { type: string }
+                has_release_stage:
+                  type: boolean
+                  default: false
+                  description: Released sits between Merged and Deployed. Set once, at creation.
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/next:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: What's next
+      description: The highest-ranked backlog story that is not blocked.
+      responses:
+        "200":
+          description: The story, or null when nothing in the backlog is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [story]
+                properties:
+                  story:
+                    oneOf:
+                      - $ref: "#/components/schemas/Story"
+                      - type: "null"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/status:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: Where are we
+      description: >-
+        The first phase that is not complete, what is in progress, in review
+        and on hold, the top three of the backlog, and the stories and ideas
+        waiting for approval. Send
+        `Accept: text/plain` for a few lines of text, as the session hook does.
+      responses:
+        "200":
+          description: Where the workspace stands
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Where" }
+            text/plain:
+              schema: { type: string }
+              example: |
+                Phase 2: Features — 1 of 4 stories complete
+                In progress:
+                  S-6 Search — building
+                In review:
+                  S-5 Ranking — https://example.com/pr/5
+                Next:
+                  S-7 Export
+                  S-8 Import — blocked by S-7
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/board:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: Every story by column, each column in delivery order
+      description: Released appears only for a workspace with a release stage.
+      responses:
+        "200":
+          description: The columns, in board order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [columns]
+                properties:
+                  columns:
+                    type: array
+                    items:
+                      type: object
+                      required: [status, stories]
+                      properties:
+                        status: { $ref: "#/components/schemas/Status" }
+                        stories:
+                          type: array
+                          items: { $ref: "#/components/schemas/Story" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/phases:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The workspace's phases in order, each with its goals
+      responses:
+        "200":
+          description: The phases
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [phases]
+                properties:
+                  phases:
+                    type: array
+                    items: { $ref: "#/components/schemas/Phase" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add a phase, numbered after the last one
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              additionalProperties: false
+              properties:
+                title: { type: string }
+                description: { type: string }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Phase" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/phases/{n}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/PhaseNumber"
+    patch:
+      summary: Edit a phase's title or description
+      description: Fields left out are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string, minLength: 1 }
+                description: { type: string }
+      responses:
+        "200":
+          description: The phase as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Phase" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/phases/{n}/goals:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/PhaseNumber"
+    post:
+      summary: Add a goal to a phase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              additionalProperties: false
+              properties:
+                text: { type: string }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Goal" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/goals/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: G-1 }
+    patch:
+      summary: Mark a goal met, or unmark it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [met]
+              additionalProperties: false
+              properties:
+                met: { type: boolean }
+      responses:
+        "200":
+          description: The goal as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Goal" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/stories:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The backlog in delivery order, top first
+      responses:
+        "200":
+          description: The stories
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stories]
+                properties:
+                  stories:
+                    type: array
+                    items: { $ref: "#/components/schemas/Story" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add a story
+      description: >-
+        Placed directly before or after a named story, or at the bottom of the
+        backlog when neither is given. A story's phase is set here and cannot
+        be changed later. A story added here goes straight into the backlog;
+        an agent's story, added through the MCP, is proposed instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              additionalProperties: false
+              properties:
+                title: { type: string }
+                description: { type: string }
+                goal: { type: string }
+                plan: { type: string }
+                phase: { type: integer, minimum: 1, description: "Omit for a story with no phase" }
+                before: { type: string, example: S-3 }
+                after: { type: string, example: S-2 }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    get:
+      summary: One story, with its dependencies in both directions
+      responses:
+        "200":
+          description: The story
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Edit a story, or say what it is doing
+      description: >-
+        Fields left out are unchanged. Activity is set only while the story is
+        in progress (409 otherwise), and waiting_on only while its activity is
+        waiting. Setting another activity clears waiting_on.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string, minLength: 1 }
+                description: { type: string }
+                goal: { type: string }
+                plan: { type: string }
+                activity: { $ref: "#/components/schemas/Activity" }
+                waiting_on: { type: string, example: the review agent }
+                branch: { type: string }
+                pr_url: { type: string }
+      responses:
+        "200":
+          description: The story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/move:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    post:
+      summary: Move a story in the backlog
+      description: >-
+        Refused when the story would rank above something it depends on, or
+        below something that depends on it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Position" }
+      responses:
+        "200":
+          description: The story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/status:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    post:
+      summary: Move a story to another column
+      description: >-
+        Forward one column, or back one before Merged: Backlog, In progress,
+        In review, Merged, Released (only with a release stage), Deployed.
+        From Backlog, In progress or In review a story can be put on hold,
+        and resumes in the column it left; from those and On hold it can be
+        closed. Deployed and Closed are final. Starting a blocked story needs
+        a workaround, which is logged as a decision; a blocked story is never
+        merged. Closing is refused while any story depends on this one. Every
+        change writes a status entry in the story's log.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              additionalProperties: false
+              properties:
+                to: { $ref: "#/components/schemas/Status" }
+                branch: { type: string, description: "Only when starting" }
+                workaround: { type: string, description: "Only when starting a blocked story", example: build against mock data }
+                pr_url: { type: string, description: "Only when opening review" }
+                commit: { type: string, description: "Only when merging" }
+                reason: { type: string, description: "Required when holding or closing, and only then" }
+      responses:
+        "200":
+          description: The story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/log:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    get:
+      summary: The story's log, oldest entry first
+      responses:
+        "200":
+          description: The entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/LogEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Append an entry to the story's log
+      description: >-
+        Entries are never edited or deleted. A note needs text; a decision,
+        text and reason; a commit, its id; a pr, its link; a correction, text
+        and the earlier entry of this story it corrects. Status entries are
+        written only by status changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              additionalProperties: false
+              properties:
+                kind: { type: string, enum: [note, decision, commit, pr, correction] }
+                text: { type: string }
+                reason: { type: string }
+                commit: { type: string }
+                pr_url: { type: string }
+                corrects: { type: string, example: L-3 }
+      responses:
+        "201":
+          description: Logged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogEntry" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/stories/{id}/dependencies:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    post:
+      summary: Record that this story depends on another
+      description: >-
+        The story depended on must rank above this one, be in the same or an
+        earlier phase when both have a phase, must not already depend on this
+        one, and must not be closed. A closed or complete story gains no
+        dependencies. Recording an existing dependency changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [on]
+              additionalProperties: false
+              properties:
+                on: { type: string, example: S-1 }
+      responses:
+        "200":
+          description: The dependent story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/dependencies/{on}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+      - name: on
+        in: path
+        required: true
+        schema: { type: string, example: S-1 }
+    delete:
+      summary: Remove a dependency
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/ideas:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The ideas that are not closed, in order, top first
+      responses:
+        "200":
+          description: The ideas list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ideas]
+                properties:
+                  ideas:
+                    type: array
+                    items: { $ref: "#/components/schemas/Idea" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add an idea
+      description: >-
+        Placed directly before or after a named idea, or at the bottom of the
+        ideas list when neither is given. An idea added here is open; an
+        agent's idea, added through the MCP, is proposed instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              additionalProperties: false
+              properties:
+                title: { type: string }
+                notes: { type: string }
+                before: { type: string, example: I-3 }
+                after: { type: string, example: I-2 }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    get:
+      summary: One idea, closed or not
+      responses:
+        "200":
+          description: The idea
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Edit an idea that is not closed
+      description: Fields not given are left as they are.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string, minLength: 1 }
+                notes: { type: string }
+      responses:
+        "200":
+          description: The idea as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}/move:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Move an idea that is not closed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Position" }
+      responses:
+        "200":
+          description: The idea as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}/approve:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Approve a proposed idea at its spot, making it open
+      responses:
+        "200":
+          description: The idea as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}/refine:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Close an open idea, linking it to what it became
+      description: >-
+        The stories and the phase are added first, the usual way. At least
+        one is named, and none of the stories may be closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                stories:
+                  type: array
+                  items: { type: string, example: S-4 }
+                phase: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: The idea, now closed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}/drop:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Close an idea that became nothing, with the reason
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: The idea, now closed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/search:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: Find stories, ideas and phases by keyword and by meaning
+      description: >-
+        Answers "do we already have something about this?". Keywords match
+        every text field, a story's log included; meaning is matched on the
+        title and summary by a model that runs inside the stack. Up to ten
+        matches, best first. Closed stories and dropped ideas are included,
+        with their state. The index is rebuilt from the board; it never
+        decides anything on the board.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, example: sign in without a password }
+      responses:
+        "200":
+          description: The matches, best first; empty when nothing matches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: "#/components/schemas/SearchResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: Search is unavailable; the board itself is unaffected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+components:
+  parameters:
+    Workspace:
+      name: ws
+      in: path
+      required: true
+      schema: { type: string, example: my-app }
+    PhaseNumber:
+      name: n
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    StoryID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: S-2 }
+    IdeaID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: I-2 }
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  schemas:
+    Health:
+      type: object
+      required: [status, checks]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        checks:
+          type: object
+          additionalProperties: { type: string, enum: [ok, unavailable] }
+          example: { falkordb: ok, typesense: ok }
+    Workspace:
+      type: object
+      required: [slug, name, has_release_stage, created_by, created_at]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        repo_url: { type: string }
+        has_release_stage: { type: boolean }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    Phase:
+      type: object
+      required: [number, title, description, goals, stories_total, stories_complete, complete, goals_met_early, created_by, created_at]
+      properties:
+        number: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        goals:
+          type: array
+          items: { $ref: "#/components/schemas/Goal" }
+        stories_total: { type: integer, description: "Its stories, leaving out closed ones" }
+        stories_complete: { type: integer, description: "Its stories that are merged, released or deployed" }
+        complete: { type: boolean, description: "Every story left is complete; with nothing left in it, every goal is met" }
+        goals_met_early: { type: boolean, description: "Every goal is met but some stories are still open" }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_by: { type: string, description: "Who last edited it" }
+        updated_at: { type: string, format: date-time }
+    Goal:
+      type: object
+      required: [id, text, met, created_by, created_at]
+      properties:
+        id: { type: string, example: G-1 }
+        text: { type: string }
+        met: { type: boolean }
+        met_by: { type: string }
+        met_at: { type: string, format: date-time }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    Story:
+      type: object
+      required: [id, title, description, goal, plan, status, blocked, blocked_by, blocks, created_by, created_at]
+      properties:
+        id: { type: string, example: S-2 }
+        title: { type: string }
+        description: { type: string }
+        goal: { type: string }
+        plan: { type: string }
+        phase: { type: integer, description: "Absent for a story with no phase" }
+        status: { $ref: "#/components/schemas/Status" }
+        blocked: { type: boolean, description: "A story it depends on is not yet complete" }
+        blocked_by:
+          type: array
+          description: Stories this one depends on, complete or not
+          items: { type: string }
+        blocks:
+          type: array
+          description: Stories that depend on this one
+          items: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        moved_by: { type: string }
+        moved_at: { type: string, format: date-time }
+        updated_by: { type: string, description: "Who last edited it or removed one of its dependencies" }
+        updated_at: { type: string, format: date-time }
+        held_from: { $ref: "#/components/schemas/Status" }
+        hold_reason: { type: string }
+        activity: { $ref: "#/components/schemas/Activity" }
+        waiting_on: { type: string }
+        branch: { type: string }
+        pr_url: { type: string }
+        workaround: { type: string, description: "How it was started while blocked" }
+    Status:
+      type: string
+      enum: [proposed, backlog, in_progress, in_review, merged, released, deployed, on_hold, closed]
+      description: >-
+        Merged, released and deployed are complete. A proposed story waits for
+        a person to approve it into the backlog, or to decline it by closing it.
+    Activity:
+      type: string
+      enum: [planning, building, testing, waiting]
+      description: What an in-progress story is doing.
+    LogEntry:
+      type: object
+      required: [id, at, actor, kind]
+      properties:
+        id: { type: string, example: L-4 }
+        at: { type: string, format: date-time }
+        actor: { type: string }
+        kind: { type: string, enum: [note, decision, commit, pr, status, correction] }
+        text: { type: string }
+        reason: { type: string }
+        commit: { type: string }
+        pr_url: { type: string }
+        branch: { type: string }
+        from: { $ref: "#/components/schemas/Status" }
+        to: { $ref: "#/components/schemas/Status" }
+        corrects: { type: string, description: "The entry this one corrects" }
+        corrected_by:
+          type: array
+          description: Entries that correct this one
+          items: { type: string }
+    Where:
+      type: object
+      required: [phase, proposed, in_progress, in_review, on_hold, next, ideas_proposed]
+      properties:
+        phase:
+          description: The first phase that is not complete; null when there is none
+          oneOf:
+            - $ref: "#/components/schemas/Phase"
+            - type: "null"
+        proposed:
+          type: array
+          description: What is waiting for a person to approve it
+          items: { $ref: "#/components/schemas/Story" }
+        in_progress:
+          type: array
+          items: { $ref: "#/components/schemas/Story" }
+        in_review:
+          type: array
+          items: { $ref: "#/components/schemas/Story" }
+        on_hold:
+          type: array
+          items: { $ref: "#/components/schemas/Story" }
+        next:
+          type: array
+          description: The top three of the backlog, blocked stories included
+          items: { $ref: "#/components/schemas/Story" }
+        ideas_proposed:
+          type: array
+          description: The ideas waiting for a person to approve them
+          items: { $ref: "#/components/schemas/Idea" }
+    Idea:
+      type: object
+      required: [id, title, notes, state, became_stories, created_by, created_at]
+      properties:
+        id: { type: string, example: I-3 }
+        title: { type: string }
+        notes: { type: string }
+        state:
+          type: string
+          enum: [proposed, open, closed]
+          description: A proposed idea waits for a person to approve its spot.
+        reasoning: { type: string, description: "Why an agent suggested its spot" }
+        became_stories:
+          type: array
+          description: The stories a refined idea became
+          items: { type: string }
+        became_phase: { type: integer, description: "The phase a refined idea became" }
+        drop_reason: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        approved_by: { type: string }
+        approved_at: { type: string, format: date-time }
+        moved_by: { type: string }
+        moved_at: { type: string, format: date-time }
+        updated_by: { type: string }
+        updated_at: { type: string, format: date-time }
+        closed_by: { type: string }
+        closed_at: { type: string, format: date-time }
+    Position:
+      type: object
+      description: >-
+        Directly before or after a story (or, for an idea, another idea);
+        neither means the bottom of the list.
+      additionalProperties: false
+      properties:
+        before: { type: string, example: S-3 }
+        after: { type: string, example: S-2 }
+    SearchResult:
+      type: object
+      required: [kind, id, title]
+      properties:
+        kind: { type: string, enum: [story, idea, phase] }
+        id:
+          type: string
+          description: A story's or idea's id, or a phase's number
+          example: S-4
+        title: { type: string }
+        state:
+          type: string
+          description: >-
+            A story's status, or an idea's state (proposed, open or closed). A
+            phase has none.
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+  responses:
+    Invalid:
+      description: >-
+        The request is malformed. Text may not contain control or invisible
+        formatting characters other than newlines, carriage returns and tabs.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: No such workspace, phase, goal, story, log entry or dependency
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: The change would break a board rule; the error says which
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing, malformed, unknown or revoked token
+      headers:
+        WWW-Authenticate:
+          schema: { type: string, const: Bearer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: Tokens cannot be checked because the store is unreachable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

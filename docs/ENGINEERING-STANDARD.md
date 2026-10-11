@@ -1,7 +1,8 @@
 # Engineering Standard: TDD, YAGNI, and Small Solutions
 
 **Status:** Mandatory for new code and behavior changes
-**Applies to:** the Backpack service (HTTP API, MCP server, storage, migrations)
+**Applies to:** the Backpack service (HTTP API, MCP server, FalkorDB and Typesense
+storage, migrations)
 and its supporting scripts, including the session hook other projects run
 
 There is deliberately no "update the tracking document in the same branch"
@@ -27,17 +28,25 @@ disposable investigation spikes. Spike code must not enter production.
 
 ---
 
-## 2. What Backpack stores, and what it never does
+## 2. The board's rules
 
-Backpack is a record people and agents act on. A record that can be silently
-rewritten, or that disagrees with ClickUp, is worse than none.
+Backpack is the record people and agents act on to decide what to do next. A
+board that can be silently rewritten or left half-changed is worse than none.
 
-- **ClickUp owns tasks.** Backpack refers to a task by its ClickUp id. It never
-  stores, mirrors or infers a task's status, assignee or due date.
-- **History is append-only.** Every change is recorded as an event with who made
-  it and when. Events are never updated or deleted; a correction is a new event.
-- **Current state is derived from the record**, not a hand-maintained summary
-  that can drift from it.
+- **FalkorDB is the source of truth. Typesense is only a search index** built
+  from it, and can always be rebuilt from FalkorDB. Nothing is ever read from
+  Typesense to make a board decision.
+- **Every board action is one FalkorDB query.** FalkorDB rolls back a failed
+  query completely, but has no transactions that span several queries. An
+  action and its rule checks (ordering, dependencies, status flow) therefore
+  run as a single query, so a rule can never be half-applied.
+- **The ordering rule always holds.** A story ranks below everything it depends
+  on. Dependencies point only to the same or an earlier phase, never across
+  workspaces, and never in a cycle.
+- **Logs are append-only.** Story log entries are never edited or deleted. A
+  mistake is fixed by a correction entry that points to the one it corrects.
+  Every status change writes a log entry.
+- **Every change names its actor:** the person or agent whose token made it.
 - **Every request is authenticated.** The service is reachable from the
   internet through the tunnel; there is no unauthenticated route except health.
 - **Secrets come from the environment.** Never in code, tests, fixtures or any
@@ -53,9 +62,11 @@ or the current plan.
 Do not add speculative:
 
 - Endpoints, MCP tools or fields with no present consumer.
-- Users, roles or permissions beyond the current authentication requirement.
-- A ClickUp integration — agents already reach ClickUp through its own MCP.
-- Storage abstractions for a second database before there is one.
+- User accounts, roles or permissions. There is one person today; keep every
+  change attributed to an actor so users can be added later, and build no more.
+- Integrations with outside task trackers.
+- Storage abstractions over FalkorDB or Typesense before a second backend
+  exists.
 - Configuration switches without a current operational requirement.
 
 ---
@@ -79,8 +90,11 @@ Tests are part of the specification and should remain direct and readable.
 - One behavior or boundary per test.
 - Descriptive names that state the rule and expected outcome.
 - Table-driven tests for equivalent input/output cases.
-- Storage tests run against a real SQLite database in a temporary directory —
-  never a mock of the store.
+- Storage tests run against real FalkorDB and Typesense — never a mock of the
+  store. They skip unless `BACKPACK_TEST_FALKORDB` (and, for search,
+  `BACKPACK_TEST_TYPESENSE`) is set; CI sets both, using service containers.
+- Each storage test uses its own uniquely named graph and collection, and drops
+  them afterwards.
 - HTTP handlers are tested through `net/http/httptest`; MCP tools through an
   in-process MCP client.
 - Fixtures are invented. Never copy another project's tracked content into one.
@@ -100,8 +114,9 @@ A code change is complete only when:
 - No speculative behavior or unused abstraction was added.
 - Every new HTTP endpoint is in the API contract with handler tests; every new
   MCP tool has a test calling it.
-- Every schema change is a numbered migration that applies cleanly to an empty
-  database and to the previous version.
+- Every change to indexes, constraints or the search schema is a numbered
+  migration that applies cleanly to an empty database and to the previous
+  version.
 - The plan or Backpack's own record is updated.
 
 ---
@@ -114,7 +129,7 @@ session.
 Before implementation:
 
 1. Confirm the task has one clear outcome and definition of done.
-2. Start from `main` and update it safely.
+2. Start from `dev` and update it safely.
 3. Inspect the worktree and preserve unrelated or user-owned changes.
 4. Create a new task branch before changing code.
 5. Write the first failing test before production implementation.
@@ -132,18 +147,20 @@ features in the same branch.
 - `YYYYMMDD` is the branch-creation date.
 - `short-name` is concise, descriptive kebab-case describing the outcome.
 
-`main` is the integration branch and the sole exception to the pattern.
+`dev` (integration) and `main` (released) are the only exceptions to the
+pattern. Neither is committed to directly.
 
 ### 7.2 Delivery sequence
 
-1. Update local `main` and create the task branch from it.
+1. Update local `dev` from `origin/dev` and create the task branch from it.
 2. Develop through red-green-refactor TDD and YAGNI.
 3. Run the complete gate set before handoff.
 4. Review the diff for unrelated files, secrets and accidental data.
 5. Commit the complete task with its tests and documentation.
-6. Push the branch and open a pull request against `main` with test evidence
+6. Push the branch and open a pull request against `dev` with test evidence
    and known limitations.
 7. Merge once checks and review pass, then delete the task branch.
+8. To release, open a pull request from `dev` into `main`.
 
 Do not claim a task is tested when a required check was skipped or failed.
 
