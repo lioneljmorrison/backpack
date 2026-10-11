@@ -114,3 +114,116 @@ func TestAGoalNeedsTextAndAnExistingPhase(t *testing.T) {
 	_, err = b.AddGoal("demo", actor, 2, "x")
 	wantKind(t, err, board.NotFound)
 }
+
+func addGoal(t *testing.T, b *board.Board, phase int, text string) board.Goal {
+	t.Helper()
+	g, err := b.AddGoal("demo", actor, phase, text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+func phase(t *testing.T, b *board.Board, n int) board.Phase {
+	t.Helper()
+	ps, err := b.Phases("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ps[n-1]
+}
+
+func TestAGoalCanBeMarkedMetAndUnmarked(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addGoal(t, b, 1, "it works")
+	g, err := b.SetGoalMet("demo", actor, "G-1", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !g.Met || g.MetBy != actor || g.MetAt == "" {
+		t.Fatalf("met %+v", g)
+	}
+	if got := phase(t, b, 1).Goals[0]; !got.Met || got.MetBy != actor {
+		t.Fatalf("listed %+v", got)
+	}
+	g, err = b.SetGoalMet("demo", actor, "G-1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Met || g.MetBy != "" || g.MetAt != "" {
+		t.Fatalf("unmarked %+v", g)
+	}
+	_, err = b.SetGoalMet("demo", actor, "G-9", true)
+	wantKind(t, err, board.NotFound)
+}
+
+func TestAPhaseIsCompleteWhenEveryStoryStillWantedIsComplete(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addStory(t, b, board.NewStory{Title: "A", Phase: 1})
+	addStory(t, b, board.NewStory{Title: "B", Phase: 1})
+	addStory(t, b, board.NewStory{Title: "C", Phase: 1})
+	walk(t, b, "S-1", "in_progress", "in_review", "merged")
+	if p := phase(t, b, 1); p.Complete || p.StoriesTotal != 3 || p.StoriesComplete != 1 {
+		t.Fatalf("one of three merged %+v", p)
+	}
+	walk(t, b, "S-2", "in_progress", "in_review", "merged", "deployed")
+	setStatus(t, b, "S-3", board.StatusChange{To: "closed", Reason: "not needed"})
+	if p := phase(t, b, 1); !p.Complete || p.StoriesTotal != 2 || p.StoriesComplete != 2 {
+		t.Fatalf("the rest merged or closed %+v", p)
+	}
+}
+
+func TestAPhaseWithNoStoriesIsNotComplete(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	if p := phase(t, b, 1); p.Complete {
+		t.Fatalf("empty phase %+v", p)
+	}
+}
+
+func TestAPhaseIsFlaggedWhenEveryGoalIsMetButStoriesRemainOpen(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addGoal(t, b, 1, "fast")
+	addGoal(t, b, 1, "small")
+	addStory(t, b, board.NewStory{Title: "A", Phase: 1})
+	if _, err := b.SetGoalMet("demo", actor, "G-1", true); err != nil {
+		t.Fatal(err)
+	}
+	if p := phase(t, b, 1); p.GoalsMetEarly {
+		t.Fatalf("flagged with a goal unmet %+v", p)
+	}
+	if _, err := b.SetGoalMet("demo", actor, "G-2", true); err != nil {
+		t.Fatal(err)
+	}
+	if p := phase(t, b, 1); !p.GoalsMetEarly {
+		t.Fatalf("not flagged %+v", p)
+	}
+	walk(t, b, "S-1", "in_progress", "in_review", "merged")
+	if p := phase(t, b, 1); p.GoalsMetEarly {
+		t.Fatalf("flagged once complete %+v", p)
+	}
+}
+
+func TestAPhaseWithNoGoalsIsNeverFlagged(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addStory(t, b, board.NewStory{Title: "A", Phase: 1})
+	if p := phase(t, b, 1); p.GoalsMetEarly {
+		t.Fatalf("flagged %+v", p)
+	}
+}
+
+func TestAPhaseWithNoStoriesIsNotFlagged(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addGoal(t, b, 1, "fast")
+	if _, err := b.SetGoalMet("demo", actor, "G-1", true); err != nil {
+		t.Fatal(err)
+	}
+	if p := phase(t, b, 1); p.GoalsMetEarly {
+		t.Fatalf("flagged with no open stories %+v", p)
+	}
+}

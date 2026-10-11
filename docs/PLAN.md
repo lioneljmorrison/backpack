@@ -1,6 +1,6 @@
 # Backpack — Plan
 
-**Status:** Approved 2026-10-10. Slice 2 in review.
+**Status:** Approved 2026-10-10. Slice 3 in review.
 **Last updated:** 2026-10-10
 **Integration branch:** `dev` (released to `main`)
 
@@ -12,8 +12,9 @@ tracker.
 | Slice | State |
 |---|---|
 | 1. The empty service | Merged (PR #3) |
-| 2. The board | In review (PR #4) |
-| 3–7 | Not started |
+| 2. The board | Merged (PR #4) |
+| 3. Work moving across the board | In review (PR #5) |
+| 4–7 | Not started |
 
 ---
 
@@ -186,18 +187,42 @@ Each slice is its own branch and pull request into `dev`.
   of the backlog when neither is given.
 - Stories are numbered `S-1`, `S-2` … and goals `G-1` … within each
   workspace. A phase is referred to by its number.
-- A workspace has a slug, a name and optionally its repository. Its branches
-  and whether it has a Released stage arrive with slice 3, which first uses
-  them.
+- A workspace has a slug, a name and optionally its repository. Whether it
+  has a Released stage arrives with slice 3.
 
-**Needed before slice 3:**
+4. **How a story reaches Merged, Released and Deployed** (2026-10-10). The
+   agent records it when it happens: the merge, with its commit, or the
+   release. Doing so is part of every project's delivery rules. No webhook.
 
-4. **How does a story reach Merged, Released and Deployed?**
-   - **Proposed:** the agent records it when it happens: the merge, with its
-     commit, or the release. Doing so is part of every project's delivery
-     rules.
-   - **Alternative:** a GitHub webhook that records merges automatically. It
-     needs a public webhook route and a GitHub secret.
+**Slice 3 details** (settled 2026-10-10):
+- **Status flow.** A story moves forward one column, or back one before
+  Merged (In review → In progress, In progress → Backlog). Nothing moves back
+  from Merged on. Merged, Released and Deployed all count as **complete**.
+- **On hold.** A story in Backlog, In progress or In review can be put on
+  hold with a reason (for example, needs more info). Resuming returns it to
+  the column it left. "Blocked" stays reserved for dependencies.
+- **Closed.** A story no longer needed is closed with a reason. Closing is
+  refused while any story depends on it; those dependencies are removed
+  first, deliberately. Closed is final, and nothing can depend on a closed
+  story.
+- **Blocked work.** Starting a blocked story is refused unless a workaround is
+  given (for example, building against mock data). The workaround is kept on
+  the story and logged as a decision. A blocked story can never be Merged.
+- **Release stage.** Set when a workspace is created; the default is none,
+  and Merged then goes straight to Deployed. The workspace's branch names are
+  dropped until something reads them.
+- **Activity** (Planning, Building, Testing, Waiting on agents, with what it
+  is waiting on) exists only while a story is in progress. It starts as
+  Planning and is cleared on leaving In progress.
+- **Logging.** Only status changes write log entries automatically. Moves,
+  edits and dependency changes keep their who/when fields on the story.
+- **Goals** can be marked met and unmarked. A phase is complete when it has a
+  story and every story that isn't closed is complete; an empty phase never
+  is. A phase is flagged when it has goals, all are met, and some of its
+  stories are still open.
+- **Where are we** also lists what is on hold and why. Plain text is chosen
+  with `Accept: text/plain`.
+
 **Needed before slice 5:**
 
 5. **Which host runs the shared instances:** `nas`, `lab-hermes`, or one each
@@ -239,12 +264,12 @@ the data volume. Backup copies the RDB file off the host.
 
 | Node | Key properties |
 |---|---|
-| `Workspace` | `slug`, `next_story`, `next_goal` (counters for `S-n` and `G-n` IDs) |
+| `Workspace` | `slug`, `next_story`, `next_goal`, `next_log` (counters for `S-n`, `G-n` and `L-n` IDs), `has_release_stage` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
-| `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` (slice 3) |
-| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed); `activity`, `waiting_on`, `branch`, `pr_url` (slice 3) |
+| `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
+| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround` |
 | `Idea` | `id`, `title`, `body`, `state` (`open`/`closed`), `closed_at` |
-| `LogEntry` | `id`, `at`, `actor`, `kind`, `text`, `commit`, `pr_url` |
+| `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `from`, `to` |
 
 | Edge | Meaning |
 |---|---|
@@ -256,8 +281,9 @@ the data volume. Backup copies the RDB file off the host.
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
 
 A separate `backpack` graph holds actors with hashed tokens and the workspace
-registry: `WorkspaceEntry {slug, name, repo_url, created_by, created_at}`. The
-workspace's branches and `has_release_stage` join it in slice 3.
+registry: `WorkspaceEntry {slug, name, repo_url, has_release_stage,
+created_by, created_at}`. `has_release_stage` is also kept on the workspace
+graph's `Workspace` node, so the status query can read it.
 
 - **Rank** is a fractional string key over `0-9A-Za-z` (ASCII order, so Go
   and FalkorDB compare keys alike). Between two neighbours there is always a
@@ -286,7 +312,13 @@ workspace's branches and `has_release_stage` join it in slice 3.
   what makes the workspace exist. An interrupted create can be repeated. Start-up
   migrates every registered workspace graph.
 - **Status changes follow the column order.** Each change writes a `status`
-  log entry in the same query.
+  log entry in the same query, plus a `decision` entry when a blocked story is
+  started with a workaround.
+- **Statuses:** `backlog`, `in_progress`, `in_review`, `merged`, `released`,
+  `deployed`, `on_hold`, `closed`. Complete is `merged`, `released` or
+  `deployed`; `blocked` is computed on read.
+- **Empty lists:** `all(…)` over an empty list is true, so phase completion
+  and the goals flag guard against no stories and no goals.
 
 ### HTTP API sketch (contract in `api/openapi.yaml`)
 
@@ -297,11 +329,11 @@ GET  /v1/workspaces/{ws}/next                        what's next
 GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook)
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
 GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{id}
-POST /v1/workspaces/{ws}/phases/{id}/goals           PATCH /goals/{id} (met)
+POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met)
 GET  /v1/workspaces/{ws}/stories                     POST (with position)
-PATCH /v1/workspaces/{ws}/stories/{id}               fields, activity
+PATCH /v1/workspaces/{ws}/stories/{id}               fields, activity, branch, pr_url
 POST /v1/workspaces/{ws}/stories/{id}/move           new position
-POST /v1/workspaces/{ws}/stories/{id}/status         next column (+ commit / pr)
+POST /v1/workspaces/{ws}/stories/{id}/status         to (+ branch / pr_url / commit / reason / workaround)
 POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
 GET  /v1/workspaces/{ws}/stories/{id}/log            POST
 GET  /v1/workspaces/{ws}/ideas                       POST, /ideas/{id}/refine     (slice 6)

@@ -9,11 +9,13 @@ import (
 
 // Workspace is one project's board.
 type Workspace struct {
-	Slug      string `json:"slug"`
-	Name      string `json:"name"`
-	RepoURL   string `json:"repo_url,omitempty"`
-	CreatedBy string `json:"created_by"`
-	CreatedAt string `json:"created_at"`
+	Slug    string `json:"slug"`
+	Name    string `json:"name"`
+	RepoURL string `json:"repo_url,omitempty"`
+	// HasReleaseStage puts Released between Merged and Deployed.
+	HasReleaseStage bool   `json:"has_release_stage"`
+	CreatedBy       string `json:"created_by"`
+	CreatedAt       string `json:"created_at"`
 }
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -40,20 +42,28 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (Workspace, error) {
 	if err := falkor.Migrate(g, migrations); err != nil {
 		return Workspace{}, err
 	}
-	if _, err := g.Query("MERGE (w:Workspace {slug: $slug}) ON CREATE SET w.next_story = 1, w.next_goal = 1",
-		map[string]any{"slug": w.Slug}, nil); err != nil {
+	// A graph that already exists keeps its release stage, and the registry
+	// records the one the graph has, which is the one status changes read.
+	res, err := g.Query(`MERGE (w:Workspace {slug: $slug})
+		ON CREATE SET w.next_story = 1, w.next_goal = 1, w.next_log = 1, w.has_release_stage = $release
+		RETURN coalesce(w.has_release_stage, false) AS release`,
+		map[string]any{"slug": w.Slug, "release": w.HasReleaseStage}, nil)
+	if err != nil {
 		return Workspace{}, fmt.Errorf("create workspace graph: %w", err)
+	}
+	if res.Next() {
+		w.HasReleaseStage = flag(res.Record(), "release")
 	}
 
 	w.CreatedBy, w.CreatedAt = actor, now()
-	res, err := b.system.Query(`
+	res, err = b.system.Query(`
 		OPTIONAL MATCH (taken:WorkspaceEntry {slug: $slug})
 		WITH taken
 		FOREACH (_ IN CASE WHEN taken IS NULL THEN [1] ELSE [] END |
 			CREATE (:WorkspaceEntry {slug: $slug, name: $name, repo_url: $repo,
-				created_by: $actor, created_at: $now}))
+				has_release_stage: $release, created_by: $actor, created_at: $now}))
 		RETURN taken IS NOT NULL AS taken`,
-		map[string]any{"slug": w.Slug, "name": w.Name, "repo": w.RepoURL, "actor": actor, "now": w.CreatedAt}, nil)
+		map[string]any{"slug": w.Slug, "name": w.Name, "repo": w.RepoURL, "release": w.HasReleaseStage, "actor": actor, "now": w.CreatedAt}, nil)
 	if err != nil {
 		return Workspace{}, fmt.Errorf("register workspace: %w", err)
 	}
@@ -70,7 +80,7 @@ func (b *Board) Workspaces() ([]Workspace, error) {
 	res, err := b.system.ROQuery(`
 		MATCH (e:WorkspaceEntry)
 		RETURN e.slug AS slug, e.name AS name, e.repo_url AS repo,
-			e.created_by AS by, e.created_at AS at
+			coalesce(e.has_release_stage, false) AS release, e.created_by AS by, e.created_at AS at
 		ORDER BY e.slug`, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("list workspaces: %w", err)
@@ -79,7 +89,7 @@ func (b *Board) Workspaces() ([]Workspace, error) {
 	for res.Next() {
 		r := res.Record()
 		out = append(out, Workspace{Slug: str(r, "slug"), Name: str(r, "name"), RepoURL: str(r, "repo"),
-			CreatedBy: str(r, "by"), CreatedAt: str(r, "at")})
+			HasReleaseStage: flag(r, "release"), CreatedBy: str(r, "by"), CreatedAt: str(r, "at")})
 	}
 	return out, nil
 }

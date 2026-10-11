@@ -63,6 +63,14 @@ func TestCreatingAWorkspaceRecordsTheTokensActor(t *testing.T) {
 	}
 }
 
+func TestAWorkspaceCanBeCreatedWithAReleaseStage(t *testing.T) {
+	h := newAPI(t)
+	ws := want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "demo", "name": "Demo", "has_release_stage": true}`), http.StatusCreated)
+	if ws["has_release_stage"] != true {
+		t.Fatalf("created %v", ws)
+	}
+}
+
 func TestMalformedBodiesAreBadRequests(t *testing.T) {
 	h := withDemo(t)
 	for _, c := range []struct{ method, path, body string }{
@@ -147,4 +155,107 @@ func TestDependenciesOverHTTP(t *testing.T) {
 	}
 	want(t, call(t, h, "DELETE", "/v1/workspaces/demo/stories/S-2/dependencies/S-1", ""), http.StatusNoContent)
 	want(t, call(t, h, "DELETE", "/v1/workspaces/demo/stories/S-2/dependencies/S-1", ""), http.StatusNotFound)
+}
+
+func TestStatusChangesOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "B"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-2/dependencies", `{"on": "S-1"}`), http.StatusOK)
+
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "in_progress", "branch": "feature/a"}`), http.StatusOK)
+	if s["status"] != "in_progress" || s["branch"] != "feature/a" || s["activity"] != "planning" {
+		t.Fatalf("started %v", s)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-2/status", `{"to": "in_progress"}`), http.StatusConflict)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "closed"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-9/status", `{"to": "in_progress"}`), http.StatusNotFound)
+	s = want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-2", ""), http.StatusOK)
+	if s["blocked"] != true {
+		t.Fatalf("S-2 %v", s)
+	}
+}
+
+func TestStoryLogsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	e := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/log", `{"kind": "note", "text": "hello"}`), http.StatusCreated)
+	if e["id"] != "L-1" || e["actor"] != "tester" {
+		t.Fatalf("logged %v", e)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/log", `{"kind": "status", "text": "x"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/log", `{"kind": "correction", "text": "x", "corrects": "L-9"}`), http.StatusNotFound)
+	l := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1/log", ""), http.StatusOK)
+	if entries := l["entries"].([]any); len(entries) != 1 {
+		t.Fatalf("log %v", l)
+	}
+}
+
+func TestMarkingAGoalMetOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "One"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases/1/goals", `{"text": "it works"}`), http.StatusCreated)
+	g := want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{"met": true}`), http.StatusOK)
+	if g["met"] != true || g["met_by"] != "tester" {
+		t.Fatalf("met %v", g)
+	}
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-9", `{"met": true}`), http.StatusNotFound)
+	p := want(t, call(t, h, "GET", "/v1/workspaces/demo/phases", ""), http.StatusOK)["phases"].([]any)[0].(map[string]any)
+	if p["complete"] != false || p["goals_met_early"] != false {
+		t.Fatalf("phase %v", p)
+	}
+}
+
+func TestTheQuickReadsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	n := want(t, call(t, h, "GET", "/v1/workspaces/demo/next", ""), http.StatusOK)
+	if s, ok := n["story"]; !ok || s != nil {
+		t.Fatalf("next on an empty board %v", n)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "B"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "in_progress"}`), http.StatusOK)
+
+	n = want(t, call(t, h, "GET", "/v1/workspaces/demo/next", ""), http.StatusOK)
+	if n["story"].(map[string]any)["id"] != "S-2" {
+		t.Fatalf("next %v", n)
+	}
+	st := want(t, call(t, h, "GET", "/v1/workspaces/demo/status", ""), http.StatusOK)
+	if len(st["in_progress"].([]any)) != 1 || len(st["next"].([]any)) != 1 {
+		t.Fatalf("status %v", st)
+	}
+	b := want(t, call(t, h, "GET", "/v1/workspaces/demo/board", ""), http.StatusOK)
+	if cols := b["columns"].([]any); len(cols) != 7 {
+		t.Fatalf("board %v", b)
+	}
+	want(t, call(t, h, "GET", "/v1/workspaces/nope/status", ""), http.StatusNotFound)
+}
+
+func TestWhereAreWeAsPlainTextForTheSessionHook(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	r := httptest.NewRequest("GET", "/v1/workspaces/demo/status", nil)
+	r.Header.Set("Authorization", "Bearer bp_good")
+	r.Header.Set("Accept", "text/plain")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") ||
+		w.Body.String() != "Next:\n  S-1 A\n" {
+		t.Fatalf("status %d %q: %q", w.Code, w.Header().Get("Content-Type"), w.Body)
+	}
+}
+
+func TestWhereAreWeIsJSONWhenTheCallerAlsoAcceptsJSON(t *testing.T) {
+	h := withDemo(t)
+	for _, accept := range []string{"", "*/*", "application/json, text/plain, */*"} {
+		r := httptest.NewRequest("GET", "/v1/workspaces/demo/status", nil)
+		r.Header.Set("Authorization", "Bearer bp_good")
+		r.Header.Set("Accept", accept)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Accept %q got %q", accept, ct)
+		}
+	}
 }

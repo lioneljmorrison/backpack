@@ -3,9 +3,11 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
@@ -17,15 +19,22 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	a := boardAPI{b}
 	mux.HandleFunc("GET /v1/workspaces", a.listWorkspaces)
 	mux.HandleFunc("POST /v1/workspaces", a.createWorkspace)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/status", a.where)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/board", a.board)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/phases", a.listPhases)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases", a.addPhase)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/phases/{n}", a.updatePhase)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases/{n}/goals", a.addGoal)
+	mux.HandleFunc("PATCH /v1/workspaces/{ws}/goals/{id}", a.setGoalMet)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories", a.listStories)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories", a.addStory)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}", a.getStory)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/stories/{id}", a.updateStory)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/move", a.moveStory)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/status", a.setStatus)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}/log", a.readLog)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/log", a.addLogEntry)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/dependencies", a.addDependency)
 	mux.HandleFunc("DELETE /v1/workspaces/{ws}/stories/{id}/dependencies/{on}", a.removeDependency)
 }
@@ -39,15 +48,40 @@ func (a boardAPI) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 
 func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Slug    string `json:"slug"`
-		Name    string `json:"name"`
-		RepoURL string `json:"repo_url"`
+		Slug            string `json:"slug"`
+		Name            string `json:"name"`
+		RepoURL         string `json:"repo_url"`
+		HasReleaseStage bool   `json:"has_release_stage"`
 	}
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL})
+	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL,
+		HasReleaseStage: in.HasReleaseStage})
 	respond(w, http.StatusCreated, ws, err)
+}
+
+func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {
+	s, err := a.b.Next(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"story": s}, err)
+}
+
+// where answers as JSON, or as plain text when the caller asks for text and
+// not JSON, as the session hook does.
+func (a boardAPI) where(w http.ResponseWriter, r *http.Request) {
+	where, err := a.b.Where(r.PathValue("ws"))
+	accept := r.Header.Get("Accept")
+	if err != nil || !strings.Contains(accept, "text/plain") || strings.Contains(accept, "application/json") {
+		respond(w, http.StatusOK, where, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	io.WriteString(w, where.Text())
+}
+
+func (a boardAPI) board(w http.ResponseWriter, r *http.Request) {
+	cols, err := a.b.Board(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"columns": cols}, err)
 }
 
 func (a boardAPI) listPhases(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +123,21 @@ func (a boardAPI) addGoal(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusCreated, g, err)
 }
 
+func (a boardAPI) setGoalMet(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Met *bool `json:"met"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	if in.Met == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "met is required"})
+		return
+	}
+	g, err := a.b.SetGoalMet(r.PathValue("ws"), actor(r), r.PathValue("id"), *in.Met)
+	respond(w, http.StatusOK, g, err)
+}
+
 func (a boardAPI) listStories(w http.ResponseWriter, r *http.Request) {
 	ss, err := a.b.Stories(r.PathValue("ws"))
 	respond(w, http.StatusOK, map[string]any{"stories": ss}, err)
@@ -124,6 +173,29 @@ func (a boardAPI) moveStory(w http.ResponseWriter, r *http.Request) {
 	}
 	s, err := a.b.MoveStory(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
 	respond(w, http.StatusOK, s, err)
+}
+
+func (a boardAPI) setStatus(w http.ResponseWriter, r *http.Request) {
+	var in board.StatusChange
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	s, err := a.b.SetStatus(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
+	respond(w, http.StatusOK, s, err)
+}
+
+func (a boardAPI) readLog(w http.ResponseWriter, r *http.Request) {
+	l, err := a.b.Log(r.PathValue("ws"), r.PathValue("id"))
+	respond(w, http.StatusOK, map[string]any{"entries": l}, err)
+}
+
+func (a boardAPI) addLogEntry(w http.ResponseWriter, r *http.Request) {
+	var in board.NewLogEntry
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	e, err := a.b.AddLogEntry(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
+	respond(w, http.StatusCreated, e, err)
 }
 
 func (a boardAPI) addDependency(w http.ResponseWriter, r *http.Request) {

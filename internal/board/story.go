@@ -3,27 +3,40 @@ package board
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 )
 
 // Story is one deliverable piece of work.
 type Story struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Goal        string   `json:"goal"`
-	Plan        string   `json:"plan"`
-	Phase       int      `json:"phase,omitempty"`
-	Status      string   `json:"status"`
-	BlockedBy   []string `json:"blocked_by"`
-	Blocks      []string `json:"blocks"`
-	CreatedBy   string   `json:"created_by"`
-	CreatedAt   string   `json:"created_at"`
-	MovedBy     string   `json:"moved_by,omitempty"`
-	MovedAt     string   `json:"moved_at,omitempty"`
-	UpdatedBy   string   `json:"updated_by,omitempty"`
-	UpdatedAt   string   `json:"updated_at,omitempty"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Goal        string `json:"goal"`
+	Plan        string `json:"plan"`
+	Phase       int    `json:"phase,omitempty"`
+	Status      string `json:"status"`
+	// Blocked is worked out, never set: a dependency is not yet complete.
+	Blocked    bool     `json:"blocked"`
+	BlockedBy  []string `json:"blocked_by"`
+	Blocks     []string `json:"blocks"`
+	HeldFrom   string   `json:"held_from,omitempty"`
+	HoldReason string   `json:"hold_reason,omitempty"`
+	Activity   string   `json:"activity,omitempty"`
+	WaitingOn  string   `json:"waiting_on,omitempty"`
+	Branch     string   `json:"branch,omitempty"`
+	PRURL      string   `json:"pr_url,omitempty"`
+	Workaround string   `json:"workaround,omitempty"`
+	CreatedBy  string   `json:"created_by"`
+	CreatedAt  string   `json:"created_at"`
+	MovedBy    string   `json:"moved_by,omitempty"`
+	MovedAt    string   `json:"moved_at,omitempty"`
+	UpdatedBy  string   `json:"updated_by,omitempty"`
+	UpdatedAt  string   `json:"updated_at,omitempty"`
+
+	// waiting is the dependencies that are not yet complete.
+	waiting []string
 }
 
 // Position places a story directly before or directly after another one.
@@ -43,13 +56,22 @@ type NewStory struct {
 	Position
 }
 
-// StoryPatch changes the fields that are set and leaves the rest.
+// StoryPatch changes the fields that are set and leaves the rest. Activity
+// and WaitingOn apply only while the story is in progress, and WaitingOn
+// only while it is waiting.
 type StoryPatch struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
 	Goal        *string `json:"goal"`
 	Plan        *string `json:"plan"`
+	Activity    *string `json:"activity"`
+	WaitingOn   *string `json:"waiting_on"`
+	Branch      *string `json:"branch"`
+	PRURL       *string `json:"pr_url"`
 }
+
+// activities are what an in-progress story can be doing.
+var activities = []string{"planning", "building", "testing", "waiting"}
 
 // placeAttempts bounds the retries when another write takes the same gap.
 const placeAttempts = 3
@@ -224,12 +246,17 @@ func (b *Board) Stories(ws string) ([]Story, error) {
 	return stories(g, "")
 }
 
-// UpdateStory edits a story's text.
+// UpdateStory edits a story's text, branch and pull request, and what it
+// is doing while in progress.
 func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (Story, error) {
 	if patch.Title != nil && *patch.Title == "" {
 		return Story{}, refuse(Invalid, "title cannot be empty")
 	}
-	if err := plainText(deref(patch.Title), deref(patch.Description), deref(patch.Goal), deref(patch.Plan)); err != nil {
+	if patch.Activity != nil && !slices.Contains(activities, *patch.Activity) {
+		return Story{}, refuse(Invalid, "activity is one of %s", strings.Join(activities, ", "))
+	}
+	if err := plainText(deref(patch.Title), deref(patch.Description), deref(patch.Goal), deref(patch.Plan),
+		deref(patch.WaitingOn), deref(patch.Branch), deref(patch.PRURL)); err != nil {
 		return Story{}, err
 	}
 	g, err := b.workspace(ws)
@@ -238,19 +265,37 @@ func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (Story, erro
 	}
 	res, err := g.Query(`
 		MATCH (s:Story {id: $id})
-		SET s.title = coalesce($title, s.title),
-			s.description = coalesce($description, s.description),
-			s.goal = coalesce($goal, s.goal),
-			s.plan = coalesce($plan, s.plan),
-			s.updated_by = $actor, s.updated_at = $now
-		RETURN s.id`,
+		WITH s, coalesce($activity, s.activity) AS activity
+		WITH s, activity, CASE
+			WHEN $activity IS NOT NULL AND s.status <> 'in_progress' THEN 'not started'
+			WHEN $waiting IS NOT NULL AND coalesce(activity, '') <> 'waiting' THEN 'not waiting'
+		END AS violation
+		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
+			SET s.title = coalesce($title, s.title),
+				s.description = coalesce($description, s.description),
+				s.goal = coalesce($goal, s.goal),
+				s.plan = coalesce($plan, s.plan),
+				s.activity = activity,
+				s.waiting_on = CASE WHEN activity = 'waiting' THEN coalesce($waiting, s.waiting_on) END,
+				s.branch = coalesce($branch, s.branch),
+				s.pr_url = coalesce($pr, s.pr_url),
+				s.updated_by = $actor, s.updated_at = $now)
+		RETURN violation, s.status AS status`,
 		map[string]any{"id": id, "title": opt(patch.Title), "description": opt(patch.Description),
-			"goal": opt(patch.Goal), "plan": opt(patch.Plan), "actor": actor, "now": now()}, nil)
+			"goal": opt(patch.Goal), "plan": opt(patch.Plan), "activity": opt(patch.Activity),
+			"waiting": opt(patch.WaitingOn), "branch": opt(patch.Branch), "pr": opt(patch.PRURL),
+			"actor": actor, "now": now()}, nil)
 	if err != nil {
 		return Story{}, fmt.Errorf("update story: %w", err)
 	}
 	if !res.Next() {
 		return Story{}, refuse(NotFound, "no story %q", id)
+	}
+	switch r := res.Record(); str(r, "violation") {
+	case "not started":
+		return Story{}, refuse(Conflict, "%s is %s; activity is set only while a story is in progress", id, label(str(r, "status")))
+	case "not waiting":
+		return Story{}, refuse(Invalid, "waiting_on is set only while a story's activity is waiting")
 	}
 	return story(g, id)
 }
@@ -272,27 +317,35 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		MATCH (s:Story) WHERE $id = '' OR s.id = $id
 		OPTIONAL MATCH (p:Phase)-[:CONTAINS]->(s)
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story)
-		WITH s, p, collect(t.id) AS blocked_by
+		WITH s, p, collect(t.id) AS blocked_by,
+			collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS waiting
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
-		WITH s, p, blocked_by, collect(d.id) AS blocks
+		WITH s, p, blocked_by, waiting, collect(d.id) AS blocks
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks,
+			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
+			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
+			s.waiting_on AS waiting_on, s.branch AS branch, s.pr_url AS pr_url, s.workaround AS workaround,
 			s.created_by AS created_by, s.created_at AS created_at,
 			s.moved_by AS moved_by, s.moved_at AS moved_at,
 			s.updated_by AS updated_by, s.updated_at AS updated_at
 		ORDER BY s.rank`,
-		map[string]any{"id": id}, nil)
+		map[string]any{"id": id, "complete": complete}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read stories: %w", err)
 	}
 	out := []Story{}
 	for res.Next() {
 		r := res.Record()
+		waiting := byNumber(strs(r, "waiting"))
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
 			Goal: str(r, "goal"), Plan: str(r, "plan"), Status: str(r, "status"), Phase: num(r, "phase"),
 			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
-			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
+			Blocked: len(waiting) > 0, waiting: waiting,
+			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
+			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), PRURL: str(r, "pr_url"),
+			Workaround: str(r, "workaround"),
+			CreatedBy:  str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"),
 		})

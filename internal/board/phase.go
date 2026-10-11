@@ -15,10 +15,17 @@ type Phase struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Goals       []Goal `json:"goals"`
-	CreatedBy   string `json:"created_by"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedBy   string `json:"updated_by,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	// StoriesTotal leaves out closed stories.
+	StoriesTotal    int  `json:"stories_total"`
+	StoriesComplete int  `json:"stories_complete"`
+	Complete        bool `json:"complete"`
+	// GoalsMetEarly flags a phase whose goals are all met while some of its
+	// stories are still open: something may have gone sideways.
+	GoalsMetEarly bool   `json:"goals_met_early"`
+	CreatedBy     string `json:"created_by"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedBy     string `json:"updated_by,omitempty"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
 // Goal is one outcome a phase commits to.
@@ -27,6 +34,9 @@ type Goal struct {
 	Text      string `json:"text"`
 	CreatedBy string `json:"created_by"`
 	CreatedAt string `json:"created_at"`
+	Met       bool   `json:"met"`
+	MetBy     string `json:"met_by,omitempty"`
+	MetAt     string `json:"met_at,omitempty"`
 }
 
 // PhasePatch changes the fields that are set and leaves the rest.
@@ -135,17 +145,44 @@ func (b *Board) AddGoal(ws, actor string, phase int, text string) (Goal, error) 
 	return goal, nil
 }
 
+// SetGoalMet marks a goal met, recording who marked it, or unmarks it.
+func (b *Board) SetGoalMet(ws, actor, id string, met bool) (Goal, error) {
+	g, err := b.workspace(ws)
+	if err != nil {
+		return Goal{}, err
+	}
+	res, err := g.Query(`
+		MATCH (goal:Goal {id: $id})
+		SET goal.met_by = CASE WHEN $met THEN $actor END, goal.met_at = CASE WHEN $met THEN $now END
+		RETURN goal.id AS id, goal.text AS text, goal.created_by AS by, goal.created_at AS at,
+			goal.met_by AS met_by, goal.met_at AS met_at`,
+		map[string]any{"id": id, "met": met, "actor": actor, "now": now()}, nil)
+	if err != nil {
+		return Goal{}, fmt.Errorf("set goal met: %w", err)
+	}
+	if !res.Next() {
+		return Goal{}, refuse(NotFound, "no goal %q", id)
+	}
+	r := res.Record()
+	return Goal{ID: str(r, "id"), Text: str(r, "text"), CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
+		Met: met, MetBy: str(r, "met_by"), MetAt: str(r, "met_at")}, nil
+}
+
 // phases reads every phase, or only phase n when n is not 0.
 func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 	res, err := g.ROQuery(`
 		MATCH (p:Phase) WHERE $n = 0 OR p.number = $n
+		OPTIONAL MATCH (p)-[:CONTAINS]->(s:Story) WHERE s.status <> 'closed'
+		WITH p, count(s) AS total,
+			toInteger(sum(CASE WHEN s.status IN $complete THEN 1 ELSE 0 END)) AS done
 		OPTIONAL MATCH (p)-[:HAS_GOAL]->(goal:Goal)
-		WITH p, collect({id: goal.id, text: goal.text, by: goal.created_by, at: goal.created_at}) AS goals
+		WITH p, total, done, collect({id: goal.id, text: goal.text, by: goal.created_by, at: goal.created_at,
+			met_by: goal.met_by, met_at: goal.met_at}) AS goals
 		RETURN p.number AS number, p.title AS title, p.description AS description,
 			p.created_by AS by, p.created_at AS at,
-			p.updated_by AS updated_by, p.updated_at AS updated_at, goals
+			p.updated_by AS updated_by, p.updated_at AS updated_at, goals, total, done
 		ORDER BY p.number`,
-		map[string]any{"n": n}, nil)
+		map[string]any{"n": n, "complete": complete}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read phases: %w", err)
 	}
@@ -154,7 +191,10 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 		r := res.Record()
 		p := Phase{Number: num(r, "number"), Title: str(r, "title"), Description: str(r, "description"),
 			CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
-			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), Goals: []Goal{}}
+			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), Goals: []Goal{},
+			StoriesTotal: num(r, "total"), StoriesComplete: num(r, "done")}
+		// An empty phase is not complete.
+		p.Complete = p.StoriesTotal > 0 && p.StoriesComplete == p.StoriesTotal
 		raw, _ := r.Get("goals")
 		list, _ := raw.([]any)
 		for _, x := range list {
@@ -163,10 +203,16 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 				text, _ := m["text"].(string)
 				by, _ := m["by"].(string)
 				at, _ := m["at"].(string)
-				p.Goals = append(p.Goals, Goal{ID: id, Text: text, CreatedBy: by, CreatedAt: at})
+				metBy, _ := m["met_by"].(string)
+				metAt, _ := m["met_at"].(string)
+				p.Goals = append(p.Goals, Goal{ID: id, Text: text, CreatedBy: by, CreatedAt: at,
+					Met: metAt != "", MetBy: metBy, MetAt: metAt})
 			}
 		}
 		slices.SortFunc(p.Goals, func(a, b Goal) int { return seq(a.ID) - seq(b.ID) })
+		// Flagged only with goals, and with stories still open.
+		p.GoalsMetEarly = len(p.Goals) > 0 && p.StoriesComplete < p.StoriesTotal &&
+			!slices.ContainsFunc(p.Goals, func(g Goal) bool { return !g.Met })
 		out = append(out, p)
 	}
 	return out, nil
