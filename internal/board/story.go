@@ -22,6 +22,8 @@ type Story struct {
 	CreatedAt   string   `json:"created_at"`
 	MovedBy     string   `json:"moved_by,omitempty"`
 	MovedAt     string   `json:"moved_at,omitempty"`
+	UpdatedBy   string   `json:"updated_by,omitempty"`
+	UpdatedAt   string   `json:"updated_at,omitempty"`
 }
 
 // Position places a story directly before or directly after another one.
@@ -59,6 +61,9 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (Story, error) {
 	}
 	if s.Before != "" && s.After != "" {
 		return Story{}, refuse(Invalid, "give before or after, not both")
+	}
+	if err := plainText(s.Title, s.Description, s.Goal, s.Plan); err != nil {
+		return Story{}, err
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -220,9 +225,12 @@ func (b *Board) Stories(ws string) ([]Story, error) {
 }
 
 // UpdateStory edits a story's text.
-func (b *Board) UpdateStory(ws, id string, patch StoryPatch) (Story, error) {
+func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (Story, error) {
 	if patch.Title != nil && *patch.Title == "" {
 		return Story{}, refuse(Invalid, "title cannot be empty")
+	}
+	if err := plainText(deref(patch.Title), deref(patch.Description), deref(patch.Goal), deref(patch.Plan)); err != nil {
+		return Story{}, err
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -233,10 +241,11 @@ func (b *Board) UpdateStory(ws, id string, patch StoryPatch) (Story, error) {
 		SET s.title = coalesce($title, s.title),
 			s.description = coalesce($description, s.description),
 			s.goal = coalesce($goal, s.goal),
-			s.plan = coalesce($plan, s.plan)
+			s.plan = coalesce($plan, s.plan),
+			s.updated_by = $actor, s.updated_at = $now
 		RETURN s.id`,
 		map[string]any{"id": id, "title": opt(patch.Title), "description": opt(patch.Description),
-			"goal": opt(patch.Goal), "plan": opt(patch.Plan)}, nil)
+			"goal": opt(patch.Goal), "plan": opt(patch.Plan), "actor": actor, "now": now()}, nil)
 	if err != nil {
 		return Story{}, fmt.Errorf("update story: %w", err)
 	}
@@ -269,7 +278,8 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
 			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks,
 			s.created_by AS created_by, s.created_at AS created_at,
-			s.moved_by AS moved_by, s.moved_at AS moved_at
+			s.moved_by AS moved_by, s.moved_at AS moved_at,
+			s.updated_by AS updated_by, s.updated_at AS updated_at
 		ORDER BY s.rank`,
 		map[string]any{"id": id}, nil)
 	if err != nil {
@@ -284,6 +294,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
 			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
+			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"),
 		})
 	}
 	return out, nil

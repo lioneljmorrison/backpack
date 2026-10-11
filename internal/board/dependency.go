@@ -54,17 +54,19 @@ func (b *Board) AddDependency(ws, actor, id, on string) (Story, error) {
 	}
 }
 
-// RemoveDependency deletes the dependency of story id on story on.
-func (b *Board) RemoveDependency(ws, id, on string) error {
+// RemoveDependency deletes the dependency of story id on story on, and
+// records who removed it on story id.
+func (b *Board) RemoveDependency(ws, actor, id, on string) error {
 	g, err := b.workspace(ws)
 	if err != nil {
 		return err
 	}
 	res, err := g.Query(`
-		MATCH (:Story {id: $id})-[r:DEPENDS_ON]->(:Story {id: $on})
+		MATCH (d:Story {id: $id})-[r:DEPENDS_ON]->(:Story {id: $on})
 		DELETE r
+		SET d.updated_by = $actor, d.updated_at = $now
 		RETURN true`,
-		map[string]any{"id": id, "on": on}, nil)
+		map[string]any{"id": id, "on": on, "actor": actor, "now": now()}, nil)
 	if err != nil {
 		return fmt.Errorf("remove dependency: %w", err)
 	}

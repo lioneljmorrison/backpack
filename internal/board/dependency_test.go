@@ -155,11 +155,14 @@ func TestAStoryCanMoveFreelyBetweenItsDependencies(t *testing.T) {
 func TestARemovedDependencyNoLongerConstrainsOrder(t *testing.T) {
 	b := threeStories(t)
 	depend(t, b, "S-2", "S-1")
-	if err := b.RemoveDependency("demo", "S-2", "S-1"); err != nil {
+	if err := b.RemoveDependency("demo", "remover", "S-2", "S-1"); err != nil {
 		t.Fatal(err)
 	}
 	if s, _ := b.Story("demo", "S-1"); len(s.Blocks) != 0 {
 		t.Fatalf("S-1 still blocks %v", s.Blocks)
+	}
+	if s, _ := b.Story("demo", "S-2"); s.UpdatedBy != "remover" || s.UpdatedAt == "" {
+		t.Fatalf("removal not attributed on the dependent story: %+v", s)
 	}
 	if _, err := b.MoveStory("demo", actor, "S-1", board.Position{After: "S-3"}); err != nil {
 		t.Fatalf("move after removal: %v", err)
@@ -168,5 +171,5 @@ func TestARemovedDependencyNoLongerConstrainsOrder(t *testing.T) {
 
 func TestRemovingADependencyThatDoesNotExistIsNotFound(t *testing.T) {
 	b := threeStories(t)
-	wantKind(t, b.RemoveDependency("demo", "S-2", "S-1"), board.NotFound)
+	wantKind(t, b.RemoveDependency("demo", actor, "S-2", "S-1"), board.NotFound)
 }

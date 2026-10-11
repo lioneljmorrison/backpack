@@ -17,6 +17,8 @@ type Phase struct {
 	Goals       []Goal `json:"goals"`
 	CreatedBy   string `json:"created_by"`
 	CreatedAt   string `json:"created_at"`
+	UpdatedBy   string `json:"updated_by,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
 }
 
 // Goal is one outcome a phase commits to.
@@ -37,6 +39,9 @@ type PhasePatch struct {
 func (b *Board) AddPhase(ws, actor, title, description string) (Phase, error) {
 	if title == "" {
 		return Phase{}, refuse(Invalid, "title is required")
+	}
+	if err := plainText(title, description); err != nil {
+		return Phase{}, err
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -68,9 +73,12 @@ func (b *Board) Phases(ws string) ([]Phase, error) {
 }
 
 // UpdatePhase edits a phase's title or description.
-func (b *Board) UpdatePhase(ws string, number int, patch PhasePatch) (Phase, error) {
+func (b *Board) UpdatePhase(ws, actor string, number int, patch PhasePatch) (Phase, error) {
 	if patch.Title != nil && *patch.Title == "" {
 		return Phase{}, refuse(Invalid, "title cannot be empty")
+	}
+	if err := plainText(deref(patch.Title), deref(patch.Description)); err != nil {
+		return Phase{}, err
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -79,9 +87,11 @@ func (b *Board) UpdatePhase(ws string, number int, patch PhasePatch) (Phase, err
 	res, err := g.Query(`
 		MATCH (p:Phase {number: $n})
 		SET p.title = coalesce($title, p.title),
-			p.description = coalesce($description, p.description)
+			p.description = coalesce($description, p.description),
+			p.updated_by = $actor, p.updated_at = $now
 		RETURN p.number`,
-		map[string]any{"n": number, "title": opt(patch.Title), "description": opt(patch.Description)}, nil)
+		map[string]any{"n": number, "title": opt(patch.Title), "description": opt(patch.Description),
+			"actor": actor, "now": now()}, nil)
 	if err != nil {
 		return Phase{}, fmt.Errorf("update phase: %w", err)
 	}
@@ -99,6 +109,9 @@ func (b *Board) UpdatePhase(ws string, number int, patch PhasePatch) (Phase, err
 func (b *Board) AddGoal(ws, actor string, phase int, text string) (Goal, error) {
 	if text == "" {
 		return Goal{}, refuse(Invalid, "text is required")
+	}
+	if err := plainText(text); err != nil {
+		return Goal{}, err
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -129,7 +142,8 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 		OPTIONAL MATCH (p)-[:HAS_GOAL]->(goal:Goal)
 		WITH p, collect({id: goal.id, text: goal.text, by: goal.created_by, at: goal.created_at}) AS goals
 		RETURN p.number AS number, p.title AS title, p.description AS description,
-			p.created_by AS by, p.created_at AS at, goals
+			p.created_by AS by, p.created_at AS at,
+			p.updated_by AS updated_by, p.updated_at AS updated_at, goals
 		ORDER BY p.number`,
 		map[string]any{"n": n}, nil)
 	if err != nil {
@@ -139,7 +153,8 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 	for res.Next() {
 		r := res.Record()
 		p := Phase{Number: num(r, "number"), Title: str(r, "title"), Description: str(r, "description"),
-			CreatedBy: str(r, "by"), CreatedAt: str(r, "at"), Goals: []Goal{}}
+			CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
+			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), Goals: []Goal{}}
 		raw, _ := r.Get("goals")
 		list, _ := raw.([]any)
 		for _, x := range list {
@@ -162,6 +177,14 @@ func seq(id string) int {
 	_, n, _ := strings.Cut(id, "-")
 	i, _ := strconv.Atoi(n)
 	return i
+}
+
+// deref reads an optional field; unset reads as "".
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // opt turns an unset optional field into a Cypher null.

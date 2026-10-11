@@ -73,7 +73,7 @@ func (a boardAPI) updatePhase(w http.ResponseWriter, r *http.Request) {
 	if !ok || !decodeBody(w, r, &in) {
 		return
 	}
-	p, err := a.b.UpdatePhase(r.PathValue("ws"), n, in)
+	p, err := a.b.UpdatePhase(r.PathValue("ws"), actor(r), n, in)
 	respond(w, http.StatusOK, p, err)
 }
 
@@ -113,7 +113,7 @@ func (a boardAPI) updateStory(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	s, err := a.b.UpdateStory(r.PathValue("ws"), r.PathValue("id"), in)
+	s, err := a.b.UpdateStory(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
 	respond(w, http.StatusOK, s, err)
 }
 
@@ -138,7 +138,7 @@ func (a boardAPI) addDependency(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a boardAPI) removeDependency(w http.ResponseWriter, r *http.Request) {
-	err := a.b.RemoveDependency(r.PathValue("ws"), r.PathValue("id"), r.PathValue("on"))
+	err := a.b.RemoveDependency(r.PathValue("ws"), actor(r), r.PathValue("id"), r.PathValue("on"))
 	if err != nil {
 		fail(w, err)
 		return

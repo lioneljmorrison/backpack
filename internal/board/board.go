@@ -2,7 +2,10 @@ package board
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/lioneljmorrison/backpack/internal/falkor"
@@ -81,6 +84,23 @@ func (b *Board) workspace(slug string) (*falkordb.Graph, error) {
 		return nil, refuse(NotFound, "no workspace %q", slug)
 	}
 	return b.graph(slug), nil
+}
+
+// plainText refuses text that would not be stored exactly. The FalkorDB
+// client inlines values into the query as Go-quoted literals, and FalkorDB
+// does not read Go's \x and \u escapes. Only newlines, carriage returns and
+// tabs, among the characters Go escapes, come back unchanged.
+func plainText(fields ...string) error {
+	for _, f := range fields {
+		if !utf8.ValidString(f) || strings.ContainsFunc(f, escaped) {
+			return refuse(Invalid, "text cannot contain control or invisible formatting characters")
+		}
+	}
+	return nil
+}
+
+func escaped(r rune) bool {
+	return !strconv.IsPrint(r) && r != '\n' && r != '\r' && r != '\t'
 }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339) }

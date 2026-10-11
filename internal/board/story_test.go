@@ -108,7 +108,7 @@ func TestWorkspacesNumberTheirStoriesSeparately(t *testing.T) {
 func TestUpdateStoryChangesOnlyTheFieldsGiven(t *testing.T) {
 	b := newWorkspace(t)
 	addStory(t, b, board.NewStory{Title: "Old", Description: "d", Goal: "g", Plan: "p"})
-	s, err := b.UpdateStory("demo", "S-1", board.StoryPatch{Title: ptr("New"), Plan: ptr("p2")})
+	s, err := b.UpdateStory("demo", actor, "S-1", board.StoryPatch{Title: ptr("New"), Plan: ptr("p2")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,8 +120,49 @@ func TestUpdateStoryChangesOnlyTheFieldsGiven(t *testing.T) {
 func TestUpdateStoryRefusesAnEmptyTitleAndAnUnknownStory(t *testing.T) {
 	b := newWorkspace(t)
 	addStory(t, b, board.NewStory{Title: "A"})
-	_, err := b.UpdateStory("demo", "S-1", board.StoryPatch{Title: ptr("")})
+	_, err := b.UpdateStory("demo", actor, "S-1", board.StoryPatch{Title: ptr("")})
 	wantKind(t, err, board.Invalid)
-	_, err = b.UpdateStory("demo", "S-9", board.StoryPatch{Title: ptr("x")})
+	_, err = b.UpdateStory("demo", actor, "S-9", board.StoryPatch{Title: ptr("x")})
 	wantKind(t, err, board.NotFound)
+}
+
+// Agents send markdown: quotes, backslashes, newlines, tabs and non-ASCII
+// text must read back exactly as sent.
+func TestStoryTextRoundTripsExactly(t *testing.T) {
+	b := newWorkspace(t)
+	text := "## Plan\n\n1. Run `make gates` \u2014 it's \"fine\"\n\t- path C:\\work\\new\n- caf\u00e9, \u65e5\u672c, \U0001F680\r\nend"
+	s := addStory(t, b, board.NewStory{Title: "Quotes ' \" `", Description: text, Plan: text})
+	if s.Title != "Quotes ' \" `" || s.Description != text || s.Plan != text {
+		t.Fatalf("added text changed:\n%q", s.Description)
+	}
+	s, err := b.UpdateStory("demo", actor, s.ID, board.StoryPatch{Goal: ptr(text)})
+	if err != nil || s.Goal != text {
+		t.Fatalf("patched goal = %q, %v", s.Goal, err)
+	}
+}
+
+// The FalkorDB client inlines values into the query as Go-quoted literals,
+// and FalkorDB does not read Go's \x and \u escapes: such text would be stored
+// changed, without an error. It is refused instead.
+func TestTextThatCannotBeStoredExactlyIsRefused(t *testing.T) {
+	b := newWorkspace(t)
+	for _, c := range []string{"\x00", "\a", "\x1b[31m", "\x7f", "\u2028", string(rune(0xfeff)), "\xff"} {
+		_, err := b.AddStory("demo", actor, board.NewStory{Title: "t" + c + "x"})
+		wantKind(t, err, board.Invalid)
+	}
+	addStory(t, b, board.NewStory{Title: "A"})
+	_, err := b.UpdateStory("demo", actor, "S-1", board.StoryPatch{Plan: ptr("\u2028")})
+	wantKind(t, err, board.Invalid)
+}
+
+func TestEditingAStoryRecordsWhoEditedIt(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "A"})
+	s, err := b.UpdateStory("demo", "editor", "S-1", board.StoryPatch{Title: ptr("B")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.UpdatedBy != "editor" || s.UpdatedAt == "" {
+		t.Fatalf("edit not attributed: %+v", s)
+	}
 }

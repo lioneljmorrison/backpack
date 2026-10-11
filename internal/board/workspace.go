@@ -29,6 +29,9 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (Workspace, error) {
 	if w.Name == "" {
 		return Workspace{}, refuse(Invalid, "name is required")
 	}
+	if err := plainText(w.Name, w.RepoURL); err != nil {
+		return Workspace{}, err
+	}
 	if _, err := b.workspace(w.Slug); err == nil {
 		return Workspace{}, refuse(Conflict, "workspace %q already exists", w.Slug)
 	}

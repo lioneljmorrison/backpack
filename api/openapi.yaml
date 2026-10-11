@@ -384,6 +384,8 @@ components:
           items: { $ref: "#/components/schemas/Goal" }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
+        updated_by: { type: string, description: "Who last edited it" }
+        updated_at: { type: string, format: date-time }
     Goal:
       type: object
       required: [id, text, created_by, created_at]
@@ -415,6 +417,8 @@ components:
         created_at: { type: string, format: date-time }
         moved_by: { type: string }
         moved_at: { type: string, format: date-time }
+        updated_by: { type: string, description: "Who last edited it or removed one of its dependencies" }
+        updated_at: { type: string, format: date-time }
     Position:
       type: object
       description: Directly before or after a story; neither means the bottom of the backlog.
@@ -429,7 +433,9 @@ components:
         error: { type: string }
   responses:
     Invalid:
-      description: The request is malformed
+      description: >-
+        The request is malformed. Text may not contain control or invisible
+        formatting characters other than newlines, carriage returns and tabs.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

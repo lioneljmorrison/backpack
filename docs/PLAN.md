@@ -179,7 +179,8 @@ Each slice is its own branch and pull request into `dev`.
 
 **Slice 2 details** (settled 2026-10-10):
 - Until story logs arrive in slice 3, everything created records who created
-  it and when, and a move records who made it and when.
+  it and when. A move, an edit, or a removed dependency records who made it
+  and when, on the story or phase it changed.
 - A story's phase is set when the story is created and can't be changed yet.
 - A story is placed directly before or after a named story, or at the bottom
   of the backlog when neither is given.
@@ -239,9 +240,9 @@ the data volume. Backup copies the RDB file off the host.
 | Node | Key properties |
 |---|---|
 | `Workspace` | `slug`, `next_story`, `next_goal` (counters for `S-n` and `G-n` IDs) |
-| `Phase` | `number`, `title`, `description`, `created_by`, `created_at` |
+| `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` (slice 3) |
-| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`; `activity`, `waiting_on`, `branch`, `pr_url` (slice 3) |
+| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed); `activity`, `waiting_on`, `branch`, `pr_url` (slice 3) |
 | `Idea` | `id`, `title`, `body`, `state` (`open`/`closed`), `closed_at` |
 | `LogEntry` | `id`, `at`, `actor`, `kind`, `text`, `commit`, `pr_url` |
 
@@ -275,6 +276,11 @@ workspace's branches and `has_release_stage` join it in slice 3.
   new position, and no dependent may rank above it. For a new dependency: the
   target ranks above the dependent and adds no cycle. When both stories have a
   phase, the target is in the same or an earlier phase.
+- **Text** containing characters Go would escape when quoting (control and
+  invisible formatting characters, apart from newline, carriage return and
+  tab) is refused. The FalkorDB client inlines values as Go-quoted literals,
+  and FalkorDB doesn't read those escapes, so such text would otherwise be
+  stored changed, without an error.
 - **Creating a workspace** is the one action that spans two graphs. The
   workspace graph is prepared first, and the registry entry, written last, is
   what makes the workspace exist. An interrupted create can be repeated. Start-up

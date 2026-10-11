@@ -66,11 +66,11 @@ func TestWorkspacesDoNotShareTheirPhases(t *testing.T) {
 func TestUpdatePhaseChangesOnlyTheFieldsGiven(t *testing.T) {
 	b := newWorkspace(t)
 	addPhase(t, b, "Old")
-	p, err := b.UpdatePhase("demo", 1, board.PhasePatch{Title: ptr("New")})
+	p, err := b.UpdatePhase("demo", "editor", 1, board.PhasePatch{Title: ptr("New")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Title != "New" || p.Description != "about Old" {
+	if p.Title != "New" || p.Description != "about Old" || p.UpdatedBy != "editor" || p.UpdatedAt == "" {
 		t.Fatalf("updated %+v", p)
 	}
 }
@@ -78,9 +78,9 @@ func TestUpdatePhaseChangesOnlyTheFieldsGiven(t *testing.T) {
 func TestUpdatePhaseRefusesAnEmptyTitleAndAnUnknownPhase(t *testing.T) {
 	b := newWorkspace(t)
 	addPhase(t, b, "One")
-	_, err := b.UpdatePhase("demo", 1, board.PhasePatch{Title: ptr("")})
+	_, err := b.UpdatePhase("demo", actor, 1, board.PhasePatch{Title: ptr("")})
 	wantKind(t, err, board.Invalid)
-	_, err = b.UpdatePhase("demo", 9, board.PhasePatch{Title: ptr("x")})
+	_, err = b.UpdatePhase("demo", actor, 9, board.PhasePatch{Title: ptr("x")})
 	wantKind(t, err, board.NotFound)
 }
 
