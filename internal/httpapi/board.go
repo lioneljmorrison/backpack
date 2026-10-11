@@ -3,9 +3,11 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
@@ -17,6 +19,9 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	a := boardAPI{b}
 	mux.HandleFunc("GET /v1/workspaces", a.listWorkspaces)
 	mux.HandleFunc("POST /v1/workspaces", a.createWorkspace)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/status", a.where)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/board", a.board)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/phases", a.listPhases)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases", a.addPhase)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/phases/{n}", a.updatePhase)
@@ -54,6 +59,28 @@ func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL,
 		HasReleaseStage: in.HasReleaseStage})
 	respond(w, http.StatusCreated, ws, err)
+}
+
+func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {
+	s, err := a.b.Next(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"story": s}, err)
+}
+
+// where answers as JSON, or as plain text when the caller asks for it, as
+// the session hook does.
+func (a boardAPI) where(w http.ResponseWriter, r *http.Request) {
+	where, err := a.b.Where(r.PathValue("ws"))
+	if err != nil || !strings.Contains(r.Header.Get("Accept"), "text/plain") {
+		respond(w, http.StatusOK, where, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	io.WriteString(w, where.Text())
+}
+
+func (a boardAPI) board(w http.ResponseWriter, r *http.Request) {
+	cols, err := a.b.Board(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"columns": cols}, err)
 }
 
 func (a boardAPI) listPhases(w http.ResponseWriter, r *http.Request) {

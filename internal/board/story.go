@@ -314,7 +314,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		MATCH (s:Story) WHERE $id = '' OR s.id = $id
 		OPTIONAL MATCH (p:Phase)-[:CONTAINS]->(s)
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story)
-		WITH s, p, collect(t.id) AS blocked_by, sum(CASE WHEN t.status IN $complete THEN 0 ELSE 1 END) AS waiting
+		WITH s, p, collect(t.id) AS blocked_by, sum(CASE WHEN t IS NULL OR t.status IN $complete THEN 0 ELSE 1 END) AS waiting
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
 		WITH s, p, blocked_by, waiting, collect(d.id) AS blocks
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,

@@ -355,3 +355,10 @@ func TestTheBranchAndPullRequestCanBeCorrected(t *testing.T) {
 		t.Fatalf("edited %+v", s)
 	}
 }
+
+func TestAStoryWithNoDependenciesIsNotBlocked(t *testing.T) {
+	b := newWorkspace(t)
+	if s := addStory(t, b, board.NewStory{Title: "A"}); s.Blocked {
+		t.Fatalf("added %+v", s)
+	}
+}

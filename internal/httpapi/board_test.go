@@ -206,3 +206,42 @@ func TestMarkingAGoalMetOverHTTP(t *testing.T) {
 		t.Fatalf("phase %v", p)
 	}
 }
+
+func TestTheQuickReadsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	n := want(t, call(t, h, "GET", "/v1/workspaces/demo/next", ""), http.StatusOK)
+	if s, ok := n["story"]; !ok || s != nil {
+		t.Fatalf("next on an empty board %v", n)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "B"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "in_progress"}`), http.StatusOK)
+
+	n = want(t, call(t, h, "GET", "/v1/workspaces/demo/next", ""), http.StatusOK)
+	if n["story"].(map[string]any)["id"] != "S-2" {
+		t.Fatalf("next %v", n)
+	}
+	st := want(t, call(t, h, "GET", "/v1/workspaces/demo/status", ""), http.StatusOK)
+	if len(st["in_progress"].([]any)) != 1 || len(st["next"].([]any)) != 1 {
+		t.Fatalf("status %v", st)
+	}
+	b := want(t, call(t, h, "GET", "/v1/workspaces/demo/board", ""), http.StatusOK)
+	if cols := b["columns"].([]any); len(cols) != 7 {
+		t.Fatalf("board %v", b)
+	}
+	want(t, call(t, h, "GET", "/v1/workspaces/nope/status", ""), http.StatusNotFound)
+}
+
+func TestWhereAreWeAsPlainTextForTheSessionHook(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	r := httptest.NewRequest("GET", "/v1/workspaces/demo/status", nil)
+	r.Header.Set("Authorization", "Bearer bp_good")
+	r.Header.Set("Accept", "text/plain")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") ||
+		w.Body.String() != "Next:\n  S-1 A\n" {
+		t.Fatalf("status %d %q: %q", w.Code, w.Header().Get("Content-Type"), w.Body)
+	}
+}
