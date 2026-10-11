@@ -6,13 +6,17 @@ export TYPESENSE_API_KEY ?= local-dev-only
 TEST_ENV := BACKPACK_TEST_FALKORDB=falkor://localhost:16379 \
             BACKPACK_TEST_TYPESENSE=http://localhost:18108
 
-.PHONY: up down logs test gates token
+.PHONY: up tunnel down logs test gates token
 
 up:            ## start the whole stack, rebuilding the service
 	$(COMPOSE) up -d --build
 
+tunnel:        ## start the stack and the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
+	@test -n "$$CLOUDFLARE_TOKEN" || (echo "tunnel: set CLOUDFLARE_TOKEN" && exit 1)
+	$(COMPOSE) --profile tunnel up -d --build
+
 down:          ## stop the stack (data volumes are kept)
-	$(COMPOSE) down
+	$(COMPOSE) --profile tunnel down
 
 logs:
 	$(COMPOSE) logs -f backpack
