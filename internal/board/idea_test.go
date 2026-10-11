@@ -167,6 +167,19 @@ func TestAnIdeaBecomesStoriesAndAPhaseAndIsClosed(t *testing.T) {
 	}
 }
 
+func TestAnIdeaCanBecomeAPhaseAlone(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addIdea(t, b, board.NewIdea{Title: "Idea"})
+	i, err := b.RefineIdea("demo", actor, "I-1", board.Refinement{Phase: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i.State != "closed" || i.BecamePhase != 1 || len(i.BecameStories) != 0 {
+		t.Fatalf("refined %+v", i)
+	}
+}
+
 func TestRefiningIsRefusedAndWritesNothingWhenATargetIsWrong(t *testing.T) {
 	b := newWorkspace(t)
 	addStory(t, b, board.NewStory{Title: "A"})

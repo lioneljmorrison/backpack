@@ -45,6 +45,12 @@ func TestRefiningAndDroppingIdeasOverHTTP(t *testing.T) {
 	if i["state"] != "closed" || i["became_stories"].([]any)[0] != "S-1" {
 		t.Fatalf("refined %v", i)
 	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "P"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas", `{"title": "C"}`), http.StatusCreated)
+	i = want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas/I-3/refine", `{"phase": 1}`), http.StatusOK)
+	if i["became_phase"] != float64(1) || len(i["became_stories"].([]any)) != 0 {
+		t.Fatalf("refined into a phase %v", i)
+	}
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas/I-2/drop", `{}`), http.StatusBadRequest)
 	i = want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas/I-2/drop", `{"reason": "no"}`), http.StatusOK)
 	if i["drop_reason"] != "no" {
