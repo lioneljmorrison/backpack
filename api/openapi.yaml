@@ -767,6 +767,66 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /v1/workspaces/{ws}/batch:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    post:
+      summary: Make many board changes in one call
+      description: >-
+        Sends each request, in order, to its own route in this workspace, as
+        the caller, so it is answered exactly as if sent alone. A request
+        that fails is answered with its status and reason and doesn't stop
+        the rest; nothing is undone. Only POST, PATCH and DELETE requests can
+        be batched, and each path is relative to the workspace. A request can
+        name only items that already exist, not one an earlier request in the
+        batch adds. A batch holds 1 to 100 requests.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [requests]
+              properties:
+                requests:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [method, path]
+                    properties:
+                      method: { type: string, enum: [POST, PATCH, DELETE] }
+                      path:
+                        type: string
+                        description: relative to the workspace
+                        example: stories/S-4/status
+                      body:
+                        description: the route's own request body
+                        type: object
+      responses:
+        "200":
+          description: Each request's answer, in order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [status]
+                      properties:
+                        status: { type: integer, example: 200 }
+                        body:
+                          description: the route's own answer; absent for 204
+                          type: object
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   parameters:
     Workspace:
