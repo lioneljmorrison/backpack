@@ -9,7 +9,14 @@
 <body>
 <header class="top">
   <a class="brand" href="/">Backpack</a>
-  {{block "nav" .}}{{end}}
+  {{with .WS}}
+  <nav aria-label="{{.Name}}">
+    <a href="/w/{{.Slug}}"{{if eq $.Nav "board"}} aria-current="page"{{end}}>{{.Name}}</a>
+    <a href="/w/{{.Slug}}/phases"{{if eq $.Nav "phases"}} aria-current="page"{{end}}>Phases</a>
+    <a href="/w/{{.Slug}}/ideas"{{if eq $.Nav "ideas"}} aria-current="page"{{end}}>Ideas</a>
+    <a href="/w/{{.Slug}}/search"{{if eq $.Nav "search"}} aria-current="page"{{end}}>Search</a>
+  </nav>
+  {{end}}
   {{if .Actor}}
   <form class="who" method="post" action="/sign-out">
     <span>{{.Actor}}</span>
@@ -23,4 +30,17 @@
 </main>
 </body>
 </html>
+{{end}}
+
+{{/* card is one story on a board or in a list; it is given the workspace slug and the story. */}}
+{{define "card"}}
+<article class="card{{if .S.Blocked}} blocked{{end}}">
+  <a class="card-title" href="/w/{{.WS}}/stories/{{.S.ID}}"><span class="id">{{.S.ID}}</span> {{.S.Title}}</a>
+  <div class="tags">
+    {{if .S.Phase}}<span class="tag">Phase {{.S.Phase}}</span>{{end}}
+    {{if .S.Activity}}<span class="tag activity">{{label .S.Activity}}{{with .S.WaitingOn}}: {{.}}{{end}}</span>{{end}}
+    {{if .S.Blocked}}<span class="tag bad">Blocked by {{range $i, $b := .S.BlockedBy}}{{if $i}}, {{end}}{{$b}}{{end}}</span>{{end}}
+    {{if .S.HoldReason}}<span class="tag warn">{{.S.HoldReason}}</span>{{end}}
+  </div>
+</article>
 {{end}}

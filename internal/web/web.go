@@ -40,7 +40,10 @@ type page struct {
 	Title string
 	Actor string
 	Error string
-	Data  any
+	// WS is the workspace a page is about, and Nav which of its pages.
+	WS   *board.Workspace
+	Nav  string
+	Data any
 }
 
 // New returns the pages. Only /sign-in and /static/ are open without a token.
@@ -50,6 +53,7 @@ func New(lookup auth.LookupFunc, b *board.Board, x *search.Index) http.Handler {
 	signedIn := http.NewServeMux()
 	signedIn.HandleFunc("GET /{$}", s.workspaces)
 	signedIn.HandleFunc("POST /sign-out", s.signOut)
+	s.routePages(signedIn)
 
 	static, _ := fs.Sub(files, "static")
 	mux := http.NewServeMux()
@@ -61,7 +65,7 @@ func New(lookup auth.LookupFunc, b *board.Board, x *search.Index) http.Handler {
 }
 
 func parse() map[string]*template.Template {
-	names := []string{"signin", "workspaces"}
+	names := []string{"signin", "workspaces", "board", "story", "phases", "ideas", "search"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, name := range names {
 		pages[name] = template.Must(template.New("").Funcs(funcs).ParseFS(files, "templates/layout.html", "templates/"+name+".html"))
@@ -69,7 +73,15 @@ func parse() map[string]*template.Template {
 	return pages
 }
 
-var funcs = template.FuncMap{}
+var funcs = template.FuncMap{"label": label, "when": when, "percent": percent, "cardOf": cardOf}
+
+// card is what the card template is given: a story and its workspace.
+type card struct {
+	WS string
+	S  board.Story
+}
+
+func cardOf(ws string, s board.Story) card { return card{ws, s} }
 
 // render writes the named page, or a plain error if it can't be built, so a
 // half-written page is never sent.

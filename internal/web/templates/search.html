@@ -1,0 +1,24 @@
+{{define "content"}}
+{{$ws := .WS.Slug}}
+<h1>Search</h1>
+<form class="search" method="get" action="/w/{{$ws}}/search" role="search">
+  <input name="q" type="search" value="{{.Data.Query}}" placeholder="Words, or what the work is about" aria-label="Search" autofocus>
+  <button type="submit">Search</button>
+</form>
+{{with .Data}}
+{{if and .Query (not $.Error)}}
+<div class="list">
+  {{range .Results}}
+  {{if eq .Kind "story"}}<a class="row" href="/w/{{$ws}}/stories/{{.ID}}">
+  {{else if eq .Kind "idea"}}<a class="row" href="/w/{{$ws}}/ideas#{{.ID}}">
+  {{else}}<a class="row" href="/w/{{$ws}}/phases#phase-{{.ID}}">{{end}}
+    <span class="kind">{{.Kind}}</span> <span class="id">{{.ID}}</span> {{.Title}}
+    {{with .State}}<span class="tag status">{{label .}}</span>{{end}}
+  </a>
+  {{else}}
+  <p class="muted">Nothing matches.</p>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+{{end}}
