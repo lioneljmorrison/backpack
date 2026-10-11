@@ -59,7 +59,7 @@ type moveStoryIn struct {
 
 type setStatusIn struct {
 	storyIn
-	To         string `json:"to" jsonschema:"proposed, backlog, in_progress, in_review, merged, released, deployed, on_hold or closed"`
+	To         string `json:"to" jsonschema:"backlog, in_progress, in_review, merged, released, deployed, on_hold or closed"`
 	Branch     string `json:"branch,omitempty" jsonschema:"only when starting: the task branch"`
 	PRURL      string `json:"pr_url,omitempty" jsonschema:"only when opening review: the pull request's link"`
 	Commit     string `json:"commit,omitempty" jsonschema:"only when merging: the merge commit"`

@@ -255,7 +255,8 @@ Each slice is its own branch and pull request into `dev`.
   skip it.
 - **Agents propose; a person may place.** `add_story` over the MCP always
   proposes and needs the reasoning for its spot, logged as a decision in the
-  same query. `POST /stories` over HTTP still places directly into Backlog.
+  same query. This is the one automatic log entry besides status changes
+  (slice 3's "only status changes" rule). `POST /stories` over HTTP still places directly into Backlog.
 - **Anyone approves**, over MCP or HTTP: Proposed → Backlog. Picking another
   spot is a move, then approval. Declining is Proposed → Closed, with a
   reason. A story never goes back to Proposed.
