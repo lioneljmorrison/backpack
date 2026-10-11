@@ -1,6 +1,6 @@
 # Backpack — Plan
 
-**Status:** Approved 2026-10-10. Slice 4 in review.
+**Status:** Approved 2026-10-10. Slice 4 in review (PR #7).
 **Last updated:** 2026-10-10
 **Integration branch:** `dev` (released to `main`)
 
@@ -14,7 +14,7 @@ tracker.
 | 1. The empty service | Merged (PR #3) |
 | 2. The board | Merged (PR #4) |
 | 3. Work moving across the board | Merged (PR #5) |
-| 4. The MCP server | In review |
+| 4. The MCP server | In review (PR #7) |
 | 5–7 | Not started |
 
 ---
