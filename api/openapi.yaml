@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
   title: Backpack
-  version: 0.3.0
+  version: 0.4.0
   description: >-
-    A Kanban board for agentic projects. Every route under /v1 requires a
-    bearer token issued with `backpack token create --actor <name>`.
+    A Kanban board for agentic projects. Every route under /v1, and the MCP
+    server at /mcp, requires a bearer token issued with `backpack token
+    create --actor <name>`.
 servers:
   - url: http://localhost:8780
     description: Local development
@@ -42,6 +43,25 @@ paths:
                 required: [actor]
                 properties:
                   actor: { type: string, example: lionel }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /mcp:
+    post:
+      summary: The MCP server, for agents
+      description: >-
+        MCP over streamable HTTP, stateless: no sessions are kept, and every
+        call carries its own token. Each tool takes the workspace slug, calls
+        the same board operation as its HTTP route and answers with the same
+        JSON. A board refusal is a tool error carrying its reason. The tools
+        are listed in docs/PLAN.md. Only POST is served.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: A JSON-RPC 2.0 message }
+      responses:
+        "200":
+          description: The JSON-RPC response, as JSON or an event stream
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/Unavailable" }
   /v1/workspaces:
