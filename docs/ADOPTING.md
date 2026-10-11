@@ -21,6 +21,11 @@ The token is a secret that lets anything holding it change the board.
   a message.
 - Don't run commands that print it, such as `echo $BACKPACK_TOKEN`, `env`,
   `curl -v`, or anything that shows the MCP server's headers.
+- Don't open files that may hold it: `.claude/settings.local.json`, `.env`
+  files, or `~/.claude.json`.
+- Before anything is committed, make sure `.gitignore` covers
+  `.claude/settings.local.json` and any `.env` file. Add the lines if it
+  doesn't. You can do this without opening those files.
 
 ## 1. Gather what you need
 
@@ -39,10 +44,19 @@ Check whether a token is in the environment, without printing it:
 >    your Backpack admin for one. Each person or agent gets their own token,
 >    so the board records who made each change. It is shown only once.
 > 2. **Make it available to Claude Code.** Choose one:
->    - Add `export BACKPACK_TOKEN=<token>` to your shell profile
->      (`~/.bashrc`, `~/.zshrc`); or
->    - if you use a secrets manager, start Claude Code (or VS Code) through
->      it, for example `<secrets-cli> run -- claude`.
+>    - **This project only:** put it in `.claude/settings.local.json` in this
+>      project, which is your own settings file here and stays out of git.
+>      Create the file if it doesn't exist, or add the `env` entry to it:
+>      ```json
+>      { "env": { "BACKPACK_TOKEN": "<token>" } }
+>      ```
+>    - **Every project:** add `export BACKPACK_TOKEN=<token>` to your shell
+>      profile (`~/.bashrc`, `~/.zshrc`).
+>    - **A `.env` file:** Claude Code doesn't read `.env` files by itself.
+>      Put `BACKPACK_TOKEN=<token>` in one that git ignores, and load it
+>      before starting Claude Code: `set -a; . ./.env; set +a; claude`.
+>    - **A secrets manager:** start Claude Code (or VS Code) through it, for
+>      example `<secrets-cli> run -- claude`.
 > 3. **Restart Claude Code** (in VS Code, restart VS Code itself) so it
 >    picks the token up, then ask me to carry on with the Backpack setup.
 >
