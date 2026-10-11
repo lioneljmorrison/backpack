@@ -57,7 +57,18 @@ standard or the API contract, stop and ask.
 
 ## Commands
 
-Not yet built. The Go gates are in `docs/ENGINEERING-STANDARD.md` §7.3.
+```bash
+make up                  # build and start backpack, FalkorDB and Typesense
+make down                # stop (data volumes are kept)
+make gates               # gofmt, vet, tests against the local stack, build
+make token ACTOR=<name>  # issue a bearer token (shown once)
+```
+
+Local ports, all bound to 127.0.0.1: backpack 8780, FalkorDB 16379, Typesense
+18108. Configuration is environment variables: `BACKPACK_ADDR`,
+`BACKPACK_FALKORDB_URL`, `BACKPACK_TYPESENSE_URL`, `BACKPACK_SYSTEM_GRAPH`.
+`ENVs.txt` (gitignored, never read into context unless needed) holds deploy
+secrets.
 
 ## Off-limits
 

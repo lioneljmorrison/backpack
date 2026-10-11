@@ -1,11 +1,18 @@
 # Backpack — Plan
 
-**Status:** Draft, awaiting approval
+**Status:** Approved 2026-10-10. Slice 1 in review.
 **Last updated:** 2026-10-10
 **Integration branch:** `dev` (released to `main`)
 
 Until Backpack is deployed and can track itself (slice 5), this file is its
 tracker.
+
+## Progress
+
+| Slice | State |
+|---|---|
+| 1. The empty service | In review (PR #3) |
+| 2–7 | Not started |
 
 ---
 
@@ -158,10 +165,10 @@ Each slice is its own branch and pull request into `dev`.
 
 ## Open questions
 
-**Needed before slice 1:**
-1. **Authentication in front of the tunnel.** Is Backpack's own token enough,
-   or do you also want Cloudflare Access in front? **Proposed:** Backpack's
-   token is required, and Cloudflare Access is optional extra protection.
+**Settled:**
+1. **Authentication** (2026-10-10). The MCP and the API use bearer tokens that
+   Backpack issues itself, one actor per token, created and revoked from the
+   command line. OAuth arrives with the UI, which is out of scope for now.
 
 **Needed before slice 2:**
 
@@ -184,7 +191,8 @@ Each slice is its own branch and pull request into `dev`.
 **Needed before slice 5:**
 
 5. **Which host runs the shared instances:** `nas`, `lab-hermes`, or one each
-   for dev and production? And which hostname should the tunnel use?
+   for dev and production? And which hostname should the tunnel use? (No
+   domain has been created yet; the tunnel token exists.)
 
 **Needed before slice 6:**
 
@@ -199,8 +207,10 @@ Each slice is its own branch and pull request into `dev`.
 
 - Go 1.26 (installed locally: `go1.26.0`). HTTP via standard library
   `net/http` routing; no framework.
-- FalkorDB server `falkordb/falkordb:v4.20.7` (2026-09-24), the latest 4.x
-  release more than two weeks old. 6.0 shipped
+- FalkorDB server `falkordb/falkordb-server:v4.20.7` (2026-09-24), the latest
+  4.x release more than two weeks old. The `-server` image is the same
+  database without the bundled web browser UI, which a public service doesn't
+  need. 6.0 shipped
   2026-09-29 and is held back until it has settled; revisit once slice 2 is
   done. Go client: `github.com/FalkorDB/falkordb-go/v2` v2.1.0.
 - Typesense server `typesense/typesense:30.2` (31.0 is still in release
@@ -268,9 +278,11 @@ POST /v1/workspaces/{ws}/stories/proposals           propose, confirm           
 GET  /v1/workspaces/{ws}/search?q=                                                (slice 7)
 ```
 
-Auth: `Authorization: Bearer <token>`. Tokens are created with
-`backpack token create --actor <name>`, stored as SHA-256 hashes, and shown
-once.
+Auth: `Authorization: Bearer <token>`. Tokens (`bp_` + 32 random bytes) are
+created with `backpack token create --actor <name>`, stored as SHA-256 hashes
+in the `backpack` system graph, and shown once. `backpack token revoke --actor
+<name>` disables every live token that actor holds. `GET /v1/whoami` returns
+the token's actor: it is how a client checks its configuration.
 
 ### MCP tools (slice 4)
 
@@ -307,7 +319,10 @@ tests run against the real thing.
 ### Layout
 
 ```
-cmd/backpack/        main: serve, token create, migrate, reindex
+cmd/backpack/        main: serve, token create|revoke (reindex in slice 7)
+internal/falkor/     connection and numbered migrations, applied at start-up
+internal/auth/       tokens, the actor store, the bearer middleware
+internal/health/     dependency checks
 internal/board/      the operations and their rules (Cypher)
 internal/search/     Typesense indexing and queries
 internal/httpapi/    handlers
