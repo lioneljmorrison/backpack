@@ -81,6 +81,24 @@ type dependencyIn struct {
 	On string `json:"on" jsonschema:"the story this one can't be done without"`
 }
 
+type addPhaseIn struct {
+	in
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+}
+
+type addGoalIn struct {
+	in
+	Phase int    `json:"phase" jsonschema:"the phase's number"`
+	Text  string `json:"text"`
+}
+
+type markGoalMetIn struct {
+	in
+	ID  string `json:"id" jsonschema:"the goal's id, such as G-2"`
+	Met bool   `json:"met" jsonschema:"true to mark the goal met, false to unmark it"`
+}
+
 func addTools(s *mcp.Server, t tools) {
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
 	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, and the next three in the backlog.", t.whereAreWe)
@@ -93,6 +111,10 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
 	tool(s, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
 	tool(s, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
+	tool(s, "list_phases", "Every phase in order, with its goals, how many stories are complete, whether it is complete, and whether its goals were all met while stories are still open.", t.listPhases)
+	tool(s, "add_phase", "Add a phase, numbered after the last one.", t.addPhase)
+	tool(s, "add_goal", "Add a goal to a phase.", t.addGoal)
+	tool(s, "mark_goal_met", "Mark a goal met, or not met.", t.markGoalMet)
 }
 
 func actor(ctx context.Context) string {
@@ -150,4 +172,21 @@ func (t tools) addDependency(ctx context.Context, a dependencyIn) (any, error) {
 func (t tools) removeDependency(ctx context.Context, a dependencyIn) (any, error) {
 	err := t.b.RemoveDependency(a.Workspace, actor(ctx), a.ID, a.On)
 	return map[string]any{"removed": true}, err
+}
+
+func (t tools) listPhases(_ context.Context, a in) (any, error) {
+	ps, err := t.b.Phases(a.Workspace)
+	return map[string]any{"phases": ps}, err
+}
+
+func (t tools) addPhase(ctx context.Context, a addPhaseIn) (any, error) {
+	return t.b.AddPhase(a.Workspace, actor(ctx), a.Title, a.Description)
+}
+
+func (t tools) addGoal(ctx context.Context, a addGoalIn) (any, error) {
+	return t.b.AddGoal(a.Workspace, actor(ctx), a.Phase, a.Text)
+}
+
+func (t tools) markGoalMet(ctx context.Context, a markGoalMetIn) (any, error) {
+	return t.b.SetGoalMet(a.Workspace, actor(ctx), a.ID, a.Met)
 }
