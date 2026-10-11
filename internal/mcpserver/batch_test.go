@@ -136,3 +136,31 @@ func TestEachActionInABatchOnAnUnknownWorkspaceFailsWithTheReason(t *testing.T) 
 		t.Fatalf("result %v", rs[0])
 	}
 }
+
+func TestBatchRefusesAnActionMissingAnArgumentItsToolRequires(t *testing.T) {
+	b, cs := connect(t)
+	if _, err := b.AddPhase("demo", "tester", "One", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AddGoal("demo", "tester", 1, "Ship it"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.SetGoalMet("demo", "tester", "G-1", true); err != nil {
+		t.Fatal(err)
+	}
+	rs := results(t, cs,
+		action("mark_goal_met", map[string]any{"id": "G-1"}),
+		action("add_story", map[string]any{"title": "No reasoning"}))
+	for i, r := range rs {
+		if why, _ := r["error"].(string); r["ok"] != false || why == "" {
+			t.Fatalf("action %d: %v", i, r)
+		}
+	}
+	ps, err := b.Phases("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ps[0].Goals[0].Met {
+		t.Fatalf("goal unmarked: %+v", ps[0].Goals[0])
+	}
+}

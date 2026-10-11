@@ -1,11 +1,12 @@
 package mcpserver
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/lioneljmorrison/backpack/internal/board"
@@ -32,22 +33,33 @@ type outcome struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// step runs one batched action with the batch's workspace.
-type step func(ctx context.Context, ws string, args []byte) (any, error)
+// step runs one batched action, its arguments including the workspace.
+type step func(ctx context.Context, args map[string]any) (any, error)
 
-// write registers a tool that changes the board, and lets a batch run it.
+// write registers a tool that changes the board, and lets a batch run it. A
+// batched action is checked against the same schema as a call to the tool,
+// so a missing or unknown argument is refused as it would be alone.
 func write[In any](s *mcp.Server, steps map[string]step, name, description string, h func(context.Context, In) (any, error)) {
 	tool(s, name, description, h)
-	steps[name] = func(ctx context.Context, ws string, args []byte) (any, error) {
-		var a In
-		dec := json.NewDecoder(bytes.NewReader(args))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&a); err != nil {
+	schema, err := jsonschema.For[In](nil)
+	if err != nil {
+		panic(err)
+	}
+	resolved, err := schema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
+	if err != nil {
+		panic(err)
+	}
+	steps[name] = func(ctx context.Context, args map[string]any) (any, error) {
+		if err := resolved.Validate(args); err != nil {
 			return nil, &board.Error{Kind: board.Invalid, Msg: "arguments: " + err.Error()}
 		}
-		w, _ := json.Marshal(in{Workspace: ws})
-		if err := json.Unmarshal(w, &a); err != nil {
+		raw, err := json.Marshal(args)
+		if err != nil {
 			return nil, err
+		}
+		var a In
+		if err := json.Unmarshal(raw, &a); err != nil {
+			return nil, &board.Error{Kind: board.Invalid, Msg: "arguments: " + err.Error()}
 		}
 		return h(ctx, a)
 	}
@@ -80,9 +92,7 @@ func run(ctx context.Context, steps map[string]step, ws string, act batchAction)
 	if _, ok := act.Args["workspace"]; ok {
 		return nil, &board.Error{Kind: board.Invalid, Msg: "the workspace is given once, for the whole batch"}
 	}
-	args, err := json.Marshal(act.Args)
-	if err != nil {
-		return nil, err
-	}
-	return st(ctx, ws, args)
+	args := map[string]any{"workspace": ws}
+	maps.Copy(args, act.Args)
+	return st(ctx, args)
 }
