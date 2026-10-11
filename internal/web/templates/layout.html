@@ -1,0 +1,26 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Backpack</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">Backpack</a>
+  {{block "nav" .}}{{end}}
+  {{if .Actor}}
+  <form class="who" method="post" action="/sign-out">
+    <span>{{.Actor}}</span>
+    <button type="submit" class="quiet">Sign out</button>
+  </form>
+  {{end}}
+</header>
+<main>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{template "content" .}}
+</main>
+</body>
+</html>
+{{end}}

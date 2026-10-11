@@ -91,3 +91,13 @@ func TestWhoamiOnlyAnswersGET(t *testing.T) {
 		t.Fatalf("status %d, want 405", w.Code)
 	}
 }
+
+func TestPagesAreServedBesideTheAPI(t *testing.T) {
+	h := New(map[string]health.Check{}, lookup, nil, nil)
+	if w := serve(h, "GET", "/", ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/sign-in" {
+		t.Fatalf("GET / signed out: got %d to %q, want 303 to /sign-in", w.Code, w.Header().Get("Location"))
+	}
+	if w := serve(h, "GET", "/sign-in", ""); w.Code != http.StatusOK {
+		t.Fatalf("GET /sign-in: status %d, want 200", w.Code)
+	}
+}

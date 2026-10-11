@@ -61,3 +61,41 @@ func TestRequireReportsALookupFailureAsUnavailable(t *testing.T) {
 		t.Fatalf("status %d, want 503", w.Code)
 	}
 }
+
+func withCookie(token string) *http.Request {
+	r := httptest.NewRequest("GET", "/", nil)
+	if token != "" {
+		r.AddCookie(&http.Cookie{Name: "bp", Value: token})
+	}
+	return r
+}
+
+func TestRequireCookieSendsABrowserWithoutALiveTokenToSignIn(t *testing.T) {
+	h := RequireCookie(lookup(map[string]string{"bp_good": "lionel"}), "bp", "/sign-in")(echoActor())
+	for _, token := range []string{"", "bp_revoked"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, withCookie(token))
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/sign-in" {
+			t.Errorf("cookie %q: got %d to %q, want 303 to /sign-in", token, w.Code, w.Header().Get("Location"))
+		}
+	}
+}
+
+func TestRequireCookiePassesTheActorToTheHandler(t *testing.T) {
+	h := RequireCookie(lookup(map[string]string{"bp_good": "lionel"}), "bp", "/sign-in")(echoActor())
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, withCookie("bp_good"))
+	if w.Code != http.StatusOK || w.Body.String() != "lionel" {
+		t.Fatalf("got %d %q, want 200 lionel", w.Code, w.Body.String())
+	}
+}
+
+func TestRequireCookieReportsALookupFailureAsUnavailable(t *testing.T) {
+	failing := func(string) (string, bool, error) { return "", false, errors.New("db down") }
+	h := RequireCookie(failing, "bp", "/sign-in")(echoActor())
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, withCookie("bp_good"))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d, want 503", w.Code)
+	}
+}
