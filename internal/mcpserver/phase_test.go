@@ -66,9 +66,10 @@ func TestTheServerOffersExactlyTheSettledTools(t *testing.T) {
 		names = append(names, tl.Name)
 	}
 	slices.Sort(names)
-	want := []string{"add_dependency", "add_goal", "add_phase", "add_story", "get_story", "list_phases", "log",
-		"mark_goal_met", "move_story", "read_log", "remove_dependency", "set_status", "update_story",
-		"whats_next", "where_are_we"}
+	want := []string{"add_dependency", "add_goal", "add_idea", "add_phase", "add_story", "approve_idea",
+		"drop_idea", "get_idea", "get_story", "list_ideas", "list_phases", "log", "mark_goal_met", "move_idea",
+		"move_story", "read_log", "refine_idea", "remove_dependency", "set_status", "update_idea",
+		"update_story", "whats_next", "where_are_we"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools %v, want %v", names, want)
 	}

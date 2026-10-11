@@ -217,4 +217,8 @@ is never committed.
   another spot) or declines it (`closed`, with a reason). Then add its
   dependencies with `add_dependency`. Backpack refuses an order that breaks a
   dependency; read its reason and place the story again.
+- **Rough thoughts** that aren't work yet go in with `add_idea`, also with
+  `reasoning`, and wait as proposed until a person approves them. Once the
+  stories or phase it became exist, `refine_idea` links them and closes the
+  idea; `drop_idea` closes one that became nothing, with a reason.
 ```

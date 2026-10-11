@@ -100,6 +100,49 @@ type markGoalMetIn struct {
 	Met bool   `json:"met" jsonschema:"true to mark the goal met, false to unmark it"`
 }
 
+// ideaIn names an idea.
+type ideaIn struct {
+	in
+	ID string `json:"id" jsonschema:"the idea's id, such as I-3"`
+}
+
+// ideaPosition places an idea directly before or after another; with
+// neither, at the bottom of the ideas list.
+type ideaPosition struct {
+	Before string `json:"before,omitempty" jsonschema:"place directly before this idea"`
+	After  string `json:"after,omitempty" jsonschema:"place directly after this idea"`
+}
+
+type addIdeaIn struct {
+	in
+	Title     string `json:"title"`
+	Notes     string `json:"notes,omitempty"`
+	Reasoning string `json:"reasoning" jsonschema:"why the idea belongs at this spot, for the person who approves it"`
+	ideaPosition
+}
+
+type updateIdeaIn struct {
+	ideaIn
+	Title *string `json:"title,omitempty"`
+	Notes *string `json:"notes,omitempty"`
+}
+
+type moveIdeaIn struct {
+	ideaIn
+	ideaPosition
+}
+
+type refineIdeaIn struct {
+	ideaIn
+	Stories []string `json:"stories,omitempty" jsonschema:"the stories the idea became, already added"`
+	Phase   int      `json:"phase,omitempty" jsonschema:"the number of the phase the idea became, already added"`
+}
+
+type dropIdeaIn struct {
+	ideaIn
+	Reason string `json:"reason" jsonschema:"why the idea is dropped"`
+}
+
 func addTools(s *mcp.Server, t tools) {
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
 	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, and the next three in the backlog.", t.whereAreWe)
@@ -116,6 +159,14 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "add_phase", "Add a phase, numbered after the last one.", t.addPhase)
 	tool(s, "add_goal", "Add a goal to a phase.", t.addGoal)
 	tool(s, "mark_goal_met", "Mark a goal met, or not met.", t.markGoalMet)
+	tool(s, "add_idea", "Suggest an idea: a rough thought, not yet work. It goes into the ideas list, apart from the backlog, directly before or after another idea or at the bottom, and waits as proposed, with the reasoning for its spot, until a person approves it.", t.addIdea)
+	tool(s, "list_ideas", "The ideas that are not closed, in order, top first.", t.listIdeas)
+	tool(s, "get_idea", "One idea, closed or not, with what it became or why it was dropped.", t.getIdea)
+	tool(s, "update_idea", "Change an idea's title or notes while it is not closed; fields not given are left as they are.", t.updateIdea)
+	tool(s, "move_idea", "Move an idea that is not closed directly before or after another, or to the bottom of the ideas list.", t.moveIdea)
+	tool(s, "approve_idea", "Approve a proposed idea at its spot, making it open.", t.approveIdea)
+	tool(s, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Add those first, the usual way; none may be closed.", t.refineIdea)
+	tool(s, "drop_idea", "Close an idea that became nothing, with the reason.", t.dropIdea)
 }
 
 func actor(ctx context.Context) string {
@@ -191,4 +242,38 @@ func (t tools) addGoal(ctx context.Context, a addGoalIn) (any, error) {
 
 func (t tools) markGoalMet(ctx context.Context, a markGoalMetIn) (any, error) {
 	return t.b.SetGoalMet(a.Workspace, actor(ctx), a.ID, a.Met)
+}
+
+func (t tools) addIdea(ctx context.Context, a addIdeaIn) (any, error) {
+	return t.b.AddIdea(a.Workspace, actor(ctx), board.NewIdea{Title: a.Title, Notes: a.Notes, Proposed: true,
+		Reasoning: a.Reasoning, Position: board.Position(a.ideaPosition)})
+}
+
+func (t tools) listIdeas(_ context.Context, a in) (any, error) {
+	is, err := t.b.Ideas(a.Workspace)
+	return map[string]any{"ideas": is}, err
+}
+
+func (t tools) getIdea(_ context.Context, a ideaIn) (any, error) {
+	return t.b.Idea(a.Workspace, a.ID)
+}
+
+func (t tools) updateIdea(ctx context.Context, a updateIdeaIn) (any, error) {
+	return t.b.UpdateIdea(a.Workspace, actor(ctx), a.ID, board.IdeaPatch{Title: a.Title, Notes: a.Notes})
+}
+
+func (t tools) moveIdea(ctx context.Context, a moveIdeaIn) (any, error) {
+	return t.b.MoveIdea(a.Workspace, actor(ctx), a.ID, board.Position(a.ideaPosition))
+}
+
+func (t tools) approveIdea(ctx context.Context, a ideaIn) (any, error) {
+	return t.b.ApproveIdea(a.Workspace, actor(ctx), a.ID)
+}
+
+func (t tools) refineIdea(ctx context.Context, a refineIdeaIn) (any, error) {
+	return t.b.RefineIdea(a.Workspace, actor(ctx), a.ID, board.Refinement{Stories: a.Stories, Phase: a.Phase})
+}
+
+func (t tools) dropIdea(ctx context.Context, a dropIdeaIn) (any, error) {
+	return t.b.DropIdea(a.Workspace, actor(ctx), a.ID, a.Reason)
 }

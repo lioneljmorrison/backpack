@@ -263,8 +263,24 @@ Each slice is its own branch and pull request into `dev`.
 - **Where are we** lists what is waiting for approval. A proposed story in a
   phase counts as open work.
 
-Questions about remaining work (for example, whether ideas are ranked) are
-logged on their stories in Backpack.
+**Slice 6 details, ideas** (settled 2026-10-11, S-4):
+- **Their own order.** Ideas are ranked like stories, in a list of their
+  own; stories and ideas never share an order, and what's next never reads
+  ideas. The ranking code is shared, keyed by the node label.
+- **Suggest, then approve.** `add_idea` over the MCP adds the idea as
+  `proposed`, with the reasoning for its spot kept on the idea. A person
+  approves it (`open`), moving it first to pick another spot, or drops it.
+  `POST /ideas` over HTTP adds it as `open`. Where are we lists ideas
+  waiting for approval.
+- **Worked on over time.** Title and notes can be edited, and the idea
+  moved, until it is closed.
+- **Refine links, it doesn't create.** The stories and phase are added the
+  usual way; refining an open idea links it to them with `BECAME` and closes
+  it, in one query, refused whole if a story is missing or closed or the
+  phase is missing. Dropping closes it with a reason. Closed is final.
+- **No idea log.** The reasoning lives on the idea; nothing yet needs more.
+
+Questions about remaining work are logged on their stories in Backpack.
 
 ---
 
@@ -296,11 +312,11 @@ the data volume. Backup copies the RDB file off the host.
 
 | Node | Key properties |
 |---|---|
-| `Workspace` | `slug`, `next_story`, `next_goal`, `next_log` (counters for `S-n`, `G-n` and `L-n` IDs), `has_release_stage` |
+| `Workspace` | `slug`, `next_story`, `next_goal`, `next_log`, `next_idea` (counters for `S-n`, `G-n`, `L-n` and `I-n` IDs), `has_release_stage` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
 | `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround` |
-| `Idea` | `id`, `title`, `body`, `state` (`open`/`closed`), `closed_at` |
+| `Idea` | `id` (`I-n`), `title`, `notes`, `rank`, `state` (`proposed`/`open`/`closed`), `reasoning`, `drop_reason`, `created_by`, `created_at`, `approved_by`, `approved_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
 | `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `from`, `to` |
 
 | Edge | Meaning |
@@ -368,7 +384,8 @@ POST /v1/workspaces/{ws}/stories/{id}/move           new position
 POST /v1/workspaces/{ws}/stories/{id}/status         to (+ branch / pr_url / commit / reason / workaround)
 POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
 GET  /v1/workspaces/{ws}/stories/{id}/log            POST
-GET  /v1/workspaces/{ws}/ideas                       POST, /ideas/{id}/refine     (slice 6)
+GET  /v1/workspaces/{ws}/ideas                       POST
+GET  /v1/workspaces/{ws}/ideas/{id}                  PATCH; POST /move, /approve, /refine, /drop
 GET  /v1/workspaces/{ws}/search?q=                                                (slice 7)
 ```
 
@@ -387,7 +404,9 @@ as `/v1/`; the actor reaches each tool through the request context.
 `read_log`, `list_phases`, `add_phase`, `add_goal`, `mark_goal_met` (`met`
 true or false). Every tool takes `workspace`. Since slice 6, `add_story`
 proposes: the story goes in as `proposed`, with a required `reasoning`.
-Ideas and search tools are added with S-4 and slice 7.
+Ideas add `add_idea` (which suggests, with a required `reasoning`),
+`list_ideas`, `get_idea`, `update_idea`, `move_idea`, `approve_idea`,
+`refine_idea` and `drop_idea`. Search tools come with slice 7.
 
 ### Per-project config and hook (slice 5)
 

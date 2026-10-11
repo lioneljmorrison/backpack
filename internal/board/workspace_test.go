@@ -97,6 +97,32 @@ func TestStartingUpMigratesEveryRegisteredWorkspace(t *testing.T) {
 	}
 }
 
+// A workspace from before ideas (migration 4) gains the Idea index at
+// start-up and then holds ideas.
+func TestAWorkspaceFromBeforeIdeasIsMigratedAtStartUp(t *testing.T) {
+	db, prefix := falkortest.Prefix(t)
+	b, _ := board.New(db, prefix+"system", prefix+"ws:")
+	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "Demo"}); err != nil {
+		t.Fatal(err)
+	}
+	g := db.SelectGraph(prefix + "ws:demo")
+	for _, q := range []string{"DROP INDEX ON :Idea(id)", "MATCH (s:SchemaVersion) SET s.v = 4"} {
+		if _, err := g.Query(q, nil, nil); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	if v, _ := falkor.Version(g); v != 5 {
+		t.Fatalf("version %d, want 5", v)
+	}
+	if _, err := b.AddIdea("demo", actor, board.NewIdea{Title: "A"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAWorkspaceHasNoReleaseStageUnlessCreatedWithOne(t *testing.T) {
 	b := newBoard(t)
 	for _, w := range []board.Workspace{{Slug: "plain", Name: "Plain"}, {Slug: "staged", Name: "Staged", HasReleaseStage: true}} {

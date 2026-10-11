@@ -13,12 +13,13 @@ import (
 
 // migrations for every workspace graph. Append only. Story.rank is not
 // indexed: FalkorDB 4.20 answers a range comparison on an indexed string
-// property (rank > $r) with no rows.
+// property (rank > $r) with no rows; Idea.rank likewise.
 var migrations = []string{
 	"CREATE INDEX FOR (s:Story) ON (s.id)",
 	"CREATE INDEX FOR (p:Phase) ON (p.number)",
 	"CREATE INDEX FOR (g:Goal) ON (g.id)",
 	"CREATE INDEX FOR (l:LogEntry) ON (l.id)",
+	"CREATE INDEX FOR (i:Idea) ON (i.id)",
 }
 
 // Kind says why the board refused a request.
