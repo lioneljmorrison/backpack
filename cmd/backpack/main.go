@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/lioneljmorrison/backpack/internal/auth"
+	"github.com/lioneljmorrison/backpack/internal/board"
 	"github.com/lioneljmorrison/backpack/internal/falkor"
 	"github.com/lioneljmorrison/backpack/internal/health"
 	"github.com/lioneljmorrison/backpack/internal/httpapi"
@@ -29,6 +30,9 @@ const usage = `usage:
   backpack token create --actor <name>
   backpack token revoke --actor <name>
 `
+
+// workspacePrefix names each workspace's graph: ws:<slug>.
+const workspacePrefix = "ws:"
 
 type config struct {
 	Addr         string
@@ -138,13 +142,17 @@ func serve(cfg config) error {
 	if err != nil {
 		return err
 	}
+	b, err := board.New(db, cfg.SystemGraph, workspacePrefix)
+	if err != nil {
+		return err
+	}
 	checks := map[string]health.Check{
 		"falkordb":  func(context.Context) error { return falkor.Ping(db) },
 		"typesense": health.Typesense(cfg.TypesenseURL),
 	}
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.New(checks, store.ActorFor),
+		Handler:           httpapi.New(checks, store.ActorFor, b),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

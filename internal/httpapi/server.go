@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lioneljmorrison/backpack/internal/auth"
+	"github.com/lioneljmorrison/backpack/internal/board"
 	"github.com/lioneljmorrison/backpack/internal/health"
 )
 
@@ -16,9 +17,10 @@ const healthTimeout = 2 * time.Second
 
 // New returns the API handler. /healthz is the only route open without a
 // token; everything under /v1/ requires one.
-func New(checks map[string]health.Check, lookup auth.LookupFunc) http.Handler {
+func New(checks map[string]health.Check, lookup auth.LookupFunc, b *board.Board) http.Handler {
 	v1 := http.NewServeMux()
 	v1.HandleFunc("GET /v1/whoami", whoami)
+	routeBoard(v1, b)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz(checks))

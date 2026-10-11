@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Backpack
-  version: 0.1.0
+  version: 0.2.0
   description: >-
     A Kanban board for agentic projects. Every route under /v1 requires a
     bearer token issued with `backpack token create --actor <name>`.
@@ -44,7 +44,311 @@ paths:
                   actor: { type: string, example: lionel }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/workspaces:
+    get:
+      summary: Every workspace, by slug
+      responses:
+        "200":
+          description: The workspaces
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspaces]
+                properties:
+                  workspaces:
+                    type: array
+                    items: { $ref: "#/components/schemas/Workspace" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      summary: Create a workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, name]
+              additionalProperties: false
+              properties:
+                slug: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", maxLength: 64, example: my-app }
+                name: { type: string, example: My app }
+                repo_url: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/phases:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The workspace's phases in order, each with its goals
+      responses:
+        "200":
+          description: The phases
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [phases]
+                properties:
+                  phases:
+                    type: array
+                    items: { $ref: "#/components/schemas/Phase" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add a phase, numbered after the last one
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              additionalProperties: false
+              properties:
+                title: { type: string }
+                description: { type: string }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Phase" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/phases/{n}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/PhaseNumber"
+    patch:
+      summary: Edit a phase's title or description
+      description: Fields left out are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string, minLength: 1 }
+                description: { type: string }
+      responses:
+        "200":
+          description: The phase as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Phase" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/phases/{n}/goals:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/PhaseNumber"
+    post:
+      summary: Add a goal to a phase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              additionalProperties: false
+              properties:
+                text: { type: string }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Goal" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/stories:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The backlog in delivery order, top first
+      responses:
+        "200":
+          description: The stories
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stories]
+                properties:
+                  stories:
+                    type: array
+                    items: { $ref: "#/components/schemas/Story" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add a story
+      description: >-
+        Placed directly before or after a named story, or at the bottom of the
+        backlog when neither is given. A story's phase is set here and cannot
+        be changed later.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              additionalProperties: false
+              properties:
+                title: { type: string }
+                description: { type: string }
+                goal: { type: string }
+                plan: { type: string }
+                phase: { type: integer, minimum: 1, description: "Omit for a story with no phase" }
+                before: { type: string, example: S-3 }
+                after: { type: string, example: S-2 }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    get:
+      summary: One story, with its dependencies in both directions
+      responses:
+        "200":
+          description: The story
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Edit a story's text
+      description: Fields left out are unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string, minLength: 1 }
+                description: { type: string }
+                goal: { type: string }
+                plan: { type: string }
+      responses:
+        "200":
+          description: The story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/stories/{id}/move:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    post:
+      summary: Move a story in the backlog
+      description: >-
+        Refused when the story would rank above something it depends on, or
+        below something that depends on it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Position" }
+      responses:
+        "200":
+          description: The story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/dependencies:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    post:
+      summary: Record that this story depends on another
+      description: >-
+        The story depended on must rank above this one, be in the same or an
+        earlier phase when both have a phase, and must not already depend on
+        this one. Recording an existing dependency changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [on]
+              additionalProperties: false
+              properties:
+                on: { type: string, example: S-1 }
+      responses:
+        "200":
+          description: The dependent story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/dependencies/{on}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+      - name: on
+        in: path
+        required: true
+        schema: { type: string, example: S-1 }
+    delete:
+      summary: Remove a dependency
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
+  parameters:
+    Workspace:
+      name: ws
+      in: path
+      required: true
+      schema: { type: string, example: my-app }
+    PhaseNumber:
+      name: n
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    StoryID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: S-2 }
   securitySchemes:
     bearer:
       type: http
@@ -59,12 +363,92 @@ components:
           type: object
           additionalProperties: { type: string, enum: [ok, unavailable] }
           example: { falkordb: ok, typesense: ok }
+    Workspace:
+      type: object
+      required: [slug, name, created_by, created_at]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        repo_url: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    Phase:
+      type: object
+      required: [number, title, description, goals, created_by, created_at]
+      properties:
+        number: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        goals:
+          type: array
+          items: { $ref: "#/components/schemas/Goal" }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_by: { type: string, description: "Who last edited it" }
+        updated_at: { type: string, format: date-time }
+    Goal:
+      type: object
+      required: [id, text, created_by, created_at]
+      properties:
+        id: { type: string, example: G-1 }
+        text: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    Story:
+      type: object
+      required: [id, title, description, goal, plan, status, blocked_by, blocks, created_by, created_at]
+      properties:
+        id: { type: string, example: S-2 }
+        title: { type: string }
+        description: { type: string }
+        goal: { type: string }
+        plan: { type: string }
+        phase: { type: integer, description: "Absent for a story with no phase" }
+        status: { type: string, enum: [backlog] }
+        blocked_by:
+          type: array
+          description: Stories this one depends on
+          items: { type: string }
+        blocks:
+          type: array
+          description: Stories that depend on this one
+          items: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        moved_by: { type: string }
+        moved_at: { type: string, format: date-time }
+        updated_by: { type: string, description: "Who last edited it or removed one of its dependencies" }
+        updated_at: { type: string, format: date-time }
+    Position:
+      type: object
+      description: Directly before or after a story; neither means the bottom of the backlog.
+      additionalProperties: false
+      properties:
+        before: { type: string, example: S-3 }
+        after: { type: string, example: S-2 }
     Error:
       type: object
       required: [error]
       properties:
         error: { type: string }
   responses:
+    Invalid:
+      description: >-
+        The request is malformed. Text may not contain control or invisible
+        formatting characters other than newlines, carriage returns and tabs.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: No such workspace, phase, story or dependency
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: The change would break a board rule; the error says which
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     Unauthorized:
       description: Missing, malformed, unknown or revoked token
       headers:
