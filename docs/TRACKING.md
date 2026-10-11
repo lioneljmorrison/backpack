@@ -1,7 +1,7 @@
 # Tracking a project with Backpack
 
-How any project hands its tracking to Backpack: four files to add, and a
-section to paste into its `CLAUDE.md`. Replace `my-app` with the project's
+How any project hands its tracking to Backpack: a token, the MCP server, two
+files and a hook to add, and a section to paste into its `CLAUDE.md`. Replace `my-app` with the project's
 workspace slug and `https://backpack.example.com` with the Backpack address.
 
 ## Setup
@@ -12,11 +12,22 @@ workspace slug and `https://backpack.example.com` with the Backpack address.
 { "workspace": "my-app", "url": "https://backpack.example.com" }
 ```
 
-**2. The token** goes in `BACKPACK_TOKEN` in the environment, never in a file
-the repository tracks. A person with access to the Backpack host issues one per
-actor: `backpack token create --actor <name>` (shown once).
+**2. A token** per person or agent. Someone with access to the Backpack host
+issues it with `make token ACTOR=<name>`. It is shown once.
 
-**3. The session hook.** Copy [`deploy/hook.sh`](../deploy/hook.sh) to
+**3. The MCP server**, added to Claude Code once per machine. One server
+serves every project, because every tool takes the workspace slug:
+
+```bash
+claude mcp add --transport http --scope user backpack https://backpack.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+The token is kept in your user config, never in the repository. Don't also
+add a project `.mcp.json` entry named `backpack`: a project entry overrides
+the user one.
+
+**4. The session hook.** Copy [`deploy/hook.sh`](../deploy/hook.sh) to
 `.claude/hooks/backpack.sh` and add it to `.claude/settings.json`:
 
 ```json
@@ -29,22 +40,9 @@ actor: `backpack token create --actor <name>` (shown once).
 }
 ```
 
-Every session then starts with "where are we". If Backpack can't be reached,
-the hook says so in one line and the session carries on.
-
-**4. The MCP server**, in `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "backpack": {
-      "type": "http",
-      "url": "https://backpack.example.com/mcp",
-      "headers": { "Authorization": "Bearer ${BACKPACK_TOKEN}" }
-    }
-  }
-}
-```
+The hook reads the token from `BACKPACK_TOKEN` in the environment. Every
+session then starts with "where are we". If Backpack can't be reached, the
+hook says so in one line and the session carries on.
 
 ## The section to paste into CLAUDE.md
 
