@@ -1,6 +1,6 @@
 # Backpack — Plan
 
-**Status:** Approved 2026-10-10. Slice 3 merged; slice 4 next.
+**Status:** Approved 2026-10-10. Slice 4 in review (PR #7).
 **Last updated:** 2026-10-10
 **Integration branch:** `dev` (released to `main`)
 
@@ -14,7 +14,8 @@ tracker.
 | 1. The empty service | Merged (PR #3) |
 | 2. The board | Merged (PR #4) |
 | 3. Work moving across the board | Merged (PR #5) |
-| 4–7 | Not started |
+| 4. The MCP server | In review (PR #7) |
+| 5–7 | Not started |
 
 ---
 
@@ -224,6 +225,20 @@ Each slice is its own branch and pull request into `dev`.
 - **Where are we** also lists what is on hold and why. Plain text is chosen
   with `Accept: text/plain`.
 
+**Slice 4 details** (settled 2026-10-10):
+- **Tools.** The twelve first listed, plus what agents need and that list
+  left out: changing a story's fields, branch or PR link, adding a goal,
+  unmarking a goal, removing a dependency and reading a log. What a story
+  is doing is one of its fields, so there is no separate activity tool.
+  Creating and listing workspaces, the full board, editing a phase and
+  listing every story stay HTTP-only until an agent needs them.
+- **Workspace.** Every tool takes the workspace's slug, so one MCP address
+  serves every project.
+- **Answers.** Every tool answers with the same JSON as the HTTP API, "where
+  are we" included. A refusal comes back as a tool error with the board's
+  reason.
+- **No sessions.** Every call carries its token and stands alone.
+
 **Needed before slice 5:**
 
 5. **Which host runs the shared instances:** `nas`, `lab-hermes`, or one each
@@ -350,10 +365,13 @@ the token's actor: it is how a client checks its configuration.
 
 ### MCP tools (slice 4)
 
-`whats_next`, `where_are_we`, `get_story`, `add_story`, `move_story`,
-`set_status`, `set_activity`, `add_dependency`, `log`, `list_phases`,
-`add_phase`, `mark_goal_met`. Ideas, proposals and search tools are added with
-slices 6 and 7.
+Served at `/mcp` (streamable HTTP, stateless) behind the same bearer check
+as `/v1/`; the actor reaches each tool through the request context.
+`whats_next`, `where_are_we`, `get_story`, `add_story`, `update_story`,
+`move_story`, `set_status`, `add_dependency`, `remove_dependency`, `log`,
+`read_log`, `list_phases`, `add_phase`, `add_goal`, `mark_goal_met` (`met`
+true or false). Every tool takes `workspace`. Ideas, proposals and search
+tools are added with slices 6 and 7.
 
 ### Per-project config and hook (slice 5)
 
