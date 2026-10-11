@@ -287,3 +287,20 @@ func TestAChangeMissedWhileUnreachableIsFoundAfterARebuild(t *testing.T) {
 	}
 	wantIDs(t, x, "demo", "invoices", "S-1")
 }
+
+func TestWarmLoadsTheModelAndLeavesNoCollectionBehind(t *testing.T) {
+	_, x, ts := newTarget(t)
+	if err := x.Warm(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if code := typesensetest.Do(ts.url, ts.key, http.MethodGet, "/collections/"+ts.prefix+"_warm", ""); code != http.StatusNotFound {
+		t.Fatalf("warm collection answers %d, want 404", code)
+	}
+}
+
+func TestWarmWithTypesenseUnreachableIsUnavailable(t *testing.T) {
+	b, _ := newBoard(t)
+	if err := unreachable(b).Warm(ctx); !errors.Is(err, search.ErrUnavailable) {
+		t.Fatalf("error = %v, want ErrUnavailable", err)
+	}
+}

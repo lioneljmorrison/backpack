@@ -34,8 +34,8 @@ const usage = `usage:
   backpack reindex [--workspace <slug>]
 `
 
-// rebuildTimeout bounds a full rebuild of the search index. The first one on
-// a new Typesense volume also downloads the embedding model.
+// rebuildTimeout bounds loading the search model and a full rebuild of the
+// index. On a new Typesense volume, loading the model downloads it.
 const rebuildTimeout = 2 * time.Minute
 
 type config struct {
@@ -242,11 +242,16 @@ func serve(cfg config) error {
 	return nil
 }
 
-// rebuild refills every workspace's search index from the board. The board
-// works without search, so a failure is logged and the service starts anyway.
+// rebuild loads the search model, then refills every workspace's search
+// index from the board. The board works without search, so a failure is
+// logged and the service starts anyway.
 func rebuild(x *search.Index) {
 	ctx, cancel := context.WithTimeout(context.Background(), rebuildTimeout)
 	defer cancel()
+	if err := x.Warm(ctx); err != nil {
+		log.Printf("search: loading the model failed, search is unavailable until a reindex: %v", err)
+		return
+	}
 	if err := x.RebuildAll(ctx); err != nil {
 		log.Printf("search: rebuild failed, search may be incomplete until a reindex: %v", err)
 		return

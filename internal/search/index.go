@@ -159,6 +159,20 @@ func (x *Index) Rebuild(ctx context.Context, ws string) error {
 	return x.c.importDocs(ctx, name, ds)
 }
 
+// Warm makes sure Typesense has the embedding model, by creating and
+// dropping a collection that uses it. On a new Typesense volume this
+// downloads the model, which can take longer than syncing one change is
+// allowed; done at start, before the first workspace exists, it means no
+// sync ever waits on it. The name starts with an underscore, which no
+// workspace slug can.
+func (x *Index) Warm(ctx context.Context) error {
+	name := x.prefix + "_warm"
+	if err := x.c.create(ctx, schema(name)); err != nil {
+		return err
+	}
+	return x.c.drop(ctx, name)
+}
+
 // RebuildAll rebuilds every workspace, going on past one that fails.
 func (x *Index) RebuildAll(ctx context.Context) error {
 	ws, err := x.b.Workspaces()
