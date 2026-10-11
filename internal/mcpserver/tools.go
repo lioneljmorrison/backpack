@@ -56,6 +56,26 @@ type moveStoryIn struct {
 	position
 }
 
+type setStatusIn struct {
+	storyIn
+	To         string `json:"to" jsonschema:"backlog, in_progress, in_review, merged, released, deployed, on_hold or closed"`
+	Branch     string `json:"branch,omitempty" jsonschema:"only when starting: the task branch"`
+	PRURL      string `json:"pr_url,omitempty" jsonschema:"only when opening review: the pull request's link"`
+	Commit     string `json:"commit,omitempty" jsonschema:"only when merging: the merge commit"`
+	Reason     string `json:"reason,omitempty" jsonschema:"required when putting on hold or closing, and only then"`
+	Workaround string `json:"workaround,omitempty" jsonschema:"only when starting a blocked story: how it goes ahead anyway"`
+}
+
+type logIn struct {
+	storyIn
+	Kind     string `json:"kind" jsonschema:"note (text), decision (text and reason), commit (commit), pr (pr_url) or correction (text and corrects)"`
+	Text     string `json:"text,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	Commit   string `json:"commit,omitempty"`
+	PRURL    string `json:"pr_url,omitempty"`
+	Corrects string `json:"corrects,omitempty" jsonschema:"the id of the entry a correction corrects, such as L-3"`
+}
+
 func addTools(s *mcp.Server, t tools) {
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
 	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, and the next three in the backlog.", t.whereAreWe)
@@ -63,6 +83,9 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "add_story", "Add a story to the backlog, directly before or after another story, or at the bottom when neither is given. It must rank below everything it will depend on.", t.addStory)
 	tool(s, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing.", t.updateStory)
 	tool(s, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it.", t.moveStory)
+	tool(s, "set_status", "Move a story across the board: forward one column, or back one before merged. Merged, released and deployed are complete. on_hold resumes to the column it left; closed is final. Every change is logged.", t.setStatus)
+	tool(s, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
+	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
 }
 
 func actor(ctx context.Context) string {
@@ -96,4 +119,19 @@ func (t tools) updateStory(ctx context.Context, a updateStoryIn) (any, error) {
 
 func (t tools) moveStory(ctx context.Context, a moveStoryIn) (any, error) {
 	return t.b.MoveStory(a.Workspace, actor(ctx), a.ID, board.Position(a.position))
+}
+
+func (t tools) setStatus(ctx context.Context, a setStatusIn) (any, error) {
+	return t.b.SetStatus(a.Workspace, actor(ctx), a.ID, board.StatusChange{To: a.To, Branch: a.Branch,
+		PRURL: a.PRURL, Commit: a.Commit, Reason: a.Reason, Workaround: a.Workaround})
+}
+
+func (t tools) log(ctx context.Context, a logIn) (any, error) {
+	return t.b.AddLogEntry(a.Workspace, actor(ctx), a.ID, board.NewLogEntry{Kind: a.Kind, Text: a.Text,
+		Reason: a.Reason, Commit: a.Commit, PRURL: a.PRURL, Corrects: a.Corrects})
+}
+
+func (t tools) readLog(_ context.Context, a storyIn) (any, error) {
+	l, err := t.b.Log(a.Workspace, a.ID)
+	return map[string]any{"entries": l}, err
 }
