@@ -135,8 +135,8 @@ paths:
       summary: Where are we
       description: >-
         The first phase that is not complete, what is in progress, in review
-        and on hold, the top three of the backlog, and what is waiting for
-        approval. Send
+        and on hold, the top three of the backlog, and the stories and ideas
+        waiting for approval. Send
         `Accept: text/plain` for a few lines of text, as the session hook does.
       responses:
         "200":
@@ -562,6 +562,185 @@ paths:
         "204": { description: Removed }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/ideas:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The ideas that are not closed, in order, top first
+      responses:
+        "200":
+          description: The ideas list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ideas]
+                properties:
+                  ideas:
+                    type: array
+                    items: { $ref: "#/components/schemas/Idea" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add an idea
+      description: >-
+        Placed directly before or after a named idea, or at the bottom of the
+        ideas list when neither is given. An idea added here is open; an
+        agent's idea, added through the MCP, is proposed instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              additionalProperties: false
+              properties:
+                title: { type: string }
+                notes: { type: string }
+                before: { type: string, example: I-3 }
+                after: { type: string, example: I-2 }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    get:
+      summary: One idea, closed or not
+      responses:
+        "200":
+          description: The idea
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Edit an idea that is not closed
+      description: Fields not given are left as they are.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string, minLength: 1 }
+                notes: { type: string }
+      responses:
+        "200":
+          description: The idea as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}/move:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Move an idea that is not closed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Position" }
+      responses:
+        "200":
+          description: The idea as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}/approve:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Approve a proposed idea at its spot, making it open
+      responses:
+        "200":
+          description: The idea as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}/refine:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Close an open idea, linking it to what it became
+      description: >-
+        The stories and the phase are added first, the usual way. At least
+        one is named, and none of the stories may be closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                stories:
+                  type: array
+                  items: { type: string, example: S-4 }
+                phase: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: The idea, now closed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/ideas/{id}/drop:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Close an idea that became nothing, with the reason
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: The idea, now closed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Idea" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 components:
   parameters:
     Workspace:
@@ -579,6 +758,11 @@ components:
       in: path
       required: true
       schema: { type: string, example: S-2 }
+    IdeaID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: I-2 }
   securitySchemes:
     bearer:
       type: http
@@ -697,7 +881,7 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, proposed, in_progress, in_review, on_hold, next]
+      required: [phase, proposed, in_progress, in_review, on_hold, next, ideas_proposed]
       properties:
         phase:
           description: The first phase that is not complete; null when there is none
@@ -721,9 +905,43 @@ components:
           type: array
           description: The top three of the backlog, blocked stories included
           items: { $ref: "#/components/schemas/Story" }
+        ideas_proposed:
+          type: array
+          description: The ideas waiting for a person to approve them
+          items: { $ref: "#/components/schemas/Idea" }
+    Idea:
+      type: object
+      required: [id, title, notes, state, became_stories, created_by, created_at]
+      properties:
+        id: { type: string, example: I-3 }
+        title: { type: string }
+        notes: { type: string }
+        state:
+          type: string
+          enum: [proposed, open, closed]
+          description: A proposed idea waits for a person to approve its spot.
+        reasoning: { type: string, description: "Why an agent suggested its spot" }
+        became_stories:
+          type: array
+          description: The stories a refined idea became
+          items: { type: string }
+        became_phase: { type: integer, description: "The phase a refined idea became" }
+        drop_reason: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        approved_by: { type: string }
+        approved_at: { type: string, format: date-time }
+        moved_by: { type: string }
+        moved_at: { type: string, format: date-time }
+        updated_by: { type: string }
+        updated_at: { type: string, format: date-time }
+        closed_by: { type: string }
+        closed_at: { type: string, format: date-time }
     Position:
       type: object
-      description: Directly before or after a story; neither means the bottom of the backlog.
+      description: >-
+        Directly before or after a story (or, for an idea, another idea);
+        neither means the bottom of the list.
       additionalProperties: false
       properties:
         before: { type: string, example: S-3 }
