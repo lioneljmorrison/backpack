@@ -202,7 +202,7 @@ func TestMarkingAGoalMetOverHTTP(t *testing.T) {
 	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{}`), http.StatusBadRequest)
 	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-9", `{"met": true}`), http.StatusNotFound)
 	p := want(t, call(t, h, "GET", "/v1/workspaces/demo/phases", ""), http.StatusOK)["phases"].([]any)[0].(map[string]any)
-	if p["complete"] != false || p["goals_met_early"] != false {
+	if p["complete"] != true || p["goals_met_early"] != false { // nothing in it, goal met
 		t.Fatalf("phase %v", p)
 	}
 }
