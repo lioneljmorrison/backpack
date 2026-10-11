@@ -135,7 +135,8 @@ paths:
       summary: Where are we
       description: >-
         The first phase that is not complete, what is in progress, in review
-        and on hold, and the top three of the backlog. Send
+        and on hold, the top three of the backlog, and what is waiting for
+        approval. Send
         `Accept: text/plain` for a few lines of text, as the session hook does.
       responses:
         "200":
@@ -327,7 +328,8 @@ paths:
       description: >-
         Placed directly before or after a named story, or at the bottom of the
         backlog when neither is given. A story's phase is set here and cannot
-        be changed later.
+        be changed later. A story added here goes straight into the backlog;
+        an agent's story, added through the MCP, is proposed instead.
       requestBody:
         required: true
         content:
@@ -665,8 +667,10 @@ components:
         workaround: { type: string, description: "How it was started while blocked" }
     Status:
       type: string
-      enum: [backlog, in_progress, in_review, merged, released, deployed, on_hold, closed]
-      description: Merged, released and deployed are complete.
+      enum: [proposed, backlog, in_progress, in_review, merged, released, deployed, on_hold, closed]
+      description: >-
+        Merged, released and deployed are complete. A proposed story waits for
+        a person to approve it into the backlog, or to decline it by closing it.
     Activity:
       type: string
       enum: [planning, building, testing, waiting]
@@ -693,13 +697,17 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, in_progress, in_review, on_hold, next]
+      required: [phase, proposed, in_progress, in_review, on_hold, next]
       properties:
         phase:
           description: The first phase that is not complete; null when there is none
           oneOf:
             - $ref: "#/components/schemas/Phase"
             - type: "null"
+        proposed:
+          type: array
+          description: What is waiting for a person to approve it
+          items: { $ref: "#/components/schemas/Story" }
         in_progress:
           type: array
           items: { $ref: "#/components/schemas/Story" }

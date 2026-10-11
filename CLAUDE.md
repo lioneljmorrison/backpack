@@ -18,8 +18,9 @@ dependency of the code.
   not urgency.
 - **Dependencies** are explicit and read both ways (blocks / blocked by). A
   story always ranks below what it depends on.
-- Stories move: Backlog → In progress → In review → Merged (complete) →
-  Released → Deployed.
+- Stories move: (Proposed →) Backlog → In progress → In review → Merged
+  (complete) → Released → Deployed. A story an agent adds is Proposed until a
+  person approves it.
 - Every story keeps an **append-only log**.
 
 Two ways in: an **MCP server** for AI agents and an **HTTP API** for a UI.
@@ -107,9 +108,12 @@ through the `backpack` MCP tools, added to Claude Code once per machine (see
   notes. Entries are never edited; fix a mistake with a `correction` that names
   the entry it corrects.
 - **Stuck or no longer needed:** `on_hold` or `closed`, with a reason.
-- **New work** goes in with `add_story`, placed with `before` or `after`, and
-  its dependencies with `add_dependency`. Backpack refuses an order that breaks
-  a dependency; read its reason and place the story again.
+- **New work** goes in with `add_story`, placed with `before` or `after`, with
+  the `reasoning` for that spot. It waits as **proposed** until a person
+  approves it (`set_status` to `backlog`, after `move_story` if they pick
+  another spot) or declines it (`closed`, with a reason). Then add its
+  dependencies with `add_dependency`. Backpack refuses an order that breaks a
+  dependency; read its reason and place the story again.
 
 ## Branching
 

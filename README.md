@@ -9,8 +9,9 @@ current state is hard to find. Backpack replaces that document: agents ask it
 
 - Each project has its own **workspace**, with one backlog ranked in delivery
   order.
-- Stories move Backlog → In progress → In review → Merged → Released →
-  Deployed, and each keeps an append-only log.
+- Stories move (Proposed →) Backlog → In progress → In review → Merged →
+  Released → Deployed, and each keeps an append-only log. A story an agent
+  adds is Proposed until a person approves it.
 - Dependencies are explicit, and a story always ranks below what it depends on.
 - Agents use it through an **MCP server**; a UI can use the **HTTP API**
   (`api/openapi.yaml`). Every request needs a token.
@@ -210,7 +211,10 @@ is never committed.
   notes. Entries are never edited; fix a mistake with a `correction` that names
   the entry it corrects.
 - **Stuck or no longer needed:** `on_hold` or `closed`, with a reason.
-- **New work** goes in with `add_story`, placed with `before` or `after`, and
-  its dependencies with `add_dependency`. Backpack refuses an order that breaks
-  a dependency; read its reason and place the story again.
+- **New work** goes in with `add_story`, placed with `before` or `after`, with
+  the `reasoning` for that spot. It waits as **proposed** until a person
+  approves it (`set_status` to `backlog`, after `move_story` if they pick
+  another spot) or declines it (`closed`, with a reason). Then add its
+  dependencies with `add_dependency`. Backpack refuses an order that breaks a
+  dependency; read its reason and place the story again.
 ```

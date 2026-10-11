@@ -79,12 +79,15 @@ top story is the next to be delivered. Rank is order, not urgency.
 **Placing new work.** An agent proposes where a new story belongs, with its
 reasoning; a person confirms it or picks another spot. The dependency rules
 narrow the choice: the story must go below everything it depends on and above
-everything that depends on it.
+everything that depends on it. A proposed story sits in **Proposed**, ahead of
+Backlog, at the spot the agent chose, with the reasoning as the first entry in
+its log. Approving moves it to Backlog; declining closes it with a reason.
 
 **Statuses.**
 
 | Column | Meaning | In this repo |
 |---|---|---|
+| Proposed | Added by an agent, waiting for a person to approve it | |
 | Backlog | Ranked, not started | |
 | In progress | Being worked on | task branch |
 | In review | Pull request open | PR into `dev` |
@@ -157,7 +160,8 @@ Each slice is its own branch and pull request into `dev`.
    as Backpack's own stories.
 6. **Ideas and placement proposals.** Ideas, refining them into stories or a
    phase and closing them, and the propose-then-confirm placement of new
-   stories. Until this lands, a person places new stories directly.
+   stories. Until this lands, a person places new stories directly. Split in
+   Backpack into S-2 (placement proposals) and S-4 (ideas).
 7. **Search.** Typesense indexing and hybrid search by meaning and keyword.
 
 **Out of scope, each needing its own approval:**
@@ -244,6 +248,20 @@ Each slice is its own branch and pull request into `dev`.
    tunnel, using the development tunnel token. The stack runs on any Docker
    host; no particular host is part of the design.
 
+**Slice 6 details, placement proposals** (settled 2026-10-11, S-2):
+- **A proposal is a story** in a new status, **Proposed**, before Backlog. It
+  is not a separate record, so the ordering and dependency rules apply to it
+  unchanged, and what's next and the next three, which read only Backlog,
+  skip it.
+- **Agents propose; a person may place.** `add_story` over the MCP always
+  proposes and needs the reasoning for its spot, logged as a decision in the
+  same query. `POST /stories` over HTTP still places directly into Backlog.
+- **Anyone approves**, over MCP or HTTP: Proposed → Backlog. Picking another
+  spot is a move, then approval. Declining is Proposed → Closed, with a
+  reason. A story never goes back to Proposed.
+- **Where are we** lists what is waiting for approval. A proposed story in a
+  phase counts as open work.
+
 Questions about remaining work (for example, whether ideas are ranked) are
 logged on their stories in Backpack.
 
@@ -327,8 +345,8 @@ graph's `Workspace` node, so the status query can read it.
 - **Status changes follow the column order.** Each change writes a `status`
   log entry in the same query, plus a `decision` entry when a blocked story is
   started with a workaround.
-- **Statuses:** `backlog`, `in_progress`, `in_review`, `merged`, `released`,
-  `deployed`, `on_hold`, `closed`. Complete is `merged`, `released` or
+- **Statuses:** `proposed`, `backlog`, `in_progress`, `in_review`, `merged`,
+  `released`, `deployed`, `on_hold`, `closed`. Complete is `merged`, `released` or
   `deployed`; `blocked` is computed on read.
 - **Empty lists:** `all(…)` over an empty list is true, so phase completion
   and the goals flag guard against no stories and no goals.
@@ -350,7 +368,6 @@ POST /v1/workspaces/{ws}/stories/{id}/status         to (+ branch / pr_url / com
 POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
 GET  /v1/workspaces/{ws}/stories/{id}/log            POST
 GET  /v1/workspaces/{ws}/ideas                       POST, /ideas/{id}/refine     (slice 6)
-POST /v1/workspaces/{ws}/stories/proposals           propose, confirm             (slice 6)
 GET  /v1/workspaces/{ws}/search?q=                                                (slice 7)
 ```
 
@@ -367,8 +384,9 @@ as `/v1/`; the actor reaches each tool through the request context.
 `whats_next`, `where_are_we`, `get_story`, `add_story`, `update_story`,
 `move_story`, `set_status`, `add_dependency`, `remove_dependency`, `log`,
 `read_log`, `list_phases`, `add_phase`, `add_goal`, `mark_goal_met` (`met`
-true or false). Every tool takes `workspace`. Ideas, proposals and search
-tools are added with slices 6 and 7.
+true or false). Every tool takes `workspace`. Since slice 6, `add_story`
+proposes: the story goes in as `proposed`, with a required `reasoning`.
+Ideas and search tools are added with S-4 and slice 7.
 
 ### Per-project config and hook (slice 5)
 
