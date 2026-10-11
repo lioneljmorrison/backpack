@@ -190,3 +190,19 @@ func TestStoryLogsOverHTTP(t *testing.T) {
 		t.Fatalf("log %v", l)
 	}
 }
+
+func TestMarkingAGoalMetOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "One"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases/1/goals", `{"text": "it works"}`), http.StatusCreated)
+	g := want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{"met": true}`), http.StatusOK)
+	if g["met"] != true || g["met_by"] != "tester" {
+		t.Fatalf("met %v", g)
+	}
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-9", `{"met": true}`), http.StatusNotFound)
+	p := want(t, call(t, h, "GET", "/v1/workspaces/demo/phases", ""), http.StatusOK)["phases"].([]any)[0].(map[string]any)
+	if p["complete"] != false || p["goals_met_early"] != false {
+		t.Fatalf("phase %v", p)
+	}
+}

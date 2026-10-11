@@ -21,6 +21,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases", a.addPhase)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/phases/{n}", a.updatePhase)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases/{n}/goals", a.addGoal)
+	mux.HandleFunc("PATCH /v1/workspaces/{ws}/goals/{id}", a.setGoalMet)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories", a.listStories)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories", a.addStory)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}", a.getStory)
@@ -92,6 +93,21 @@ func (a boardAPI) addGoal(w http.ResponseWriter, r *http.Request) {
 	}
 	g, err := a.b.AddGoal(r.PathValue("ws"), actor(r), n, in.Text)
 	respond(w, http.StatusCreated, g, err)
+}
+
+func (a boardAPI) setGoalMet(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Met *bool `json:"met"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	if in.Met == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "met is required"})
+		return
+	}
+	g, err := a.b.SetGoalMet(r.PathValue("ws"), actor(r), r.PathValue("id"), *in.Met)
+	respond(w, http.StatusOK, g, err)
 }
 
 func (a boardAPI) listStories(w http.ResponseWriter, r *http.Request) {

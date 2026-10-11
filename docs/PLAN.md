@@ -218,8 +218,8 @@ Each slice is its own branch and pull request into `dev`.
   edits and dependency changes keep their who/when fields on the story.
 - **Goals** can be marked met and unmarked. A phase is complete when it has a
   story and every story that isn't closed is complete; an empty phase never
-  is. A phase is flagged when it has goals, all are met, and it is not
-  complete.
+  is. A phase is flagged when it has goals, all are met, and some of its
+  stories are still open.
 - **Where are we** also lists what is on hold and why. Plain text is chosen
   with `Accept: text/plain`.
 
