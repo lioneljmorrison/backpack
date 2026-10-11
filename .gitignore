@@ -10,5 +10,6 @@ cloudflared/
 # Build output
 /bin/
 /backpack
+coverage.out
 
 ENVs.txt
