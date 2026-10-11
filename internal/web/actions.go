@@ -123,7 +123,9 @@ func (s *site) setStatus(w http.ResponseWriter, r *http.Request) {
 func (s *site) setActivity(w http.ResponseWriter, r *http.Request) {
 	activity := r.PostFormValue("activity")
 	patch := board.StoryPatch{Activity: &activity}
-	if waiting := strings.TrimSpace(r.PostFormValue("waiting_on")); waiting != "" {
+	// The form keeps what the story was waiting on; it counts only while
+	// the story is still waiting.
+	if waiting := strings.TrimSpace(r.PostFormValue("waiting_on")); waiting != "" && activity == "waiting" {
 		patch.WaitingOn = &waiting
 	}
 	_, err := s.board.UpdateStory(r.PathValue("ws"), actor(r), r.PathValue("id"), patch)

@@ -174,3 +174,19 @@ func TestActionsAreRecordedUnderTheTokensActor(t *testing.T) {
 		t.Fatalf("entry by %q, want tester", last.Actor)
 	}
 }
+
+func TestAWaitingStoryCanGoBackToWork(t *testing.T) {
+	h, b := withDemo(t)
+	s := story(t, b, board.NewStory{Title: "Work"})
+	back := "/w/demo/stories/" + s.ID
+	act(t, h, back+"/status", url.Values{"to": {"in_progress"}, "branch": {"feature/x"}}, back)
+	act(t, h, back+"/activity", url.Values{"activity": {"waiting"}, "waiting_on": {"review"}}, back)
+	// The form still holds what it was waiting on when the activity changes.
+	page := act(t, h, back+"/activity", url.Values{"activity": {"building"}, "waiting_on": {"review"}}, back)
+	if strings.Contains(page, `class="error"`) {
+		t.Fatal("leaving waiting was refused")
+	}
+	if got := must[board.Story](t)(b.Story("demo", s.ID)); got.Activity != "building" {
+		t.Fatalf("activity %q, want building", got.Activity)
+	}
+}

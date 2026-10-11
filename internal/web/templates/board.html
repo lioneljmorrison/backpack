@@ -24,6 +24,8 @@
 
 {{with .Where.Proposed}}
 <form class="approve" method="post" action="/w/{{$ws}}/approve">
+  {{/* Enter in the reason box must not approve: this first, disabled button takes it. */}}
+  <button type="submit" disabled hidden aria-hidden="true"></button>
   <h2>Waiting for approval</h2>
   {{range .}}
   <label class="row"><input type="checkbox" name="id" value="{{.ID}}" checked> <span class="id">{{.ID}}</span> {{.Title}}
