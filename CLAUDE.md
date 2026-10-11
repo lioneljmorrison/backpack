@@ -65,11 +65,13 @@ make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLAR
 make down                # stop (data volumes are kept)
 make gates               # gofmt, vet, tests against the local stack, build
 make token ACTOR=<name>  # issue a bearer token (shown once)
+make reindex             # rebuild the search index from the board
 ```
 
 Local ports, all bound to 127.0.0.1: backpack 8780, FalkorDB 16379, Typesense
 18108. Configuration is environment variables: `BACKPACK_ADDR`,
-`BACKPACK_FALKORDB_URL`, `BACKPACK_TYPESENSE_URL`, `BACKPACK_SYSTEM_GRAPH`.
+`BACKPACK_FALKORDB_URL`, `BACKPACK_TYPESENSE_URL`,
+`BACKPACK_TYPESENSE_API_KEY`, `BACKPACK_SYSTEM_GRAPH`.
 `ENVs.txt` (gitignored, never read into context unless needed) holds deploy
 secrets.
 
@@ -108,6 +110,9 @@ through the `backpack` MCP tools, added to Claude Code once per machine (see
   notes. Entries are never edited; fix a mistake with a `correction` that names
   the entry it corrects.
 - **Stuck or no longer needed:** `on_hold` or `closed`, with a reason.
+- **Search first.** Before adding a story or an idea, ask `search` whether
+  one already covers it, by keyword or by meaning. Closed and dropped ones
+  come back too, with their state.
 - **New work** goes in with `add_story`, placed with `before` or `after`, with
   the `reasoning` for that spot. It waits as **proposed** until a person
   approves it (`set_status` to `backlog`, after `move_story` if they pick
