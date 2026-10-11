@@ -123,8 +123,9 @@ as by keyword, for example "do we already have a story about this?"
 
 ## How it will be built
 
-- **A Go service with two ways in:** an **MCP server** for AI agents and an
-  **HTTP API** for building a UI. Both call the same operations underneath.
+- **A Go service with three ways in:** an **MCP server** for AI agents, an
+  **HTTP API** for scripts and other tools, and **web pages** for people. All
+  three call the same operations underneath.
 - **FalkorDB** is the board's store, as a graph: workspace, phase, story, idea,
   dependency and log entry. Each workspace is its own graph, so workspaces never
   hold each other up. Every board action is one query, so it either happens
@@ -163,9 +164,10 @@ Each slice is its own branch and pull request into `dev`.
    stories. Until this lands, a person places new stories directly. Split in
    Backpack into S-2 (placement proposals) and S-4 (ideas).
 7. **Search.** Typesense indexing and hybrid search by meaning and keyword.
+8. **The UI.** Web pages served by Backpack itself: sign in with a token,
+   see the board, then act on it. Tracked in Backpack as the Visual UI phase.
 
 **Out of scope, each needing its own approval:**
-- The UI. The API is shaped for it; building it is separate work.
 - Moving any existing project onto Backpack. Each move is its own task in that
   project.
 - Logins for more than one person.
@@ -175,7 +177,9 @@ Each slice is its own branch and pull request into `dev`.
 **Settled:**
 1. **Authentication** (2026-10-10). The MCP and the API use bearer tokens that
    Backpack issues itself, one actor per token, created and revoked from the
-   command line. OAuth arrives with the UI, which is out of scope for now.
+   command line. The UI uses the same tokens: a person pastes one once and the
+   browser keeps it in a cookie. OAuth waits until a second person needs a
+   login.
 2. **Phase order and rank** (2026-10-10). A later phase's story may rank above
    an earlier phase's stories when it doesn't depend on them. Only
    dependencies constrain order, so a quick unrelated fix can jump ahead.
