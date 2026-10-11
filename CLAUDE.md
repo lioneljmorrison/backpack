@@ -95,7 +95,7 @@ secrets.
 
 Delivery is tracked in Backpack, workspace `backpack` (see `.backpack.json`),
 through the `backpack` MCP tools, added to Claude Code once per machine (see
-`README.md`). There is no tracking document, and tracking is never committed.
+`docs/ADOPTING.md`). There is no tracking document, and tracking is never committed.
 
 - **Orientation.** The session starts with "where are we". Ask `whats_next`
   for the next story and `get_story` for its detail. Don't guess the next task.

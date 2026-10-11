@@ -440,9 +440,10 @@ environment. The hook, `deploy/hook.sh`, is `curl -fsS --max-time 3` against
 `/status` as plain text. Without `.backpack.json` it prints nothing; on any
 other failure it prints "Backpack unreachable — orientation skipped". It always
 exits 0. It reads the config with `sed`, so it needs no `jq`.
-`README.md` covers connecting a project: the MCP server (per person, or per
-team with `.mcp.json`, from an environment variable or a secrets manager), the
-hook, and the section to paste into a project's CLAUDE.md.
+`docs/ADOPTING.md` covers connecting a project: creating its workspace, the
+MCP server (per person, or per team with `.mcp.json`, from an environment
+variable or a secrets manager), the hook, and the section to paste into a
+project's CLAUDE.md.
 
 ### Deployment
 
