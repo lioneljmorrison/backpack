@@ -311,3 +311,47 @@ func TestAStartedStoryIsPlanningAndLeavingInProgressClearsItsActivity(t *testing
 		t.Fatalf("in review %+v", s)
 	}
 }
+
+func TestAnInProgressStorySaysWhatItIsDoing(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "A"})
+	walk(t, b, "S-1", "in_progress")
+	s, err := b.UpdateStory("demo", actor, "S-1", board.StoryPatch{Activity: ptr("waiting"), WaitingOn: ptr("the review agent")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Activity != "waiting" || s.WaitingOn != "the review agent" {
+		t.Fatalf("waiting %+v", s)
+	}
+	s, err = b.UpdateStory("demo", actor, "S-1", board.StoryPatch{Activity: ptr("testing")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Activity != "testing" || s.WaitingOn != "" {
+		t.Fatalf("testing %+v", s)
+	}
+}
+
+func TestActivityIsRefusedOutsideInProgressAndMustBeKnown(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "A"})
+	_, err := b.UpdateStory("demo", actor, "S-1", board.StoryPatch{Activity: ptr("building")})
+	wantKind(t, err, board.Conflict)
+	walk(t, b, "S-1", "in_progress")
+	_, err = b.UpdateStory("demo", actor, "S-1", board.StoryPatch{Activity: ptr("napping")})
+	wantKind(t, err, board.Invalid)
+	_, err = b.UpdateStory("demo", actor, "S-1", board.StoryPatch{WaitingOn: ptr("someone")})
+	wantKind(t, err, board.Invalid)
+}
+
+func TestTheBranchAndPullRequestCanBeCorrected(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "A"})
+	s, err := b.UpdateStory("demo", actor, "S-1", board.StoryPatch{Branch: ptr("feature/a"), PRURL: ptr("https://example.com/pr/2")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Branch != "feature/a" || s.PRURL != "https://example.com/pr/2" {
+		t.Fatalf("edited %+v", s)
+	}
+}
