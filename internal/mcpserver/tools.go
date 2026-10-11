@@ -76,6 +76,11 @@ type logIn struct {
 	Corrects string `json:"corrects,omitempty" jsonschema:"the id of the entry a correction corrects, such as L-3"`
 }
 
+type dependencyIn struct {
+	storyIn
+	On string `json:"on" jsonschema:"the story this one can't be done without"`
+}
+
 func addTools(s *mcp.Server, t tools) {
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
 	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, and the next three in the backlog.", t.whereAreWe)
@@ -86,6 +91,8 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "set_status", "Move a story across the board: forward one column, or back one before merged. Merged, released and deployed are complete. on_hold resumes to the column it left; closed is final. Every change is logged.", t.setStatus)
 	tool(s, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
 	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
+	tool(s, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
+	tool(s, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
 }
 
 func actor(ctx context.Context) string {
@@ -134,4 +141,13 @@ func (t tools) log(ctx context.Context, a logIn) (any, error) {
 func (t tools) readLog(_ context.Context, a storyIn) (any, error) {
 	l, err := t.b.Log(a.Workspace, a.ID)
 	return map[string]any{"entries": l}, err
+}
+
+func (t tools) addDependency(ctx context.Context, a dependencyIn) (any, error) {
+	return t.b.AddDependency(a.Workspace, actor(ctx), a.ID, a.On)
+}
+
+func (t tools) removeDependency(ctx context.Context, a dependencyIn) (any, error) {
+	err := t.b.RemoveDependency(a.Workspace, actor(ctx), a.ID, a.On)
+	return map[string]any{"removed": true}, err
 }
