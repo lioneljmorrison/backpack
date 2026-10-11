@@ -1,6 +1,6 @@
 # Backpack — Plan
 
-**Status:** Approved 2026-10-10. Slice 1 in review.
+**Status:** Approved 2026-10-10. Slice 2 in review.
 **Last updated:** 2026-10-10
 **Integration branch:** `dev` (released to `main`)
 
@@ -11,8 +11,9 @@ tracker.
 
 | Slice | State |
 |---|---|
-| 1. The empty service | In review (PR #3) |
-| 2–7 | Not started |
+| 1. The empty service | Merged (PR #3) |
+| 2. The board | In review |
+| 3–7 | Not started |
 
 ---
 
@@ -169,16 +170,24 @@ Each slice is its own branch and pull request into `dev`.
 1. **Authentication** (2026-10-10). The MCP and the API use bearer tokens that
    Backpack issues itself, one actor per token, created and revoked from the
    command line. OAuth arrives with the UI, which is out of scope for now.
+2. **Phase order and rank** (2026-10-10). A later phase's story may rank above
+   an earlier phase's stories when it doesn't depend on them. Only
+   dependencies constrain order, so a quick unrelated fix can jump ahead.
+3. **Stories with no phase** (2026-10-10). The "same or an earlier phase" rule
+   applies only when both stories have a phase. A story with no phase is
+   constrained only by rank: it must still rank below what it depends on.
 
-**Needed before slice 2:**
-
-2. **Can a later phase's story be ranked above an earlier phase's stories**
-   when it doesn't depend on them? **Proposed:** yes. Only dependencies
-   constrain order, so a quick unrelated fix can jump ahead.
-3. **Dependencies involving a story with no phase.** The "same or an earlier
-   phase" rule doesn't say what happens when a backlog-only story depends on a
-   phase story, or the reverse. **Proposed:** a story with no phase is
-   constrained only by rank. It must still rank below what it depends on.
+**Slice 2 details** (settled 2026-10-10):
+- Until story logs arrive in slice 3, everything created records who created
+  it and when, and a move records who made it and when.
+- A story's phase is set when the story is created and can't be changed yet.
+- A story is placed directly before or after a named story, or at the bottom
+  of the backlog when neither is given.
+- Stories are numbered `S-1`, `S-2` … and goals `G-1` … within each
+  workspace. A phase is referred to by its number.
+- A workspace has a slug, a name and optionally its repository. Its branches
+  and whether it has a Released stage arrive with slice 3, which first uses
+  them.
 
 **Needed before slice 3:**
 
@@ -229,10 +238,10 @@ the data volume. Backup copies the RDB file off the host.
 
 | Node | Key properties |
 |---|---|
-| `Workspace` | `slug`, `name`, `repo_url`, `integration_branch`, `release_branch`, `has_release_stage` |
-| `Phase` | `id`, `number`, `title`, `description`, `created_at` |
-| `Goal` | `id`, `text`, `met_at`, `met_by` |
-| `Story` | `id`, `title`, `description`, `goal`, `plan`, `rank`, `status`, `activity`, `waiting_on`, `branch`, `pr_url`, `created_at` |
+| `Workspace` | `slug`, `next_story`, `next_goal` (counters for `S-n` and `G-n` IDs) |
+| `Phase` | `number`, `title`, `description`, `created_by`, `created_at` |
+| `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` (slice 3) |
+| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`; `activity`, `waiting_on`, `branch`, `pr_url` (slice 3) |
 | `Idea` | `id`, `title`, `body`, `state` (`open`/`closed`), `closed_at` |
 | `LogEntry` | `id`, `at`, `actor`, `kind`, `text`, `commit`, `pr_url` |
 
@@ -240,20 +249,36 @@ the data volume. Backup copies the RDB file off the host.
 |---|---|
 | `(Phase)-[:HAS_GOAL]->(Goal)` | |
 | `(Phase)-[:CONTAINS]->(Story)` | optional; a story without one sits directly in the backlog |
-| `(Story)-[:DEPENDS_ON]->(Story)` | read in reverse as "blocks" |
+| `(Story)-[:DEPENDS_ON {created_by, created_at}]->(Story)` | read in reverse as "blocks" |
 | `(Story)-[:LOGGED]->(LogEntry)` | |
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
 
-A separate `backpack` graph holds the workspace registry and actors with
-hashed tokens.
+A separate `backpack` graph holds actors with hashed tokens and the workspace
+registry: `WorkspaceEntry {slug, name, repo_url, created_by, created_at}`. The
+workspace's branches and `has_release_stage` join it in slice 3.
 
-- **Rank** is a fractional string key (between two neighbours there is always
-  a key), so a move rewrites only the moved story.
-- **Ordering checks run inside the same Cypher query as the write.** For a
-  move: no `DEPENDS_ON` target may rank below the new position, and no
-  dependent may rank above it. For a new dependency: the target is in the same
-  or an earlier phase, ranks above the dependent, and adds no cycle.
+- **Rank** is a fractional string key over `0-9A-Za-z` (ASCII order, so Go
+  and FalkorDB compare keys alike). Between two neighbours there is always a
+  key, so a move rewrites only the moved story. `Story.rank` is deliberately
+  not indexed: FalkorDB 4.20 answers a range comparison on an indexed string
+  property with no rows.
+- **Each action is one query.** Its rule checks compute a `violation`, and the
+  write runs inside `FOREACH (… CASE WHEN violation IS NULL …)`, so a refused
+  change writes nothing. The query returns the violation so that the API can
+  say why. Path checks count matches with a pattern comprehension, because
+  FalkorDB's `exists(pattern)` is true even when nothing matches.
+- **Placement:** a read-only query finds the neighbours' ranks, and Go computes
+  the key. The write rechecks that the gap is still empty and the anchor still
+  in place. If another write took the gap, it retries (up to 3 times).
+- **Ordering checks.** For a move: no `DEPENDS_ON` target may rank below the
+  new position, and no dependent may rank above it. For a new dependency: the
+  target ranks above the dependent and adds no cycle. When both stories have a
+  phase, the target is in the same or an earlier phase.
+- **Creating a workspace** is the one action that spans two graphs. The
+  workspace graph is prepared first, and the registry entry, written last, is
+  what makes the workspace exist. An interrupted create can be repeated. Start-up
+  migrates every registered workspace graph.
 - **Status changes follow the column order.** Each change writes a `status`
   log entry in the same query.
 
