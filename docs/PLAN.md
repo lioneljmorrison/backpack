@@ -1,21 +1,23 @@
 # Backpack — Plan
 
-**Status:** Approved 2026-10-10. Slice 4 in review (PR #7).
+**Status:** Approved 2026-10-10. Slices 1–4 merged; slice 5 in review.
 **Last updated:** 2026-10-10
 **Integration branch:** `dev` (released to `main`)
 
-Until Backpack is deployed and can track itself (slice 5), this file is its
-tracker.
+**Backpack now tracks itself** in its own workspace, `backpack`, at
+`https://backpack.eldernerds.us`. This file is the design record: how the board
+works, why, and what was settled. It is no longer the tracker. Status, what's
+next and open questions about remaining work live on the stories.
 
-## Progress
+## Progress (until Backpack took over)
 
 | Slice | State |
 |---|---|
 | 1. The empty service | Merged (PR #3) |
 | 2. The board | Merged (PR #4) |
 | 3. Work moving across the board | Merged (PR #5) |
-| 4. The MCP server | In review (PR #7) |
-| 5–7 | Not started |
+| 4. The MCP server | Merged (PR #7) |
+| 5–7 | In Backpack: S-1, S-2, S-3 |
 
 ---
 
@@ -133,9 +135,8 @@ as by keyword, for example "do we already have a story about this?"
   person or an agent, and every change records its actor. There is one person
   today. Logins for more people can be added later without changing the
   record.
-- **Where it runs:** on localhost for development, and on `nas` or
-  `lab-hermes`, behind a Cloudflare tunnel, for the shared dev and production
-  instances.
+- **Where it runs:** in Docker, on any host. The dev instance runs on
+  localhost and is reached through a Cloudflare tunnel.
 
 ## Delivery, in slices
 
@@ -150,8 +151,7 @@ Each slice is its own branch and pull request into `dev`.
    doing, story logs with corrections, phase completion and the goals-met
    flag, **what's next** and **where are we**.
 4. **The MCP server.** The same operations as tools for agents.
-5. **Live, with the session hook.** Deployed to `nas` or `lab-hermes` behind
-   the tunnel, with a drop-in hook and a short "how this project tracks"
+5. **Live, with the session hook.** Reachable through the tunnel, with a drop-in hook and a short "how this project tracks"
    section any project can copy into its CLAUDE.md. **From here Backpack tracks
    itself** and this file stops being the tracker. The remaining slices go in
    as Backpack's own stories.
@@ -239,16 +239,13 @@ Each slice is its own branch and pull request into `dev`.
   reason.
 - **No sessions.** Every call carries its token and stands alone.
 
-**Needed before slice 5:**
+5. **Where it runs** (2026-10-10). This is dev: the instance runs on
+   localhost and is reached at `backpack.eldernerds.us` through the Cloudflare
+   tunnel, using the development tunnel token. The stack runs on any Docker
+   host; no particular host is part of the design.
 
-5. **Which host runs the shared instances:** `nas`, `lab-hermes`, or one each
-   for dev and production? And which hostname should the tunnel use? (No
-   domain has been created yet; the tunnel token exists.)
-
-**Needed before slice 6:**
-
-6. **Are ideas ranked,** or simply listed newest first? **Proposed:** newest
-   first. Ideas have no delivery order until they become stories.
+Questions about remaining work (for example, whether ideas are ranked) are
+logged on their stories in Backpack.
 
 ---
 
@@ -377,9 +374,13 @@ tools are added with slices 6 and 7.
 
 The committed file `.backpack.json` holds `{ "workspace": "my-app", "url":
 "https://backpack.<domain>" }`. The token comes from `BACKPACK_TOKEN` in the
-environment. The hook is `curl -fsS --max-time 3` against `/status` as plain
-text. On any failure it prints "Backpack unreachable — orientation skipped" and
-exits 0.
+environment. The hook, `deploy/hook.sh`, is `curl -fsS --max-time 3` against
+`/status` as plain text. Without `.backpack.json` it prints nothing; on any
+other failure it prints "Backpack unreachable — orientation skipped". It always
+exits 0. It reads the config with `sed`, so it needs no `jq`.
+`README.md` covers connecting a project: the MCP server (per person, or per
+team with `.mcp.json`, from an environment variable or a secrets manager), the
+hook, and the section to paste into a project's CLAUDE.md.
 
 ### Deployment
 
@@ -387,9 +388,12 @@ exits 0.
 - `backpack`;
 - `falkordb`, with its data volume;
 - `typesense`, with its data volume and the API key from the environment;
-- `cloudflared`, under a compose profile so it is off on localhost.
+- `cloudflared` (`cloudflare/cloudflared:2026.9.3`), under the `tunnel`
+  profile: `make up` leaves it off, `make tunnel` starts it with
+  `CLOUDFLARE_TOKEN`. The tunnel is token-managed; its public hostname routes
+  to `http://backpack:8780` in the Cloudflare dashboard.
 
-Only the tunnel reaches `backpack`. FalkorDB and Typesense are on the internal
+Only the tunnel reaches `backpack` from outside. FalkorDB and Typesense are on the internal
 network only.
 
 ### Gates and CI (slice 1)

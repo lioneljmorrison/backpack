@@ -24,14 +24,15 @@ dependency of the code.
 
 Two ways in: an **MCP server** for AI agents and an **HTTP API** for a UI.
 **FalkorDB** is the store, with one graph per workspace. **Typesense** is a
-search index rebuilt from it. It runs in Docker: on localhost for development,
-and behind a Cloudflare tunnel on `nas` or `lab-hermes`. Every request is
-authenticated. `docs/PLAN.md` has the full design.
+search index rebuilt from it. It runs in Docker on any host. The dev instance
+runs on localhost and is reached at `backpack.eldernerds.us` through a
+Cloudflare tunnel. Every request is authenticated. `docs/PLAN.md` has the full
+design.
 
 ## Read this first, every session
 
-1. Read `docs/PLAN.md` — until Backpack can track itself, it is the tracker for
-   this repository: what is built, what is next, what is still undecided.
+1. The session starts with "where are we" from Backpack (see "How this project
+   tracks"). `docs/PLAN.md` is the design record: how the board works and why.
 2. Read `docs/ENGINEERING-STANDARD.md` — TDD, YAGNI, branch and delivery
    hygiene. It governs all work here.
 3. Check `git log --oneline -15` and `git status`.
@@ -59,6 +60,7 @@ standard or the API contract, stop and ask.
 
 ```bash
 make up                  # build and start backpack, FalkorDB and Typesense
+make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
 make gates               # gofmt, vet, tests against the local stack, build
 make token ACTOR=<name>  # issue a bearer token (shown once)
@@ -81,11 +83,33 @@ secrets.
 
 ## Memory and continuity
 
-- **Backpack's own status** lives in `docs/PLAN.md` until Backpack is deployed
-  (slice 5), then in Backpack itself.
+- **Backpack's own status** lives in Backpack itself, workspace `backpack`.
 - **Git history carries the "why."** Consequential decisions go in commit
   messages and pull request descriptions.
 - **Auto-memory carries preferences** and context not derivable from the repo.
+
+## How this project tracks
+
+Delivery is tracked in Backpack, workspace `backpack` (see `.backpack.json`),
+through the `backpack` MCP tools, added to Claude Code once per machine (see
+`README.md`). There is no tracking document, and tracking is never committed.
+
+- **Orientation.** The session starts with "where are we". Ask `whats_next`
+  for the next story and `get_story` for its detail. Don't guess the next task.
+- **Record each move as it happens**, with `set_status`:
+  - start work: `in_progress`, with the task branch;
+  - open the pull request: `in_review`, with its link;
+  - merged into `dev`: `merged`, with the merge commit;
+  - released when `dev` is merged into `main`.
+- **While in progress,** keep the story's activity current with
+  `update_story`: planning, building, testing, or waiting (and on what).
+- **Log as you go** with `log`: decisions with their reason, notable commits,
+  notes. Entries are never edited; fix a mistake with a `correction` that names
+  the entry it corrects.
+- **Stuck or no longer needed:** `on_hold` or `closed`, with a reason.
+- **New work** goes in with `add_story`, placed with `before` or `after`, and
+  its dependencies with `add_dependency`. Backpack refuses an order that breaks
+  a dependency; read its reason and place the story again.
 
 ## Branching
 

@@ -1,5 +1,7 @@
 # Backpack's stack. Locally: `make up`. Ports are bound to 127.0.0.1 only and
 # chosen to avoid the usual 6379/8108/8080, which other stacks often hold.
+# `make tunnel` also starts cloudflared, the only way in from outside; its
+# public hostname routes to http://backpack:8780 in the Cloudflare dashboard.
 name: backpack
 
 services:
@@ -46,6 +48,16 @@ services:
       - typesense-data:/data
     ports:
       - "127.0.0.1:18108:8108"
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    profiles: [tunnel]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TOKEN:-}
+    depends_on:
+      - backpack
     restart: unless-stopped
 
 volumes:
