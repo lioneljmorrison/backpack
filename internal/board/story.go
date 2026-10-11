@@ -46,13 +46,17 @@ type Position struct {
 	After  string `json:"after,omitempty"`
 }
 
-// NewStory is what AddStory needs. Phase 0 means the story has no phase.
+// NewStory is what AddStory needs. Phase 0 means the story has no phase. A
+// proposed story waits in Proposed, with the reasoning for its spot logged as
+// a decision, until a person moves it to the backlog.
 type NewStory struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Goal        string `json:"goal"`
 	Plan        string `json:"plan"`
 	Phase       int    `json:"phase"`
+	Proposed    bool   `json:"-"`
+	Reasoning   string `json:"-"`
 	Position
 }
 
@@ -84,8 +88,24 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (Story, error) {
 	if s.Before != "" && s.After != "" {
 		return Story{}, refuse(Invalid, "give before or after, not both")
 	}
-	if err := plainText(s.Title, s.Description, s.Goal, s.Plan); err != nil {
+	if s.Proposed && s.Reasoning == "" {
+		return Story{}, refuse(Invalid, "reasoning is required to propose a story")
+	}
+	if !s.Proposed && s.Reasoning != "" {
+		return Story{}, refuse(Invalid, "reasoning is given only when proposing a story")
+	}
+	if err := plainText(s.Title, s.Description, s.Goal, s.Plan, s.Reasoning); err != nil {
 		return Story{}, err
+	}
+	status, placed := Backlog, "Proposed at the bottom of the backlog"
+	switch {
+	case s.After != "":
+		placed = "Proposed after " + s.After
+	case s.Before != "":
+		placed = "Proposed before " + s.Before
+	}
+	if s.Proposed {
+		status = Proposed
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -102,20 +122,25 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (Story, error) {
 			OPTIONAL MATCH (anchor:Story {id: $anchor})
 			OPTIONAL MATCH (o:Story) WHERE ($lo = '' OR o.rank > $lo) AND ($hi = '' OR o.rank < $hi)
 			WITH w, p, anchor, count(o) AS between
-			WITH w, p, 'S-' + toString(w.next_story) AS id, CASE
+			WITH w, p, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
 				WHEN $phase <> 0 AND p IS NULL THEN 'phase'
 				WHEN between > 0 OR ($anchor <> '' AND (anchor IS NULL OR anchor.rank <> $anchorRank)) THEN 'gap'
 			END AS violation
 			FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 				SET w.next_story = w.next_story + 1
 				CREATE (s:Story {id: id, title: $title, description: $description, goal: $goal,
-					plan: $plan, rank: $rank, status: 'backlog', created_by: $actor, created_at: $now})
-				FOREACH (q IN CASE WHEN p IS NULL THEN [] ELSE [p] END | CREATE (q)-[:CONTAINS]->(s)))
+					plan: $plan, rank: $rank, status: $status, created_by: $actor, created_at: $now})
+				FOREACH (q IN CASE WHEN p IS NULL THEN [] ELSE [p] END | CREATE (q)-[:CONTAINS]->(s))
+				FOREACH (__ IN CASE WHEN $reasoning IS NULL THEN [] ELSE [1] END |
+					SET w.next_log = n + 1
+					CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n), at: $now, actor: $actor,
+						kind: 'decision', text: $placed, reason: $reasoning})))
 			RETURN violation, id`,
 			map[string]any{
 				"phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
 				"rank": Between(at.lo, at.hi), "title": s.Title, "description": s.Description,
-				"goal": s.Goal, "plan": s.Plan, "actor": actor, "now": now(),
+				"goal": s.Goal, "plan": s.Plan, "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
+				"actor": actor, "now": now(),
 			}, nil)
 		if err != nil {
 			return Story{}, fmt.Errorf("add story: %w", err)
