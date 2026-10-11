@@ -5,6 +5,8 @@ import "fmt"
 // AddDependency records that story id cannot be done until story on is
 // complete. The dependency must point to a story ranked above, in the same
 // or an earlier phase when both have one, and must not close a cycle.
+// Nothing depends on a closed story, and a closed or complete story gains
+// no dependencies.
 // Recording a dependency that already exists changes nothing.
 func (b *Board) AddDependency(ws, actor, id, on string) (Story, error) {
 	if id == on {
@@ -23,14 +25,16 @@ func (b *Board) AddDependency(ws, actor, id, on string) (Story, error) {
 		WITH d, t, dp, tp, CASE
 			WHEN t IS NULL THEN 'missing'
 			WHEN size([p = (d)-[:DEPENDS_ON]->(t) | p]) > 0 THEN 'exists'
+			WHEN t.status = 'closed' THEN 'closed'
+			WHEN d.status = 'closed' OR d.status IN $complete THEN 'finished'
 			WHEN dp IS NOT NULL AND tp IS NOT NULL AND tp.number > dp.number THEN 'phase'
 			WHEN size([p = (t)-[:DEPENDS_ON*]->(d) | p]) > 0 THEN 'cycle'
 			WHEN t.rank > d.rank THEN 'rank'
 		END AS violation
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 			CREATE (d)-[:DEPENDS_ON {created_by: $actor, created_at: $now}]->(t))
-		RETURN violation, dp.number AS dphase, tp.number AS tphase`,
-		map[string]any{"id": id, "on": on, "actor": actor, "now": now()}, nil)
+		RETURN violation, d.status AS dstatus, dp.number AS dphase, tp.number AS tphase`,
+		map[string]any{"id": id, "on": on, "actor": actor, "now": now(), "complete": complete}, nil)
 	if err != nil {
 		return Story{}, fmt.Errorf("add dependency: %w", err)
 	}
@@ -43,6 +47,10 @@ func (b *Board) AddDependency(ws, actor, id, on string) (Story, error) {
 		return story(g, id)
 	case "missing":
 		return Story{}, refuse(NotFound, "no story %q", on)
+	case "closed":
+		return Story{}, refuse(Conflict, "%s is closed; nothing can depend on it", on)
+	case "finished":
+		return Story{}, refuse(Conflict, "%s is %s and cannot gain a dependency", id, label(str(r, "dstatus")))
 	case "phase":
 		return Story{}, refuse(Conflict, "%s is in phase %d and cannot depend on %s in the later phase %d",
 			id, num(r, "dphase"), on, num(r, "tphase"))

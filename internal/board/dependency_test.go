@@ -173,3 +173,25 @@ func TestRemovingADependencyThatDoesNotExistIsNotFound(t *testing.T) {
 	b := threeStories(t)
 	wantKind(t, b.RemoveDependency("demo", actor, "S-2", "S-1"), board.NotFound)
 }
+
+func TestNothingCanDependOnAClosedStory(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "A"})
+	addStory(t, b, board.NewStory{Title: "B"})
+	setStatus(t, b, "S-1", board.StatusChange{To: "closed", Reason: "dropped"})
+	_, err := b.AddDependency("demo", actor, "S-2", "S-1")
+	wantKind(t, err, board.Conflict)
+}
+
+func TestFinishedAndClosedStoriesCannotGainDependencies(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "A"})
+	addStory(t, b, board.NewStory{Title: "B"})
+	addStory(t, b, board.NewStory{Title: "C"})
+	walk(t, b, "S-2", "in_progress", "in_review", "merged")
+	setStatus(t, b, "S-3", board.StatusChange{To: "closed", Reason: "dropped"})
+	for _, id := range []string{"S-2", "S-3"} {
+		_, err := b.AddDependency("demo", actor, id, "S-1")
+		wantKind(t, err, board.Conflict)
+	}
+}

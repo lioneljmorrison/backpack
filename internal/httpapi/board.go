@@ -26,6 +26,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}", a.getStory)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/stories/{id}", a.updateStory)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/move", a.moveStory)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/status", a.setStatus)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/dependencies", a.addDependency)
 	mux.HandleFunc("DELETE /v1/workspaces/{ws}/stories/{id}/dependencies/{on}", a.removeDependency)
 }
@@ -39,14 +40,16 @@ func (a boardAPI) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 
 func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Slug    string `json:"slug"`
-		Name    string `json:"name"`
-		RepoURL string `json:"repo_url"`
+		Slug            string `json:"slug"`
+		Name            string `json:"name"`
+		RepoURL         string `json:"repo_url"`
+		HasReleaseStage bool   `json:"has_release_stage"`
 	}
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL})
+	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL,
+		HasReleaseStage: in.HasReleaseStage})
 	respond(w, http.StatusCreated, ws, err)
 }
 
@@ -123,6 +126,15 @@ func (a boardAPI) moveStory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, err := a.b.MoveStory(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
+	respond(w, http.StatusOK, s, err)
+}
+
+func (a boardAPI) setStatus(w http.ResponseWriter, r *http.Request) {
+	var in board.StatusChange
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	s, err := a.b.SetStatus(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
 	respond(w, http.StatusOK, s, err)
 }
 

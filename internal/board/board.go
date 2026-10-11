@@ -18,6 +18,7 @@ var migrations = []string{
 	"CREATE INDEX FOR (s:Story) ON (s.id)",
 	"CREATE INDEX FOR (p:Phase) ON (p.number)",
 	"CREATE INDEX FOR (g:Goal) ON (g.id)",
+	"CREATE INDEX FOR (l:LogEntry) ON (l.id)",
 }
 
 // Kind says why the board refused a request.
@@ -116,6 +117,12 @@ func num(r *falkordb.Record, key string) int {
 	v, _ := r.Get(key)
 	n, _ := v.(int64)
 	return int(n)
+}
+
+func flag(r *falkordb.Record, key string) bool {
+	v, _ := r.Get(key)
+	b, _ := v.(bool)
+	return b
 }
 
 func strs(r *falkordb.Record, key string) []string {

@@ -9,21 +9,30 @@ import (
 
 // Story is one deliverable piece of work.
 type Story struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Goal        string   `json:"goal"`
-	Plan        string   `json:"plan"`
-	Phase       int      `json:"phase,omitempty"`
-	Status      string   `json:"status"`
-	BlockedBy   []string `json:"blocked_by"`
-	Blocks      []string `json:"blocks"`
-	CreatedBy   string   `json:"created_by"`
-	CreatedAt   string   `json:"created_at"`
-	MovedBy     string   `json:"moved_by,omitempty"`
-	MovedAt     string   `json:"moved_at,omitempty"`
-	UpdatedBy   string   `json:"updated_by,omitempty"`
-	UpdatedAt   string   `json:"updated_at,omitempty"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Goal        string `json:"goal"`
+	Plan        string `json:"plan"`
+	Phase       int    `json:"phase,omitempty"`
+	Status      string `json:"status"`
+	// Blocked is worked out, never set: a dependency is not yet complete.
+	Blocked    bool     `json:"blocked"`
+	BlockedBy  []string `json:"blocked_by"`
+	Blocks     []string `json:"blocks"`
+	HeldFrom   string   `json:"held_from,omitempty"`
+	HoldReason string   `json:"hold_reason,omitempty"`
+	Activity   string   `json:"activity,omitempty"`
+	WaitingOn  string   `json:"waiting_on,omitempty"`
+	Branch     string   `json:"branch,omitempty"`
+	PRURL      string   `json:"pr_url,omitempty"`
+	Workaround string   `json:"workaround,omitempty"`
+	CreatedBy  string   `json:"created_by"`
+	CreatedAt  string   `json:"created_at"`
+	MovedBy    string   `json:"moved_by,omitempty"`
+	MovedAt    string   `json:"moved_at,omitempty"`
+	UpdatedBy  string   `json:"updated_by,omitempty"`
+	UpdatedAt  string   `json:"updated_at,omitempty"`
 }
 
 // Position places a story directly before or directly after another one.
@@ -272,16 +281,18 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		MATCH (s:Story) WHERE $id = '' OR s.id = $id
 		OPTIONAL MATCH (p:Phase)-[:CONTAINS]->(s)
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story)
-		WITH s, p, collect(t.id) AS blocked_by
+		WITH s, p, collect(t.id) AS blocked_by, sum(CASE WHEN t.status IN $complete THEN 0 ELSE 1 END) AS waiting
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
-		WITH s, p, blocked_by, collect(d.id) AS blocks
+		WITH s, p, blocked_by, waiting, collect(d.id) AS blocks
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks,
+			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks, waiting > 0 AS blocked,
+			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
+			s.waiting_on AS waiting_on, s.branch AS branch, s.pr_url AS pr_url, s.workaround AS workaround,
 			s.created_by AS created_by, s.created_at AS created_at,
 			s.moved_by AS moved_by, s.moved_at AS moved_at,
 			s.updated_by AS updated_by, s.updated_at AS updated_at
 		ORDER BY s.rank`,
-		map[string]any{"id": id}, nil)
+		map[string]any{"id": id, "complete": complete}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read stories: %w", err)
 	}
@@ -291,8 +302,11 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
 			Goal: str(r, "goal"), Plan: str(r, "plan"), Status: str(r, "status"), Phase: num(r, "phase"),
-			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
-			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
+			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")), Blocked: flag(r, "blocked"),
+			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
+			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), PRURL: str(r, "pr_url"),
+			Workaround: str(r, "workaround"),
+			CreatedBy:  str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"),
 		})

@@ -96,3 +96,16 @@ func TestStartingUpMigratesEveryRegisteredWorkspace(t *testing.T) {
 		t.Fatal("the workspace graph was not migrated at start-up")
 	}
 }
+
+func TestAWorkspaceHasNoReleaseStageUnlessCreatedWithOne(t *testing.T) {
+	b := newBoard(t)
+	for _, w := range []board.Workspace{{Slug: "plain", Name: "Plain"}, {Slug: "staged", Name: "Staged", HasReleaseStage: true}} {
+		if _, err := b.CreateWorkspace(actor, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := b.Workspaces()
+	if got[0].Slug != "plain" || got[0].HasReleaseStage || !got[1].HasReleaseStage {
+		t.Fatalf("listed %+v", got)
+	}
+}

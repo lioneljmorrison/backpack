@@ -63,6 +63,14 @@ func TestCreatingAWorkspaceRecordsTheTokensActor(t *testing.T) {
 	}
 }
 
+func TestAWorkspaceCanBeCreatedWithAReleaseStage(t *testing.T) {
+	h := newAPI(t)
+	ws := want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "demo", "name": "Demo", "has_release_stage": true}`), http.StatusCreated)
+	if ws["has_release_stage"] != true {
+		t.Fatalf("created %v", ws)
+	}
+}
+
 func TestMalformedBodiesAreBadRequests(t *testing.T) {
 	h := withDemo(t)
 	for _, c := range []struct{ method, path, body string }{
@@ -147,4 +155,23 @@ func TestDependenciesOverHTTP(t *testing.T) {
 	}
 	want(t, call(t, h, "DELETE", "/v1/workspaces/demo/stories/S-2/dependencies/S-1", ""), http.StatusNoContent)
 	want(t, call(t, h, "DELETE", "/v1/workspaces/demo/stories/S-2/dependencies/S-1", ""), http.StatusNotFound)
+}
+
+func TestStatusChangesOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "B"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-2/dependencies", `{"on": "S-1"}`), http.StatusOK)
+
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "in_progress", "branch": "feature/a"}`), http.StatusOK)
+	if s["status"] != "in_progress" || s["branch"] != "feature/a" || s["activity"] != "planning" {
+		t.Fatalf("started %v", s)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-2/status", `{"to": "in_progress"}`), http.StatusConflict)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "closed"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-9/status", `{"to": "in_progress"}`), http.StatusNotFound)
+	s = want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-2", ""), http.StatusOK)
+	if s["blocked"] != true {
+		t.Fatalf("S-2 %v", s)
+	}
 }
