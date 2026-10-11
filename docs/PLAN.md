@@ -418,6 +418,7 @@ GET  /v1/workspaces/{ws}/stories/{id}/log            POST
 GET  /v1/workspaces/{ws}/ideas                       POST
 GET  /v1/workspaces/{ws}/ideas/{id}                  PATCH; POST /move, /refine, /drop
 GET  /v1/workspaces/{ws}/search?q=                   stories, ideas and phases by keyword and meaning
+POST /v1/workspaces/{ws}/batch                       1–100 POST/PATCH/DELETE requests, each sent to its own route
 ```
 
 Auth: `Authorization: Bearer <token>`. Tokens (`bp_` + 32 random bytes) are
@@ -440,6 +441,17 @@ Ideas add `add_idea` (open at once, with optional `context`),
 `refine_idea` and `drop_idea`. Search adds `search`. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.
+
+`batch` makes many board changes in one call: a list of `{tool, args}`,
+1 to 100, each naming a tool that changes the board, with that tool's
+arguments minus `workspace`, which the batch gives once. Each action runs
+through its tool's own handler, so it is answered exactly as if called alone,
+and runs as its own query. A failed action is answered with its reason and
+doesn't stop the rest; nothing is undone. An action can name only items that
+already exist, not one an earlier action in the batch adds. Reads can't be
+batched. `POST /v1/workspaces/{ws}/batch` does the same over HTTP with
+requests (`method`, a `path` relative to the workspace, `body`), answering
+each with its route's own status and body.
 
 ### Per-project config and hook (slice 5)
 
