@@ -1,10 +1,29 @@
 {{define "content"}}
+{{$ws := .WS.Slug}}
 <h1>Ideas</h1>
+<form class="panel" method="post" action="/w/{{$ws}}/ideas">
+  <h2>New idea</h2>
+  <input name="title" required placeholder="The idea, in a line" aria-label="Title">
+  <textarea name="context" rows="3" placeholder="Context: notes, links, background" aria-label="Context"></textarea>
+  <button type="submit">Add idea</button>
+</form>
 {{range .Data}}
 <article class="idea" id="{{.ID}}">
   <h2><span class="id">{{.ID}}</span> {{.Title}} {{if ne .State "open"}}<span class="tag">{{label .State}}</span>{{end}}</h2>
   {{with .Context}}<p class="text">{{.}}</p>{{end}}
   <p class="muted">Added by {{.CreatedBy}} · {{when .CreatedAt}}</p>
+  <details>
+    <summary>Refine or drop</summary>
+    <form class="inline" method="post" action="/w/{{$ws}}/ideas/{{.ID}}/refine">
+      <input name="stories" placeholder="Stories it became: S-4, S-5" aria-label="Stories it became">
+      <input name="phase" inputmode="numeric" placeholder="or phase number" aria-label="Phase it became">
+      <button type="submit">Refine</button>
+    </form>
+    <form class="inline" method="post" action="/w/{{$ws}}/ideas/{{.ID}}/drop">
+      <input name="reason" required placeholder="Why it became nothing" aria-label="Reason to drop">
+      <button type="submit" class="secondary">Drop</button>
+    </form>
+  </details>
 </article>
 {{else}}
 <p class="muted">No open ideas.</p>

@@ -38,6 +38,22 @@ var moves = []string{
 	Backlog + ">" + Closed, InProgress + ">" + Closed, InReview + ">" + Closed, OnHold + ">" + Closed,
 }
 
+// Moves lists the statuses s can change to, in board order, for a workspace
+// with or without a release stage. SetStatus still checks the rest.
+func Moves(s Story, release bool) []string {
+	var to []string
+	for _, st := range statuses {
+		ok := slices.Contains(moves, s.Status+">"+st) || (s.Status == OnHold && st == s.HeldFrom)
+		if s.Status == Merged && (st == Released && !release || st == Deployed && release) {
+			ok = false
+		}
+		if ok {
+			to = append(to, st)
+		}
+	}
+	return to
+}
+
 // StatusChange moves a story to another column. Branch is given only when
 // starting, PRURL when opening review, Commit when merging, Workaround when
 // starting a blocked story, and Reason when holding or closing.

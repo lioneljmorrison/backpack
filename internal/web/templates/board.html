@@ -1,4 +1,5 @@
 {{define "content"}}
+<script src="/static/board.js" defer></script>
 {{$ws := .WS.Slug}}
 {{with .Data}}
 <section class="where" aria-label="Where are we">
@@ -21,11 +22,28 @@
   <div><div class="muted">Waiting for approval</div><strong>{{len .Where.Proposed}}</strong></div>
 </section>
 
+{{with .Where.Proposed}}
+<form class="approve" method="post" action="/w/{{$ws}}/approve">
+  <h2>Waiting for approval</h2>
+  {{range .}}
+  <label class="row"><input type="checkbox" name="id" value="{{.ID}}" checked> <span class="id">{{.ID}}</span> {{.Title}}
+    <a href="/w/{{$ws}}/stories/{{.ID}}">details</a></label>
+  {{end}}
+  <div class="actions">
+    <button type="submit" name="decision" value="approve">Approve selected</button>
+    <input name="reason" placeholder="Reason, to decline" aria-label="Reason to decline">
+    <button type="submit" name="decision" value="decline" class="secondary">Decline selected</button>
+  </div>
+</form>
+{{end}}
+
+<div class="toolbar"><a class="button" href="/w/{{$ws}}/stories/new">New story</a></div>
+
 <div class="board">
   {{range .Columns}}
   <section class="column" aria-label="{{label .Status}}">
-    <h2>{{label .Status}} <span class="count">{{len .Stories}}</span></h2>
-    {{range .Stories}}{{template "card" (cardOf $ws .)}}{{else}}<p class="empty">Nothing here</p>{{end}}
+    <h2>{{label .Status}} <span class="count">{{len .Cards}}</span></h2>
+    {{range .Cards}}{{template "card" .}}{{else}}<p class="empty">Nothing here</p>{{end}}
   </section>
   {{end}}
 </div>

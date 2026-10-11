@@ -35,8 +35,13 @@ func (s *site) workspace(slug string) (*board.Workspace, error) {
 type boardData struct {
 	Where   board.Where
 	Next    *board.Story
-	Columns []board.Column
+	Columns []column
 	Closed  []board.Story
+}
+
+type column struct {
+	Status string
+	Cards  []card
 }
 
 func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
@@ -46,30 +51,46 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var d boardData
+	var cols []board.Column
 	if d.Where, err = s.board.Where(ws.Slug); err == nil {
 		if d.Next, err = s.board.Next(ws.Slug); err == nil {
-			d.Columns, err = s.board.Board(ws.Slug)
+			cols, err = s.board.Board(ws.Slug)
 		}
 	}
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	// Closed stories are history, not work: they go below the board.
-	open := d.Columns[:0]
-	for _, c := range d.Columns {
+	for _, c := range cols {
+		// Closed stories are history, not work: they go below the board.
 		if c.Status == board.Closed {
 			d.Closed = c.Stories
 			continue
 		}
-		open = append(open, c)
+		col := column{Status: c.Status, Cards: make([]card, len(c.Stories))}
+		for i, st := range c.Stories {
+			col.Cards[i] = cardOf(ws.Slug, st)
+			// The backlog is where order is chosen; a card moves past its
+			// neighbours there.
+			if c.Status == board.Backlog {
+				col.Cards[i].Movable = true
+				if i > 0 {
+					col.Cards[i].Up = c.Stories[i-1].ID
+				}
+				if i < len(c.Stories)-1 {
+					col.Cards[i].Down = c.Stories[i+1].ID
+				}
+			}
+		}
+		d.Columns = append(d.Columns, col)
 	}
-	d.Columns = open
 	s.render(w, r, http.StatusOK, "board", page{Title: ws.Name, WS: ws, Nav: "board", Data: d})
 }
 
 type storyData struct {
 	Story board.Story
+	// Moves are the statuses the story can change to.
+	Moves []string
 	Log   []board.LogEntry
 	// Titles names every story in the workspace, for its dependencies.
 	Titles map[string]string
@@ -92,6 +113,7 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	d.Moves = board.Moves(d.Story, ws.HasReleaseStage)
 	d.Titles = make(map[string]string, len(all))
 	for _, st := range all {
 		d.Titles[st.ID] = st.Title
