@@ -112,7 +112,7 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (Story, error) {
 		return Story{}, err
 	}
 	for range placeAttempts {
-		at, err := findGap(g, s.Position, "")
+		at, err := findGap(g, rankedStory, s.Position, "")
 		if err != nil {
 			return Story{}, err
 		}
@@ -174,7 +174,7 @@ func (b *Board) MoveStory(ws, actor, id string, to Position) (Story, error) {
 		return Story{}, err
 	}
 	for range placeAttempts {
-		at, err := findGap(g, to, id)
+		at, err := findGap(g, rankedStory, to, id)
 		if err != nil {
 			return Story{}, err
 		}
@@ -218,35 +218,45 @@ func (b *Board) MoveStory(ws, actor, id string, to Position) (Story, error) {
 	return Story{}, refuse(Conflict, "the backlog kept changing while %s was being moved; try again", id)
 }
 
-// gap is where a story is about to go: strictly between the ranks lo and hi
+// gap is where a story or idea is about to go: strictly between the ranks lo and hi
 // ("" is an open end), next to the anchor story when one was named.
 type gap struct {
 	lo, hi, anchor, anchorRank string
 }
 
-// findGap reads the ranks around a position. moving is the story being
-// moved, which is not its own neighbour; "" for a new story.
-func findGap(g *falkordb.Graph, to Position, moving string) (gap, error) {
+// ranked is a kind of node kept in its own order: stories in the backlog,
+// ideas in the ideas list. Its label goes into the query text, so it is only
+// ever one of these two, never caller input.
+type ranked struct{ label, noun string }
+
+var (
+	rankedStory = ranked{"Story", "story"}
+	rankedIdea  = ranked{"Idea", "idea"}
+)
+
+// findGap reads the ranks around a position. moving is the node being
+// moved, which is not its own neighbour; "" for a new one.
+func findGap(g *falkordb.Graph, k ranked, to Position, moving string) (gap, error) {
 	var q string
 	at := gap{anchor: to.Before + to.After}
 	switch {
 	case to.After != "":
-		q = `MATCH (a:Story {id: $anchor})
-			OPTIONAL MATCH (n:Story) WHERE n.rank > a.rank AND n.id <> $moving
+		q = `MATCH (a:` + k.label + ` {id: $anchor})
+			OPTIONAL MATCH (n:` + k.label + `) WHERE n.rank > a.rank AND n.id <> $moving
 			RETURN a.rank AS anchor, a.rank AS lo, min(n.rank) AS hi`
 	case to.Before != "":
-		q = `MATCH (a:Story {id: $anchor})
-			OPTIONAL MATCH (n:Story) WHERE n.rank < a.rank AND n.id <> $moving
+		q = `MATCH (a:` + k.label + ` {id: $anchor})
+			OPTIONAL MATCH (n:` + k.label + `) WHERE n.rank < a.rank AND n.id <> $moving
 			RETURN a.rank AS anchor, max(n.rank) AS lo, a.rank AS hi`
 	default:
-		q = `OPTIONAL MATCH (n:Story) WHERE n.id <> $moving RETURN max(n.rank) AS lo`
+		q = `OPTIONAL MATCH (n:` + k.label + `) WHERE n.id <> $moving RETURN max(n.rank) AS lo`
 	}
 	res, err := g.ROQuery(q, map[string]any{"anchor": at.anchor, "moving": moving}, nil)
 	if err != nil {
-		return gap{}, fmt.Errorf("read backlog: %w", err)
+		return gap{}, fmt.Errorf("read %s order: %w", k.noun, err)
 	}
 	if !res.Next() {
-		return gap{}, refuse(NotFound, "no story %q", at.anchor)
+		return gap{}, refuse(NotFound, "no %s %q", k.noun, at.anchor)
 	}
 	r := res.Record()
 	at.lo, at.hi, at.anchorRank = str(r, "lo"), str(r, "hi"), str(r, "anchor")
