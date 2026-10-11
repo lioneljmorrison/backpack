@@ -1,5 +1,12 @@
 # Backpack
 
+[![GitHub release](https://img.shields.io/github/v/release/lioneljmorrison/backpack?style=flat-square)](https://github.com/lioneljmorrison/backpack/releases/latest)
+[![Tests](https://img.shields.io/github/actions/workflow/status/lioneljmorrison/backpack/ci.yml?branch=main&style=flat-square&label=tests)](https://github.com/lioneljmorrison/backpack/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/lioneljmorrison/backpack/codeql.yml?branch=main&style=flat-square&label=CodeQL)](https://github.com/lioneljmorrison/backpack/security/code-scanning)
+[![Coverage threshold](https://img.shields.io/badge/coverage-%E2%89%A570%25-brightgreen?style=flat-square)](https://github.com/lioneljmorrison/backpack/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/lioneljmorrison/backpack?style=flat-square)](LICENSE)
+[![Go](https://img.shields.io/github/go-mod/go-version/lioneljmorrison/backpack?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+
 A Kanban board for agentic projects, built as a Go service.
 
 Agent-driven projects often track progress in a document committed beside the

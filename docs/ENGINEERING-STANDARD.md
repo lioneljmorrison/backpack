@@ -171,6 +171,7 @@ Do not claim a task is tested when a required check was skipped or failed.
 | `gofmt -l .` | print nothing |
 | `go vet ./...` | pass |
 | `go test -race ./...` | pass |
+| total test coverage | at least 70% |
 | `go build ./...` | pass |
 
 ### 7.4 Commit boundaries
