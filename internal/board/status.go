@@ -83,7 +83,8 @@ func (c StatusChange) check() error {
 // SetStatus moves a story to another column and logs the change. A blocked
 // story starts only with a workaround, which is logged as a decision, and is
 // never merged. A story is closed only when nothing depends on it.
-func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (Story, error) {
+func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err error) {
+	defer func() { b.changed(err, Change{ws, KindStory, id}) }()
 	if err := c.check(); err != nil {
 		return Story{}, err
 	}

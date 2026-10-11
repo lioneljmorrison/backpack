@@ -46,9 +46,10 @@ func refuse(k Kind, format string, args ...any) error {
 // Board is every workspace: a registry in the system graph, and one graph
 // per workspace named by its slug after a fixed prefix.
 type Board struct {
-	db     *falkordb.FalkorDB
-	system *falkordb.Graph
-	prefix string
+	db       *falkordb.FalkorDB
+	system   *falkordb.Graph
+	prefix   string
+	onChange func(Change)
 }
 
 // New opens the board and brings every registered workspace's graph up to

@@ -56,7 +56,8 @@ type Refinement struct {
 }
 
 // AddIdea puts an idea into the ideas list at the given position.
-func (b *Board) AddIdea(ws, actor string, i NewIdea) (Idea, error) {
+func (b *Board) AddIdea(ws, actor string, i NewIdea) (out Idea, err error) {
+	defer func() { b.changed(err, Change{ws, KindIdea, out.ID}) }()
 	if i.Title == "" {
 		return Idea{}, refuse(Invalid, "title is required")
 	}
@@ -165,7 +166,8 @@ func (b *Board) MoveIdea(ws, actor, id string, to Position) (Idea, error) {
 }
 
 // UpdateIdea edits an idea's title and notes while it is not closed.
-func (b *Board) UpdateIdea(ws, actor, id string, patch IdeaPatch) (Idea, error) {
+func (b *Board) UpdateIdea(ws, actor, id string, patch IdeaPatch) (_ Idea, err error) {
+	defer func() { b.changed(err, Change{ws, KindIdea, id}) }()
 	if patch.Title != nil && *patch.Title == "" {
 		return Idea{}, refuse(Invalid, "title cannot be empty")
 	}
@@ -180,13 +182,15 @@ func (b *Board) UpdateIdea(ws, actor, id string, patch IdeaPatch) (Idea, error) 
 }
 
 // ApproveIdea accepts a suggested idea at its current spot.
-func (b *Board) ApproveIdea(ws, actor, id string) (Idea, error) {
+func (b *Board) ApproveIdea(ws, actor, id string) (_ Idea, err error) {
+	defer func() { b.changed(err, Change{ws, KindIdea, id}) }()
 	return b.changeIdea(ws, id, `SET i.state = 'open', i.approved_by = $actor, i.approved_at = $now`,
 		map[string]any{"actor": actor, "now": now()}, "proposed")
 }
 
 // DropIdea closes an idea that became nothing, with the reason.
-func (b *Board) DropIdea(ws, actor, id, reason string) (Idea, error) {
+func (b *Board) DropIdea(ws, actor, id, reason string) (_ Idea, err error) {
+	defer func() { b.changed(err, Change{ws, KindIdea, id}) }()
 	if reason == "" {
 		return Idea{}, refuse(Invalid, "a reason is required to drop an idea")
 	}
@@ -224,7 +228,8 @@ func (b *Board) changeIdea(ws, id, set string, params map[string]any, from ...st
 
 // RefineIdea closes an open idea, linking it to the stories and phase it
 // became. They are created first, the usual way; none may be closed.
-func (b *Board) RefineIdea(ws, actor, id string, to Refinement) (Idea, error) {
+func (b *Board) RefineIdea(ws, actor, id string, to Refinement) (_ Idea, err error) {
+	defer func() { b.changed(err, Change{ws, KindIdea, id}) }()
 	stories := slices.Compact(slices.Sorted(slices.Values(to.Stories)))
 	if len(stories) == 0 && to.Phase == 0 {
 		return Idea{}, refuse(Invalid, "name the stories or the phase the idea became")

@@ -24,7 +24,8 @@ var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 // cannot be one query: the workspace's own graph is prepared first and the
 // registry entry, written last, is what makes the workspace exist. A create
 // interrupted between the two is safe to repeat.
-func (b *Board) CreateWorkspace(actor string, w Workspace) (Workspace, error) {
+func (b *Board) CreateWorkspace(actor string, w Workspace) (_ Workspace, err error) {
+	defer func() { b.changed(err, Change{Workspace: w.Slug, Kind: KindWorkspace}) }()
 	if len(w.Slug) > 64 || !slugPattern.MatchString(w.Slug) {
 		return Workspace{}, refuse(Invalid, "slug must be 1-64 lowercase letters, digits and single hyphens")
 	}
