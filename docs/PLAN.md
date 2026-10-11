@@ -12,7 +12,7 @@ tracker.
 | Slice | State |
 |---|---|
 | 1. The empty service | Merged (PR #3) |
-| 2. The board | In review |
+| 2. The board | In review (PR #4) |
 | 3–7 | Not started |
 
 ---
