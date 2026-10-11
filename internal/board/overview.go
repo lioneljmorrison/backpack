@@ -40,8 +40,6 @@ type Where struct {
 	OnHold     []Story `json:"on_hold"`
 	// Next is the top of the backlog, blocked stories included.
 	Next []Story `json:"next"`
-	// IdeasProposed is the ideas waiting for a person to approve them.
-	IdeasProposed []Idea `json:"ideas_proposed"`
 }
 
 // Where reads the current phase, the work under way and what comes next.
@@ -58,11 +56,7 @@ func (b *Board) Where(ws string) (Where, error) {
 	if err != nil {
 		return Where{}, err
 	}
-	is, err := ideas(g, "")
-	if err != nil {
-		return Where{}, err
-	}
-	w := Where{IdeasProposed: []Idea{}, Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}}
+	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}}
 	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete }); i >= 0 {
 		w.Phase = &ps[i]
 	}
@@ -82,17 +76,12 @@ func (b *Board) Where(ws string) (Where, error) {
 			}
 		}
 	}
-	for _, i := range is {
-		if i.State == "proposed" {
-			w.IdeasProposed = append(w.IdeasProposed, i)
-		}
-	}
 	return w, nil
 }
 
 // Text is "where are we" as a few lines for a session hook.
 func (w Where) Text() string {
-	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next)+len(w.IdeasProposed) == 0 {
+	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next) == 0 {
 		return "Nothing in progress, in review or in the backlog.\n"
 	}
 	var b strings.Builder
@@ -142,12 +131,6 @@ func (w Where) Text() string {
 	})
 	section("Next", w.Next, none)
 	section("Waiting for approval", w.Proposed, none)
-	if len(w.IdeasProposed) > 0 {
-		b.WriteString("Ideas waiting for approval:\n")
-		for _, i := range w.IdeasProposed {
-			fmt.Fprintf(&b, "  %s %s\n", i.ID, i.Title)
-		}
-	}
 	return b.String()
 }
 

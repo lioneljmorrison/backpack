@@ -89,19 +89,6 @@ func TestEverySearchableWriteReportsWhatItChanged(t *testing.T) {
 	}
 }
 
-func TestApprovingASuggestedIdeaReportsIt(t *testing.T) {
-	b := newWorkspace(t)
-	suggestIdea(t, b, board.NewIdea{Title: "Rough"})
-	got := recorder(b)
-	if _, err := b.ApproveIdea("demo", actor, "I-1"); err != nil {
-		t.Fatal(err)
-	}
-	want := board.Change{Workspace: "demo", Kind: board.KindIdea, ID: "I-1"}
-	if !slices.Equal(*got, []board.Change{want}) {
-		t.Fatalf("reported %+v, want %+v", *got, want)
-	}
-}
-
 func TestCreatingAWorkspaceReportsIt(t *testing.T) {
 	b := newBoard(t)
 	got := recorder(b)

@@ -269,18 +269,23 @@ Each slice is its own branch and pull request into `dev`.
 - **Their own order.** Ideas are ranked like stories, in a list of their
   own; stories and ideas never share an order, and what's next never reads
   ideas. The ranking code is shared, keyed by the node label.
-- **Suggest, then approve.** `add_idea` over the MCP adds the idea as
-  `proposed`, with the reasoning for its spot kept on the idea. A person
-  approves it (`open`), moving it first to pick another spot, or drops it.
-  `POST /ideas` over HTTP adds it as `open`. Where are we lists ideas
-  waiting for approval.
-- **Worked on over time.** Title and notes can be edited, and the idea
+- **No approval, but context.** Every idea goes in `open`, over the MCP or
+  HTTP alike. Approval gates the backlog, so only stories need it; an idea
+  is not work yet. Instead the idea carries **context**: anything that helps
+  understand it and turn it into work (notes, links, documents,
+  background). It is optional, but `add_idea` encourages it because an idea
+  without context is only as good as its title, and `refine_idea` tells the
+  agent to build the stories or phase from it. Where are we has no ideas
+  section. (An earlier design proposed agents' ideas with a reasoning for
+  their spot; migration 6 folded that reasoning and the old notes into
+  context.)
+- **Worked on over time.** Title and context can be edited, and the idea
   moved, until it is closed.
 - **Refine links, it doesn't create.** The stories and phase are added the
   usual way; refining an open idea links it to them with `BECAME` and closes
   it, in one query, refused whole if a story is missing or closed or the
   phase is missing. Dropping closes it with a reason. Closed is final.
-- **No idea log.** The reasoning lives on the idea; nothing yet needs more.
+- **No idea log.** The context lives on the idea; nothing yet needs more.
 
 **Slice 7 details, search** (settled 2026-10-11, S-3):
 - **Hybrid, with a local model.** Keywords and meaning together. Meaning
@@ -289,9 +294,9 @@ Each slice is its own branch and pull request into `dev`.
   once per Typesense volume.
 - **What is indexed.** One entry per story, idea and phase, in one collection
   per workspace. Meaning reads the title and summary (a story's description
-  and goal, an idea's notes, a phase's description and goals); keywords also
-  read the detail (a story's plan and log text, an idea's reasoning and drop
-  reason). Closed stories and dropped ideas stay in, with their state.
+  and goal, an idea's context, a phase's description and goals); keywords also
+  read the detail (a story's plan and log text, an idea's drop reason). Closed stories and dropped ideas stay in, with
+  their state.
 - **Results.** Up to ten, best first: kind, id, title and state. A match by
   meaning further than a cosine distance of 0.75 is left out, measured on
   invented fixtures; a keyword match always stays.
@@ -342,7 +347,7 @@ the data volume. Backup copies the RDB file off the host.
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
 | `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround` |
-| `Idea` | `id` (`I-n`), `title`, `notes`, `rank`, `state` (`proposed`/`open`/`closed`), `reasoning`, `drop_reason`, `created_by`, `created_at`, `approved_by`, `approved_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
+| `Idea` | `id` (`I-n`), `title`, `context`, `rank`, `state` (`open`/`closed`), `drop_reason`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
 | `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `from`, `to` |
 
 | Edge | Meaning |
@@ -411,7 +416,7 @@ POST /v1/workspaces/{ws}/stories/{id}/status         to (+ branch / pr_url / com
 POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
 GET  /v1/workspaces/{ws}/stories/{id}/log            POST
 GET  /v1/workspaces/{ws}/ideas                       POST
-GET  /v1/workspaces/{ws}/ideas/{id}                  PATCH; POST /move, /approve, /refine, /drop
+GET  /v1/workspaces/{ws}/ideas/{id}                  PATCH; POST /move, /refine, /drop
 GET  /v1/workspaces/{ws}/search?q=                   stories, ideas and phases by keyword and meaning
 ```
 
@@ -430,8 +435,8 @@ as `/v1/`; the actor reaches each tool through the request context.
 `read_log`, `list_phases`, `add_phase`, `add_goal`, `mark_goal_met` (`met`
 true or false). Every tool takes `workspace`. Since slice 6, `add_story`
 proposes: the story goes in as `proposed`, with a required `reasoning`.
-Ideas add `add_idea` (which suggests, with a required `reasoning`),
-`list_ideas`, `get_idea`, `update_idea`, `move_idea`, `approve_idea`,
+Ideas add `add_idea` (open at once, with optional `context`),
+`list_ideas`, `get_idea`, `update_idea`, `move_idea`,
 `refine_idea` and `drop_idea`. Search adds `search`. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.

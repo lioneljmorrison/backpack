@@ -12,19 +12,16 @@ import (
 type Idea struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
-	Notes string `json:"notes"`
-	// State is proposed (waiting for a person to approve its spot), open or
-	// closed.
-	State string `json:"state"`
-	// Reasoning is why an agent suggested the idea's spot.
-	Reasoning     string   `json:"reasoning,omitempty"`
+	// Context is anything that helps understand the idea and turn it into
+	// work: notes, links, documents, background.
+	Context string `json:"context"`
+	// State is open or closed.
+	State         string   `json:"state"`
 	BecameStories []string `json:"became_stories"`
 	BecamePhase   int      `json:"became_phase,omitempty"`
 	DropReason    string   `json:"drop_reason,omitempty"`
 	CreatedBy     string   `json:"created_by"`
 	CreatedAt     string   `json:"created_at"`
-	ApprovedBy    string   `json:"approved_by,omitempty"`
-	ApprovedAt    string   `json:"approved_at,omitempty"`
 	MovedBy       string   `json:"moved_by,omitempty"`
 	MovedAt       string   `json:"moved_at,omitempty"`
 	UpdatedBy     string   `json:"updated_by,omitempty"`
@@ -33,20 +30,18 @@ type Idea struct {
 	ClosedAt      string   `json:"closed_at,omitempty"`
 }
 
-// NewIdea is what AddIdea needs. A proposed idea waits, with the reasoning
-// for its spot, until a person approves it.
+// NewIdea is what AddIdea needs. An idea is open from the start: only
+// stories wait for approval.
 type NewIdea struct {
-	Title     string `json:"title"`
-	Notes     string `json:"notes"`
-	Proposed  bool   `json:"-"`
-	Reasoning string `json:"-"`
+	Title   string `json:"title"`
+	Context string `json:"context"`
 	Position
 }
 
 // IdeaPatch changes the fields that are set and leaves the rest.
 type IdeaPatch struct {
-	Title *string `json:"title"`
-	Notes *string `json:"notes"`
+	Title   *string `json:"title"`
+	Context *string `json:"context"`
 }
 
 // Refinement is what an idea became: stories, a phase, or both.
@@ -64,18 +59,8 @@ func (b *Board) AddIdea(ws, actor string, i NewIdea) (out Idea, err error) {
 	if i.Before != "" && i.After != "" {
 		return Idea{}, refuse(Invalid, "give before or after, not both")
 	}
-	if i.Proposed && i.Reasoning == "" {
-		return Idea{}, refuse(Invalid, "reasoning is required to suggest an idea")
-	}
-	if !i.Proposed && i.Reasoning != "" {
-		return Idea{}, refuse(Invalid, "reasoning is given only when suggesting an idea")
-	}
-	if err := plainText(i.Title, i.Notes, i.Reasoning); err != nil {
+	if err := plainText(i.Title, i.Context); err != nil {
 		return Idea{}, err
-	}
-	state := "open"
-	if i.Proposed {
-		state = "proposed"
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -96,13 +81,13 @@ func (b *Board) AddIdea(ws, actor string, i NewIdea) (out Idea, err error) {
 			END AS violation
 			FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 				SET w.next_idea = n + 1
-				CREATE (:Idea {id: id, title: $title, notes: $notes, rank: $rank, state: $state,
-					reasoning: $reasoning, created_by: $actor, created_at: $now}))
+				CREATE (:Idea {id: id, title: $title, context: $context, rank: $rank, state: 'open',
+					created_by: $actor, created_at: $now}))
 			RETURN violation, id`,
 			map[string]any{
 				"anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
-				"rank": Between(at.lo, at.hi), "title": i.Title, "notes": i.Notes, "state": state,
-				"reasoning": orNull(i.Reasoning), "actor": actor, "now": now(),
+				"rank": Between(at.lo, at.hi), "title": i.Title, "context": i.Context,
+				"actor": actor, "now": now(),
 			}, nil)
 		if err != nil {
 			return Idea{}, fmt.Errorf("add idea: %w", err)
@@ -165,27 +150,20 @@ func (b *Board) MoveIdea(ws, actor, id string, to Position) (Idea, error) {
 	return Idea{}, refuse(Conflict, "the ideas list kept changing while %s was being moved; try again", id)
 }
 
-// UpdateIdea edits an idea's title and notes while it is not closed.
+// UpdateIdea edits an idea's title and context while it is not closed.
 func (b *Board) UpdateIdea(ws, actor, id string, patch IdeaPatch) (_ Idea, err error) {
 	defer func() { b.changed(err, Change{ws, KindIdea, id}) }()
 	if patch.Title != nil && *patch.Title == "" {
 		return Idea{}, refuse(Invalid, "title cannot be empty")
 	}
-	if err := plainText(deref(patch.Title), deref(patch.Notes)); err != nil {
+	if err := plainText(deref(patch.Title), deref(patch.Context)); err != nil {
 		return Idea{}, err
 	}
 	return b.changeIdea(ws, id, `
-		SET i.title = coalesce($title, i.title), i.notes = coalesce($notes, i.notes),
+		SET i.title = coalesce($title, i.title), i.context = coalesce($context, i.context),
 			i.updated_by = $actor, i.updated_at = $now`,
-		map[string]any{"title": opt(patch.Title), "notes": opt(patch.Notes), "actor": actor, "now": now()},
-		"open", "proposed")
-}
-
-// ApproveIdea accepts a suggested idea at its current spot.
-func (b *Board) ApproveIdea(ws, actor, id string) (_ Idea, err error) {
-	defer func() { b.changed(err, Change{ws, KindIdea, id}) }()
-	return b.changeIdea(ws, id, `SET i.state = 'open', i.approved_by = $actor, i.approved_at = $now`,
-		map[string]any{"actor": actor, "now": now()}, "proposed")
+		map[string]any{"title": opt(patch.Title), "context": opt(patch.Context), "actor": actor, "now": now()},
+		"open")
 }
 
 // DropIdea closes an idea that became nothing, with the reason.
@@ -199,7 +177,7 @@ func (b *Board) DropIdea(ws, actor, id, reason string) (_ Idea, err error) {
 	}
 	return b.changeIdea(ws, id, `
 		SET i.state = 'closed', i.drop_reason = $reason, i.closed_by = $actor, i.closed_at = $now`,
-		map[string]any{"reason": reason, "actor": actor, "now": now()}, "open", "proposed")
+		map[string]any{"reason": reason, "actor": actor, "now": now()}, "open")
 }
 
 // changeIdea applies set to idea id when its state is one of from.
@@ -314,10 +292,9 @@ func ideas(g *falkordb.Graph, id string) ([]Idea, error) {
 		OPTIONAL MATCH (i)-[:BECAME]->(s:Story)
 		WITH i, collect(s.id) AS stories
 		OPTIONAL MATCH (i)-[:BECAME]->(p:Phase)
-		RETURN i.id AS id, i.title AS title, i.notes AS notes, i.state AS state, i.reasoning AS reasoning,
+		RETURN i.id AS id, i.title AS title, i.context AS context, i.state AS state,
 			stories, p.number AS phase, i.drop_reason AS drop_reason,
 			i.created_by AS created_by, i.created_at AS created_at,
-			i.approved_by AS approved_by, i.approved_at AS approved_at,
 			i.moved_by AS moved_by, i.moved_at AS moved_at,
 			i.updated_by AS updated_by, i.updated_at AS updated_at,
 			i.closed_by AS closed_by, i.closed_at AS closed_at
@@ -330,11 +307,10 @@ func ideas(g *falkordb.Graph, id string) ([]Idea, error) {
 	for res.Next() {
 		r := res.Record()
 		out = append(out, Idea{
-			ID: str(r, "id"), Title: str(r, "title"), Notes: str(r, "notes"), State: str(r, "state"),
-			Reasoning: str(r, "reasoning"), BecameStories: byNumber(strs(r, "stories")),
-			BecamePhase: num(r, "phase"), DropReason: str(r, "drop_reason"),
+			ID: str(r, "id"), Title: str(r, "title"), Context: str(r, "context"), State: str(r, "state"),
+			BecameStories: byNumber(strs(r, "stories")),
+			BecamePhase:   num(r, "phase"), DropReason: str(r, "drop_reason"),
 			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
-			ApprovedBy: str(r, "approved_by"), ApprovedAt: str(r, "approved_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"),
 			ClosedBy: str(r, "closed_by"), ClosedAt: str(r, "closed_at"),

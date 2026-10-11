@@ -115,11 +115,55 @@ func TestAWorkspaceFromBeforeIdeasIsMigratedAtStartUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restart: %v", err)
 	}
-	if v, _ := falkor.Version(g); v != 5 {
-		t.Fatalf("version %d, want 5", v)
+	if v, _ := falkor.Version(g); v != 6 {
+		t.Fatalf("version %d, want 6", v)
 	}
 	if _, err := b.AddIdea("demo", actor, board.NewIdea{Title: "A"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A workspace from before ideas lost their approval step (migration 5) has
+// proposed ideas with notes and reasoning. At start-up those become open
+// ideas whose context holds the notes and, after them, the reasoning.
+func TestAWorkspaceFromBeforeIdeaContextIsMigratedAtStartUp(t *testing.T) {
+	db, prefix := falkortest.Prefix(t)
+	b, _ := board.New(db, prefix+"system", prefix+"ws:")
+	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "Demo"}); err != nil {
+		t.Fatal(err)
+	}
+	g := db.SelectGraph(prefix + "ws:demo")
+	for _, q := range []string{
+		"MATCH (s:SchemaVersion) SET s.v = 5",
+		"CREATE (:Idea {id: 'I-1', title: 'Both', notes: 'rough', reasoning: 'it fits', state: 'proposed', rank: 'a', approved_by: 'x', approved_at: 'y'})",
+		"CREATE (:Idea {id: 'I-2', title: 'Notes only', notes: 'just notes', state: 'open', rank: 'b'})",
+		"CREATE (:Idea {id: 'I-3', title: 'Reasoning only', reasoning: 'why', state: 'proposed', rank: 'c'})",
+		"CREATE (:Idea {id: 'I-4', title: 'Bare', state: 'closed', rank: 'd', drop_reason: 'no'})",
+	} {
+		if _, err := g.Query(q, nil, nil); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	if v, _ := falkor.Version(g); v != 6 {
+		t.Fatalf("version %d, want 6", v)
+	}
+	for id, want := range map[string][2]string{
+		"I-1": {"rough\n\nit fits", "open"},
+		"I-2": {"just notes", "open"},
+		"I-3": {"why", "open"},
+		"I-4": {"", "closed"},
+	} {
+		i, err := b.Idea("demo", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i.Context != want[0] || i.State != want[1] {
+			t.Fatalf("%s: context %q state %q, want %q %q", id, i.Context, i.State, want[0], want[1])
+		}
 	}
 }
 

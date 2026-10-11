@@ -585,8 +585,8 @@ paths:
       summary: Add an idea
       description: >-
         Placed directly before or after a named idea, or at the bottom of the
-        ideas list when neither is given. An idea added here is open; an
-        agent's idea, added through the MCP, is proposed instead.
+        ideas list when neither is given. An idea is open from the start,
+        whoever adds it; only stories wait for approval.
       requestBody:
         required: true
         content:
@@ -597,7 +597,12 @@ paths:
               additionalProperties: false
               properties:
                 title: { type: string }
-                notes: { type: string }
+                context:
+                  type: string
+                  description: >-
+                    Anything that helps understand the idea and turn it into
+                    work: notes, links, documents, background. Optional, but an
+                    idea without context is only as good as its title.
                 before: { type: string, example: I-3 }
                 after: { type: string, example: I-2 }
       responses:
@@ -636,7 +641,7 @@ paths:
               additionalProperties: false
               properties:
                 title: { type: string, minLength: 1 }
-                notes: { type: string }
+                context: { type: string }
       responses:
         "200":
           description: The idea as it is now
@@ -658,22 +663,6 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/Position" }
-      responses:
-        "200":
-          description: The idea as it is now
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Idea" }
-        "400": { $ref: "#/components/responses/Invalid" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-  /v1/workspaces/{ws}/ideas/{id}/approve:
-    parameters:
-      - $ref: "#/components/parameters/Workspace"
-      - $ref: "#/components/parameters/IdeaID"
-    post:
-      summary: Approve a proposed idea at its spot, making it open
       responses:
         "200":
           description: The idea as it is now
@@ -918,7 +907,7 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, proposed, in_progress, in_review, on_hold, next, ideas_proposed]
+      required: [phase, proposed, in_progress, in_review, on_hold, next]
       properties:
         phase:
           description: The first phase that is not complete; null when there is none
@@ -942,22 +931,18 @@ components:
           type: array
           description: The top three of the backlog, blocked stories included
           items: { $ref: "#/components/schemas/Story" }
-        ideas_proposed:
-          type: array
-          description: The ideas waiting for a person to approve them
-          items: { $ref: "#/components/schemas/Idea" }
     Idea:
       type: object
-      required: [id, title, notes, state, became_stories, created_by, created_at]
+      required: [id, title, context, state, became_stories, created_by, created_at]
       properties:
         id: { type: string, example: I-3 }
         title: { type: string }
-        notes: { type: string }
+        context:
+          type: string
+          description: Anything that helps understand the idea and turn it into work
         state:
           type: string
-          enum: [proposed, open, closed]
-          description: A proposed idea waits for a person to approve its spot.
-        reasoning: { type: string, description: "Why an agent suggested its spot" }
+          enum: [open, closed]
         became_stories:
           type: array
           description: The stories a refined idea became
@@ -966,8 +951,6 @@ components:
         drop_reason: { type: string }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
-        approved_by: { type: string }
-        approved_at: { type: string, format: date-time }
         moved_by: { type: string }
         moved_at: { type: string, format: date-time }
         updated_by: { type: string }
@@ -996,7 +979,7 @@ components:
         state:
           type: string
           description: >-
-            A story's status, or an idea's state (proposed, open or closed). A
+            A story's status, or an idea's state (open or closed). A
             phase has none.
     Error:
       type: object

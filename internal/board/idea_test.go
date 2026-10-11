@@ -17,12 +17,6 @@ func addIdea(t *testing.T, b *board.Board, i board.NewIdea) board.Idea {
 	return got
 }
 
-func suggestIdea(t *testing.T, b *board.Board, i board.NewIdea) board.Idea {
-	t.Helper()
-	i.Proposed, i.Reasoning = true, "worth a look"
-	return addIdea(t, b, i)
-}
-
 // ideaOrder is the ideas list as IDs, top first.
 func ideaOrder(t *testing.T, b *board.Board) []string {
 	t.Helper()
@@ -55,11 +49,11 @@ func idea(t *testing.T, b *board.Board, id string) board.Idea {
 
 func TestIdeasAreNumberedAndPlacedInTheirOwnOrder(t *testing.T) {
 	b := newWorkspace(t)
-	first := addIdea(t, b, board.NewIdea{Title: "A", Notes: "rough"})
+	first := addIdea(t, b, board.NewIdea{Title: "A", Context: "rough"})
 	addIdea(t, b, board.NewIdea{Title: "B"})
 	addIdea(t, b, board.NewIdea{Title: "C", Position: board.Position{Before: "I-1"}})
 	addIdea(t, b, board.NewIdea{Title: "D", Position: board.Position{After: "I-1"}})
-	if first.ID != "I-1" || first.State != "open" || first.Notes != "rough" || first.CreatedBy != actor {
+	if first.ID != "I-1" || first.State != "open" || first.Context != "rough" || first.CreatedBy != actor {
 		t.Fatalf("added %+v", first)
 	}
 	wantIdeaOrder(t, b, "I-3", "I-1", "I-4", "I-2")
@@ -83,8 +77,6 @@ func TestAddIdeaRefusesBadInput(t *testing.T) {
 	b := newWorkspace(t)
 	for _, i := range []board.NewIdea{
 		{},
-		{Title: "A", Proposed: true},
-		{Title: "A", Reasoning: "why"},
 		{Title: "A", Position: board.Position{Before: "I-1", After: "I-2"}},
 		{Title: "bad\x00"},
 	} {
@@ -96,30 +88,19 @@ func TestAddIdeaRefusesBadInput(t *testing.T) {
 	wantIdeaOrder(t, b)
 }
 
-func TestASuggestedIdeaWaitsForApproval(t *testing.T) {
+func TestAnIdeaIsOpenFromTheStartAndNeedsNoContext(t *testing.T) {
 	b := newWorkspace(t)
-	i := addIdea(t, b, board.NewIdea{Title: "A", Proposed: true, Reasoning: "it fits the roadmap"})
-	if i.State != "proposed" || i.Reasoning != "it fits the roadmap" {
+	i := addIdea(t, b, board.NewIdea{Title: "Bare"})
+	if i.State != "open" || i.Context != "" {
 		t.Fatalf("idea %+v", i)
 	}
 	w, err := b.Where("demo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(w.IdeasProposed) != 1 || !strings.Contains(w.Text(), "Ideas waiting for approval:\n  I-1 A\n") {
-		t.Fatalf("where %+v\n%s", w, w.Text())
+	if strings.Contains(w.Text(), "Ideas") || strings.Contains(w.Text(), "I-1") {
+		t.Fatalf("where mentions ideas:\n%s", w.Text())
 	}
-	i, err = b.ApproveIdea("demo", actor, "I-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if i.State != "open" || i.ApprovedBy != actor || i.ApprovedAt == "" {
-		t.Fatalf("approved %+v", i)
-	}
-	_, err = b.ApproveIdea("demo", actor, "I-1")
-	wantKind(t, err, board.Conflict)
-	_, err = b.ApproveIdea("demo", actor, "I-9")
-	wantKind(t, err, board.NotFound)
 }
 
 func TestAnIdeaCanBeMovedAndEditedWhileItIsOpen(t *testing.T) {
@@ -134,11 +115,11 @@ func TestAnIdeaCanBeMovedAndEditedWhileItIsOpen(t *testing.T) {
 		t.Fatalf("moved %+v", i)
 	}
 	wantIdeaOrder(t, b, "I-2", "I-1")
-	i, err = b.UpdateIdea("demo", actor, "I-1", board.IdeaPatch{Notes: ptr("grown")})
+	i, err = b.UpdateIdea("demo", actor, "I-1", board.IdeaPatch{Context: ptr("grown")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if i.Title != "A" || i.Notes != "grown" || i.UpdatedBy != actor {
+	if i.Title != "A" || i.Context != "grown" || i.UpdatedBy != actor {
 		t.Fatalf("updated %+v", i)
 	}
 	_, err = b.UpdateIdea("demo", actor, "I-1", board.IdeaPatch{Title: ptr("")})
@@ -186,7 +167,6 @@ func TestRefiningIsRefusedAndWritesNothingWhenATargetIsWrong(t *testing.T) {
 	addStory(t, b, board.NewStory{Title: "Gone"})
 	setStatus(t, b, "S-2", board.StatusChange{To: "closed", Reason: "not needed"})
 	addIdea(t, b, board.NewIdea{Title: "Idea"})
-	suggestIdea(t, b, board.NewIdea{Title: "Suggested"})
 	for _, c := range []struct {
 		id   string
 		to   board.Refinement
@@ -196,7 +176,6 @@ func TestRefiningIsRefusedAndWritesNothingWhenATargetIsWrong(t *testing.T) {
 		{"I-1", board.Refinement{Stories: []string{"S-1", "S-9"}}, board.NotFound},
 		{"I-1", board.Refinement{Stories: []string{"S-1"}, Phase: 4}, board.NotFound},
 		{"I-1", board.Refinement{Stories: []string{"S-1", "S-2"}}, board.Conflict},
-		{"I-2", board.Refinement{Stories: []string{"S-1"}}, board.Conflict},
 		{"I-9", board.Refinement{Stories: []string{"S-1"}}, board.NotFound},
 	} {
 		_, err := b.RefineIdea("demo", actor, c.id, c.to)
@@ -210,7 +189,7 @@ func TestRefiningIsRefusedAndWritesNothingWhenATargetIsWrong(t *testing.T) {
 func TestAnIdeaCanBeDroppedWithAReasonAndIsThenFinal(t *testing.T) {
 	b := newWorkspace(t)
 	addIdea(t, b, board.NewIdea{Title: "A"})
-	suggestIdea(t, b, board.NewIdea{Title: "B"})
+	addIdea(t, b, board.NewIdea{Title: "B"})
 	_, err := b.DropIdea("demo", actor, "I-1", "")
 	wantKind(t, err, board.Invalid)
 	i, err := b.DropIdea("demo", actor, "I-1", "out of scope")
@@ -221,7 +200,7 @@ func TestAnIdeaCanBeDroppedWithAReasonAndIsThenFinal(t *testing.T) {
 		t.Fatalf("dropped %+v", i)
 	}
 	if _, err := b.DropIdea("demo", actor, "I-2", "no"); err != nil {
-		t.Fatalf("a suggested idea can be declined: %v", err)
+		t.Fatalf("a second open idea can be dropped: %v", err)
 	}
 	wantIdeaOrder(t, b)
 	_, err = b.DropIdea("demo", actor, "I-1", "again")
@@ -229,7 +208,5 @@ func TestAnIdeaCanBeDroppedWithAReasonAndIsThenFinal(t *testing.T) {
 	_, err = b.UpdateIdea("demo", actor, "I-1", board.IdeaPatch{Title: ptr("X")})
 	wantKind(t, err, board.Conflict)
 	_, err = b.MoveIdea("demo", actor, "I-1", board.Position{})
-	wantKind(t, err, board.Conflict)
-	_, err = b.ApproveIdea("demo", actor, "I-1")
 	wantKind(t, err, board.Conflict)
 }
