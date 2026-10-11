@@ -251,10 +251,15 @@ is never committed.
   another spot) or declines it (`closed`, with a reason). Then add its
   dependencies with `add_dependency`. Backpack refuses an order that breaks a
   dependency; read its reason and place the story again.
-- **Rough thoughts** that aren't work yet go in with `add_idea`, also with
-  `reasoning`, and wait as proposed until a person approves them. Once the
-  stories or phase it became exist, `refine_idea` links them and closes the
-  idea; `drop_idea` closes one that became nothing, with a reason.
+- **Many changes at once,** such as approving several proposed stories, go in
+  one `batch` call: a list of actions, each a tool and its arguments without
+  the workspace. Each is answered on its own; one that fails doesn't stop the
+  rest, so read every answer.
+- **Rough thoughts** that aren't work yet go in with `add_idea`. They need no
+  approval. Give each a `context`: anything that helps understand the idea and
+  turn it into work, such as notes, links, documents or background. Build the
+  stories or phase from that context, then `refine_idea` links them and
+  closes the idea; `drop_idea` closes one that became nothing, with a reason.
 ```
 
 ## 8. Finish

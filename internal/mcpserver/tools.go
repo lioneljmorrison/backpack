@@ -119,16 +119,15 @@ type ideaPosition struct {
 
 type addIdeaIn struct {
 	in
-	Title     string `json:"title"`
-	Notes     string `json:"notes,omitempty"`
-	Reasoning string `json:"reasoning" jsonschema:"why the idea belongs at this spot, for the person who approves it"`
+	Title   string `json:"title"`
+	Context string `json:"context,omitempty" jsonschema:"anything that helps understand the idea and turn it into work: notes, links, documents, background. Optional, but an idea without context is only as good as its title"`
 	ideaPosition
 }
 
 type updateIdeaIn struct {
 	ideaIn
-	Title *string `json:"title,omitempty"`
-	Notes *string `json:"notes,omitempty"`
+	Title   *string `json:"title,omitempty"`
+	Context *string `json:"context,omitempty"`
 }
 
 type moveIdeaIn struct {
@@ -153,30 +152,32 @@ type dropIdeaIn struct {
 }
 
 func addTools(s *mcp.Server, t tools) {
+	steps := map[string]step{}
+	tool(s, "list_workspaces", "Every workspace, by slug, with its name and repository. Use it to find a workspace's slug when the project's .backpack.json isn't at hand.", t.listWorkspaces)
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
 	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, and the next three in the backlog.", t.whereAreWe)
 	tool(s, "get_story", "One story, with its status, what blocks it and what it blocks.", t.getStory)
-	tool(s, "add_story", "Propose a story: it goes in as proposed, directly before or after another story or at the bottom when neither is given, with the reasoning for that spot logged as a decision. It waits until a person approves it by setting its status to backlog. It must rank below everything it will depend on.", t.addStory)
-	tool(s, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing.", t.updateStory)
-	tool(s, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it.", t.moveStory)
-	tool(s, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog or declined by closing it. Merged, released and deployed are complete. on_hold resumes to the column it left; closed is final. Every change is logged.", t.setStatus)
-	tool(s, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
+	write(s, steps, "add_story", "Propose a story: it goes in as proposed, directly before or after another story or at the bottom when neither is given, with the reasoning for that spot logged as a decision. It waits until a person approves it by setting its status to backlog. It must rank below everything it will depend on.", t.addStory)
+	write(s, steps, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing.", t.updateStory)
+	write(s, steps, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it.", t.moveStory)
+	write(s, steps, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog or declined by closing it. Merged, released and deployed are complete. on_hold resumes to the column it left; closed is final. Every change is logged.", t.setStatus)
+	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
 	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
-	tool(s, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
-	tool(s, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
+	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
+	write(s, steps, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
 	tool(s, "list_phases", "Every phase in order, with its goals, how many stories are complete, whether it is complete, and whether its goals were all met while stories are still open.", t.listPhases)
-	tool(s, "add_phase", "Add a phase, numbered after the last one.", t.addPhase)
-	tool(s, "add_goal", "Add a goal to a phase.", t.addGoal)
-	tool(s, "mark_goal_met", "Mark a goal met, or not met.", t.markGoalMet)
-	tool(s, "add_idea", "Suggest an idea: a rough thought, not yet work. It goes into the ideas list, apart from the backlog, directly before or after another idea or at the bottom, and waits as proposed, with the reasoning for its spot, until a person approves it.", t.addIdea)
+	write(s, steps, "add_phase", "Add a phase, numbered after the last one.", t.addPhase)
+	write(s, steps, "add_goal", "Add a goal to a phase.", t.addGoal)
+	write(s, steps, "mark_goal_met", "Mark a goal met, or not met.", t.markGoalMet)
+	write(s, steps, "add_idea", "Add an idea: a rough thought, not yet work. It goes into the ideas list, apart from the backlog, directly before or after another idea or at the bottom, and is open at once; no approval is needed. Give it context: anything that helps understand the idea and turn it into work, such as notes, links, documents or background. An idea without context is only as good as its title.", t.addIdea)
 	tool(s, "list_ideas", "The ideas that are not closed, in order, top first.", t.listIdeas)
 	tool(s, "get_idea", "One idea, closed or not, with what it became or why it was dropped.", t.getIdea)
-	tool(s, "update_idea", "Change an idea's title or notes while it is not closed; fields not given are left as they are.", t.updateIdea)
-	tool(s, "move_idea", "Move an idea that is not closed directly before or after another, or to the bottom of the ideas list.", t.moveIdea)
-	tool(s, "approve_idea", "Approve a proposed idea at its spot, making it open.", t.approveIdea)
-	tool(s, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Add those first, the usual way; none may be closed.", t.refineIdea)
-	tool(s, "drop_idea", "Close an idea that became nothing, with the reason.", t.dropIdea)
+	write(s, steps, "update_idea", "Change an idea's title or context while it is not closed; fields not given are left as they are.", t.updateIdea)
+	write(s, steps, "move_idea", "Move an idea that is not closed directly before or after another, or to the bottom of the ideas list.", t.moveIdea)
+	write(s, steps, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Build those from the idea's context first, the usual way; none may be closed.", t.refineIdea)
+	write(s, steps, "drop_idea", "Close an idea that became nothing, with the reason.", t.dropIdea)
 	tool(s, "search", "Check whether a story, idea or phase already covers something, before adding one. Matches by keyword and by meaning, best first, up to ten; closed stories and dropped ideas are included, with their state.", t.search)
+	tool(s, "batch", "Make many board changes in one call. Each action names a tool that changes the board and gives that tool's arguments without the workspace, which is given once for the batch. Actions run in order, each as if called alone; one that fails is answered with its reason and doesn't stop the rest. An action can name only items that already exist, not one an earlier action in the batch adds. Up to 100 actions; reads can't be batched.", batch(steps))
 }
 
 func (t tools) search(ctx context.Context, a searchIn) (any, error) {
@@ -187,6 +188,12 @@ func (t tools) search(ctx context.Context, a searchIn) (any, error) {
 func actor(ctx context.Context) string {
 	a, _ := auth.ActorFrom(ctx)
 	return a
+}
+
+// listWorkspaces is the one tool that takes no workspace.
+func (t tools) listWorkspaces(_ context.Context, _ struct{}) (any, error) {
+	ws, err := t.b.Workspaces()
+	return map[string]any{"workspaces": ws}, err
 }
 
 func (t tools) whatsNext(_ context.Context, a in) (any, error) {
@@ -260,8 +267,7 @@ func (t tools) markGoalMet(ctx context.Context, a markGoalMetIn) (any, error) {
 }
 
 func (t tools) addIdea(ctx context.Context, a addIdeaIn) (any, error) {
-	return t.b.AddIdea(a.Workspace, actor(ctx), board.NewIdea{Title: a.Title, Notes: a.Notes, Proposed: true,
-		Reasoning: a.Reasoning, Position: board.Position(a.ideaPosition)})
+	return t.b.AddIdea(a.Workspace, actor(ctx), board.NewIdea{Title: a.Title, Context: a.Context, Position: board.Position(a.ideaPosition)})
 }
 
 func (t tools) listIdeas(_ context.Context, a in) (any, error) {
@@ -274,15 +280,11 @@ func (t tools) getIdea(_ context.Context, a ideaIn) (any, error) {
 }
 
 func (t tools) updateIdea(ctx context.Context, a updateIdeaIn) (any, error) {
-	return t.b.UpdateIdea(a.Workspace, actor(ctx), a.ID, board.IdeaPatch{Title: a.Title, Notes: a.Notes})
+	return t.b.UpdateIdea(a.Workspace, actor(ctx), a.ID, board.IdeaPatch{Title: a.Title, Context: a.Context})
 }
 
 func (t tools) moveIdea(ctx context.Context, a moveIdeaIn) (any, error) {
 	return t.b.MoveIdea(a.Workspace, actor(ctx), a.ID, board.Position(a.ideaPosition))
-}
-
-func (t tools) approveIdea(ctx context.Context, a ideaIn) (any, error) {
-	return t.b.ApproveIdea(a.Workspace, actor(ctx), a.ID)
 }
 
 func (t tools) refineIdea(ctx context.Context, a refineIdeaIn) (any, error) {

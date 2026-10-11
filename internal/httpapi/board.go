@@ -43,7 +43,6 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("GET /v1/workspaces/{ws}/ideas/{id}", a.getIdea)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/ideas/{id}", a.updateIdea)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas/{id}/move", a.moveIdea)
-	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas/{id}/approve", a.approveIdea)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas/{id}/refine", a.refineIdea)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas/{id}/drop", a.dropIdea)
 }
@@ -232,8 +231,7 @@ func (a boardAPI) listIdeas(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]any{"ideas": is}, err)
 }
 
-// addIdea adds an idea directly, as open: only an agent's ideas, through the
-// MCP, wait for approval.
+// addIdea adds an idea, open from the start: only stories wait for approval.
 func (a boardAPI) addIdea(w http.ResponseWriter, r *http.Request) {
 	var in board.NewIdea
 	if !decodeBody(w, r, &in) {
@@ -263,11 +261,6 @@ func (a boardAPI) moveIdea(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	i, err := a.b.MoveIdea(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
-	respond(w, http.StatusOK, i, err)
-}
-
-func (a boardAPI) approveIdea(w http.ResponseWriter, r *http.Request) {
-	i, err := a.b.ApproveIdea(r.PathValue("ws"), actor(r), r.PathValue("id"))
 	respond(w, http.StatusOK, i, err)
 }
 

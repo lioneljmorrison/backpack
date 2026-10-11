@@ -23,23 +23,28 @@ func New(b *board.Board, x *search.Index) http.Handler {
 		&mcp.StreamableHTTPOptions{Stateless: true})
 }
 
-// answer turns a board result into a tool result: a refusal comes back with
-// its reason, search being down as such, and anything else is logged and
-// reported without detail.
+// answer turns a board result into a tool result.
 func answer(v any, err error) (*mcp.CallToolResult, any, error) {
 	if err == nil {
 		return nil, v, nil
 	}
+	return nil, nil, public(err)
+}
+
+// public is what the caller is told of err: a refusal comes back with its
+// reason, search being down as such, and anything else is logged and
+// reported without detail.
+func public(err error) error {
 	if errors.Is(err, search.ErrUnavailable) {
 		log.Printf("search: %v", err)
-		return nil, nil, search.ErrUnavailable
+		return search.ErrUnavailable
 	}
 	var be *board.Error
 	if errors.As(err, &be) {
-		return nil, nil, be
+		return be
 	}
 	log.Printf("board: %v", err)
-	return nil, nil, errors.New("internal error")
+	return errors.New("internal error")
 }
 
 // tool registers a typed tool.

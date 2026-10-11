@@ -164,7 +164,7 @@ func TestClosedStoriesAndDroppedIdeasAreFoundWithTheirState(t *testing.T) {
 func TestIdeasAndPhasesAreFound(t *testing.T) {
 	b, x := newIndexed(t)
 	if _, err := b.AddIdea("demo", actor, board.NewIdea{Title: "Recurring reminders",
-		Notes: "Nudge people before deadlines"}); err != nil {
+		Context: "Nudge people before deadlines"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AddPhase("demo", actor, "Billing", "Charging customers"); err != nil {

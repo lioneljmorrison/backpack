@@ -585,8 +585,8 @@ paths:
       summary: Add an idea
       description: >-
         Placed directly before or after a named idea, or at the bottom of the
-        ideas list when neither is given. An idea added here is open; an
-        agent's idea, added through the MCP, is proposed instead.
+        ideas list when neither is given. An idea is open from the start,
+        whoever adds it; only stories wait for approval.
       requestBody:
         required: true
         content:
@@ -597,7 +597,12 @@ paths:
               additionalProperties: false
               properties:
                 title: { type: string }
-                notes: { type: string }
+                context:
+                  type: string
+                  description: >-
+                    Anything that helps understand the idea and turn it into
+                    work: notes, links, documents, background. Optional, but an
+                    idea without context is only as good as its title.
                 before: { type: string, example: I-3 }
                 after: { type: string, example: I-2 }
       responses:
@@ -636,7 +641,7 @@ paths:
               additionalProperties: false
               properties:
                 title: { type: string, minLength: 1 }
-                notes: { type: string }
+                context: { type: string }
       responses:
         "200":
           description: The idea as it is now
@@ -658,22 +663,6 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/Position" }
-      responses:
-        "200":
-          description: The idea as it is now
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Idea" }
-        "400": { $ref: "#/components/responses/Invalid" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-  /v1/workspaces/{ws}/ideas/{id}/approve:
-    parameters:
-      - $ref: "#/components/parameters/Workspace"
-      - $ref: "#/components/parameters/IdeaID"
-    post:
-      summary: Approve a proposed idea at its spot, making it open
       responses:
         "200":
           description: The idea as it is now
@@ -778,6 +767,66 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+  /v1/workspaces/{ws}/batch:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    post:
+      summary: Make many board changes in one call
+      description: >-
+        Sends each request, in order, to its own route in this workspace, as
+        the caller, so it is answered exactly as if sent alone. A request
+        that fails is answered with its status and reason and doesn't stop
+        the rest; nothing is undone. Only POST, PATCH and DELETE requests can
+        be batched, and each path is relative to the workspace. A request can
+        name only items that already exist, not one an earlier request in the
+        batch adds. A batch holds 1 to 100 requests.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [requests]
+              properties:
+                requests:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [method, path]
+                    properties:
+                      method: { type: string, enum: [POST, PATCH, DELETE] }
+                      path:
+                        type: string
+                        description: relative to the workspace
+                        example: stories/S-4/status
+                      body:
+                        description: the route's own request body
+                        type: object
+      responses:
+        "200":
+          description: Each request's answer, in order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [status]
+                      properties:
+                        status: { type: integer, example: 200 }
+                        body:
+                          description: the route's own answer; absent for 204
+                          type: object
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   parameters:
     Workspace:
@@ -918,7 +967,7 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, proposed, in_progress, in_review, on_hold, next, ideas_proposed]
+      required: [phase, proposed, in_progress, in_review, on_hold, next]
       properties:
         phase:
           description: The first phase that is not complete; null when there is none
@@ -942,22 +991,18 @@ components:
           type: array
           description: The top three of the backlog, blocked stories included
           items: { $ref: "#/components/schemas/Story" }
-        ideas_proposed:
-          type: array
-          description: The ideas waiting for a person to approve them
-          items: { $ref: "#/components/schemas/Idea" }
     Idea:
       type: object
-      required: [id, title, notes, state, became_stories, created_by, created_at]
+      required: [id, title, context, state, became_stories, created_by, created_at]
       properties:
         id: { type: string, example: I-3 }
         title: { type: string }
-        notes: { type: string }
+        context:
+          type: string
+          description: Anything that helps understand the idea and turn it into work
         state:
           type: string
-          enum: [proposed, open, closed]
-          description: A proposed idea waits for a person to approve its spot.
-        reasoning: { type: string, description: "Why an agent suggested its spot" }
+          enum: [open, closed]
         became_stories:
           type: array
           description: The stories a refined idea became
@@ -966,8 +1011,6 @@ components:
         drop_reason: { type: string }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
-        approved_by: { type: string }
-        approved_at: { type: string, format: date-time }
         moved_by: { type: string }
         moved_at: { type: string, format: date-time }
         updated_by: { type: string }
@@ -996,7 +1039,7 @@ components:
         state:
           type: string
           description: >-
-            A story's status, or an idea's state (proposed, open or closed). A
+            A story's status, or an idea's state (open or closed). A
             phase has none.
     Error:
       type: object

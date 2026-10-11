@@ -6,24 +6,18 @@ import (
 	"github.com/lioneljmorrison/backpack/internal/board"
 )
 
-func TestAddIdeaSuggestsItWithItsReasoning(t *testing.T) {
+func TestAddIdeaOpensItWithItsContextAndNeedsNoReasoning(t *testing.T) {
 	_, cs := connect(t)
-	i := use(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "A", "notes": "rough",
-		"reasoning": "nothing else yet"})
-	if i["id"] != "I-1" || i["state"] != "proposed" || i["reasoning"] != "nothing else yet" || i["created_by"] != "tester" {
+	i := use(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "A", "context": "rough, see the notes"})
+	if i["id"] != "I-1" || i["state"] != "open" || i["context"] != "rough, see the notes" || i["created_by"] != "tester" {
 		t.Fatalf("idea %v", i)
 	}
-	refused(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "B"})
-}
-
-func TestApproveIdeaOpensIt(t *testing.T) {
-	_, cs := connect(t)
-	use(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "A", "reasoning": "r"})
-	i := use(t, cs, "approve_idea", map[string]any{"workspace": "demo", "id": "I-1"})
-	if i["state"] != "open" || i["approved_by"] != "tester" {
+	if _, has := i["reasoning"]; has {
+		t.Fatalf("idea still has reasoning: %v", i)
+	}
+	if i := use(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "B"}); i["state"] != "open" {
 		t.Fatalf("idea %v", i)
 	}
-	refused(t, cs, "approve_idea", map[string]any{"workspace": "demo", "id": "I-1"})
 }
 
 func TestListGetMoveAndUpdateIdeas(t *testing.T) {
@@ -38,8 +32,8 @@ func TestListGetMoveAndUpdateIdeas(t *testing.T) {
 	if is := list["ideas"].([]any); len(is) != 2 || is[0].(map[string]any)["id"] != "I-2" {
 		t.Fatalf("ideas %v", list)
 	}
-	use(t, cs, "update_idea", map[string]any{"workspace": "demo", "id": "I-1", "notes": "grown"})
-	if i := use(t, cs, "get_idea", map[string]any{"workspace": "demo", "id": "I-1"}); i["notes"] != "grown" {
+	use(t, cs, "update_idea", map[string]any{"workspace": "demo", "id": "I-1", "context": "grown"})
+	if i := use(t, cs, "get_idea", map[string]any{"workspace": "demo", "id": "I-1"}); i["context"] != "grown" {
 		t.Fatalf("idea %v", i)
 	}
 	refused(t, cs, "get_idea", map[string]any{"workspace": "demo", "id": "I-9"})
@@ -63,11 +57,11 @@ func TestRefineIdeaLinksWhatItBecameAndDropIdeaNeedsAReason(t *testing.T) {
 	}
 }
 
-func TestWhereAreWeListsIdeasWaitingForApproval(t *testing.T) {
+func TestWhereAreWeHasNoIdeasWaitingForApproval(t *testing.T) {
 	_, cs := connect(t)
-	use(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "A", "reasoning": "r"})
+	use(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "A"})
 	w := use(t, cs, "where_are_we", map[string]any{"workspace": "demo"})
-	if is := w["ideas_proposed"].([]any); len(is) != 1 {
+	if _, has := w["ideas_proposed"]; has {
 		t.Fatalf("where %v", w)
 	}
 }

@@ -25,6 +25,7 @@ func New(checks map[string]health.Check, lookup auth.LookupFunc, b *board.Board,
 	v1.HandleFunc("GET /v1/whoami", whoami)
 	routeBoard(v1, b)
 	v1.HandleFunc("GET /v1/workspaces/{ws}/search", searchHandler(x))
+	v1.HandleFunc("POST /v1/workspaces/{ws}/batch", batchHandler(v1))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz(checks))
