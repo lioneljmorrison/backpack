@@ -16,9 +16,11 @@ type Phase struct {
 	Description string `json:"description"`
 	Goals       []Goal `json:"goals"`
 	// StoriesTotal leaves out closed stories.
-	StoriesTotal    int  `json:"stories_total"`
-	StoriesComplete int  `json:"stories_complete"`
-	Complete        bool `json:"complete"`
+	StoriesTotal    int `json:"stories_total"`
+	StoriesComplete int `json:"stories_complete"`
+	// Complete: every story left is complete, or, with nothing left, every
+	// goal is met.
+	Complete bool `json:"complete"`
 	// GoalsMetEarly flags a phase whose goals are all met while some of its
 	// stories are still open: something may have gone sideways.
 	GoalsMetEarly bool   `json:"goals_met_early"`
@@ -193,8 +195,6 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 			CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), Goals: []Goal{},
 			StoriesTotal: num(r, "total"), StoriesComplete: num(r, "done")}
-		// An empty phase is not complete.
-		p.Complete = p.StoriesTotal > 0 && p.StoriesComplete == p.StoriesTotal
 		raw, _ := r.Get("goals")
 		list, _ := raw.([]any)
 		for _, x := range list {
@@ -210,9 +210,11 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 			}
 		}
 		slices.SortFunc(p.Goals, func(a, b Goal) int { return seq(a.ID) - seq(b.ID) })
-		// Flagged only with goals, and with stories still open.
-		p.GoalsMetEarly = len(p.Goals) > 0 && p.StoriesComplete < p.StoriesTotal &&
-			!slices.ContainsFunc(p.Goals, func(g Goal) bool { return !g.Met })
+		goalsMet := len(p.Goals) > 0 && !slices.ContainsFunc(p.Goals, func(g Goal) bool { return !g.Met })
+		// With stories left, it is complete when they all are. With nothing
+		// left in it, it is complete once its goals are met.
+		p.Complete = p.StoriesTotal > 0 && p.StoriesComplete == p.StoriesTotal || p.StoriesTotal == 0 && goalsMet
+		p.GoalsMetEarly = goalsMet && p.StoriesComplete < p.StoriesTotal
 		out = append(out, p)
 	}
 	return out, nil

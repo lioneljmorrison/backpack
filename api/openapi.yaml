@@ -593,7 +593,7 @@ components:
           items: { $ref: "#/components/schemas/Goal" }
         stories_total: { type: integer, description: "Its stories, leaving out closed ones" }
         stories_complete: { type: integer, description: "Its stories that are merged, released or deployed" }
-        complete: { type: boolean, description: "It has a story, and every one is complete" }
+        complete: { type: boolean, description: "Every story left is complete; with nothing left in it, every goal is met" }
         goals_met_early: { type: boolean, description: "Every goal is met but some stories are still open" }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
