@@ -245,3 +245,17 @@ func TestWhereAreWeAsPlainTextForTheSessionHook(t *testing.T) {
 		t.Fatalf("status %d %q: %q", w.Code, w.Header().Get("Content-Type"), w.Body)
 	}
 }
+
+func TestWhereAreWeIsJSONWhenTheCallerAlsoAcceptsJSON(t *testing.T) {
+	h := withDemo(t)
+	for _, accept := range []string{"", "*/*", "application/json, text/plain, */*"} {
+		r := httptest.NewRequest("GET", "/v1/workspaces/demo/status", nil)
+		r.Header.Set("Authorization", "Bearer bp_good")
+		r.Header.Set("Accept", accept)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Accept %q got %q", accept, ct)
+		}
+	}
+}

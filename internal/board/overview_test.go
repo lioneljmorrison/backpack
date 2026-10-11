@@ -180,3 +180,20 @@ func TestTheBoardHasAReleasedColumnOnlyWithAReleaseStage(t *testing.T) {
 		t.Fatalf("columns %+v", cols)
 	}
 }
+
+// Pins current behaviour: closed stories don't count, so a phase whose
+// stories are all closed has none, is never complete, and stays current.
+func TestAPhaseWhoseStoriesAreAllClosedStaysCurrent(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addPhase(t, b, "Two")
+	addStory(t, b, board.NewStory{Title: "A", Phase: 1})
+	setStatus(t, b, "S-1", board.StatusChange{To: "closed", Reason: "dropped"})
+	w, err := b.Where("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.Phase == nil || w.Phase.Number != 1 || w.Phase.Complete || w.Phase.StoriesTotal != 0 {
+		t.Fatalf("phase %+v", w.Phase)
+	}
+}

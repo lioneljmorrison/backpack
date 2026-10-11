@@ -66,11 +66,12 @@ func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]any{"story": s}, err)
 }
 
-// where answers as JSON, or as plain text when the caller asks for it, as
-// the session hook does.
+// where answers as JSON, or as plain text when the caller asks for text and
+// not JSON, as the session hook does.
 func (a boardAPI) where(w http.ResponseWriter, r *http.Request) {
 	where, err := a.b.Where(r.PathValue("ws"))
-	if err != nil || !strings.Contains(r.Header.Get("Accept"), "text/plain") {
+	accept := r.Header.Get("Accept")
+	if err != nil || !strings.Contains(accept, "text/plain") || strings.Contains(accept, "application/json") {
 		respond(w, http.StatusOK, where, err)
 		return
 	}
