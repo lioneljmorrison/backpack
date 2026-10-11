@@ -50,11 +50,11 @@ container it means the tunnel itself.
 
 ## Connecting a project
 
-[docs/ADOPTING.md](docs/ADOPTING.md) sets a project up to track its work in
-Backpack: creating its workspace, a token, the MCP server, `.backpack.json`,
-the optional session hook, and the block that tells its agents how to track.
-It's written so an agent in that project can follow it, with a person doing
-the steps that need a secret. To set up a new project, point its agent at:
+[docs/ADOPTING.md](docs/ADOPTING.md) is written for an AI agent in the
+project. The agent creates the workspace, connects the MCP server, adds
+`.backpack.json` and the session hook, and tells the project's agents how to
+track. It asks the person only for the address, a few choices and a token,
+and tells them how to get one. To set up a new project, point its agent at:
 
 ```
 https://github.com/lioneljmorrison/backpack/blob/main/docs/ADOPTING.md

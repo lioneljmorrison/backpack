@@ -1,96 +1,136 @@
 # Adopting Backpack in a project
 
-This page sets a project up to track its delivery in
-[Backpack](https://github.com/lioneljmorrison/backpack), a Kanban board for
-agentic projects. Once it's set up, agents ask Backpack "where are we" and
-"what's next" instead of keeping a tracking document beside the code.
+This page is for an AI agent, such as Claude Code, working in a project that
+should track its delivery in [Backpack](https://github.com/lioneljmorrison/backpack),
+a Kanban board for agentic projects. Once it's set up, agents ask Backpack
+"where are we" and "what's next" instead of keeping a tracking document beside
+the code.
 
-It's written so an agent working in the project can follow it from start to
-finish, with a person doing the steps that need access or a secret.
+Follow the steps in order. You do every step yourself. You need the person
+only for what they alone can give you: the Backpack address, a token, a few
+choices, and a restart of Claude Code at the end.
 
-## Before you start
+## Rules for the token
 
-Ask the person for these, and don't guess them:
+The token is a secret that lets anything holding it change the board.
 
-- **The Backpack address**, such as `https://backpack.example.com`.
-- **The workspace slug**: the project's short name on the board, using
-  lowercase letters, digits and single hyphens, up to 64 characters (for
-  example `my-app`). Ask whether the workspace already exists.
-- **Whether the project has a release stage**: a Released step between Merged
-  and Deployed, for projects that ship merged work in releases. It's set once,
-  when the workspace is created, and can't be changed later.
-- **A token**, which comes later (step 2), and which the person keeps.
+- Use it only as `$BACKPACK_TOKEN` inside commands, so it is never printed.
+- Never ask the person to paste it into the conversation. If they do anyway,
+  don't repeat it, and tell them to have it reissued.
+- Never write it into a file the repository tracks, a commit, a log entry or
+  a message.
+- Don't run commands that print it, such as `echo $BACKPACK_TOKEN`, `env`,
+  `curl -v`, or anything that shows the MCP server's headers.
 
-**Tokens are secrets.** Never write a token into a file the repository tracks,
-a commit, a log entry, or a message. Never ask for one to be pasted into the
-conversation. The person puts it in their own settings or environment.
+## 1. Gather what you need
 
-In the examples, replace `my-app` with the workspace slug and
-`https://backpack.example.com` with the Backpack address.
-
-| Step | Who |
-|---|---|
-| 1. Create the workspace | the person |
-| 2. Get a token | the person |
-| 3. Connect the MCP server | the person |
-| 4. Add `.backpack.json` | the agent |
-| 5. Add the session hook (optional) | the agent, then the person |
-| 6. Tell the agents how to track | the agent |
-| 7. Check it works | either |
-
-## 1. Create the workspace (the person)
-
-Skip this if the workspace already exists. Each workspace is created once,
-through the HTTP API, with any valid token:
+Check whether a token is in the environment, without printing it:
 
 ```bash
-curl -X POST https://backpack.example.com/v1/workspaces \
+[ -n "$BACKPACK_TOKEN" ] && echo "token: set" || echo "token: missing"
+```
+
+**If the token is missing,** stop and give the person these steps, then wait:
+
+> Backpack needs a token for this project, set as `BACKPACK_TOKEN`.
+>
+> 1. **Get a token.** If you run the Backpack server, run this in its
+>    repository on that host: `make token ACTOR=<your-name>`. Otherwise ask
+>    your Backpack admin for one. Each person or agent gets their own token,
+>    so the board records who made each change. It is shown only once.
+> 2. **Make it available to Claude Code.** Choose one:
+>    - Add `export BACKPACK_TOKEN=<token>` to your shell profile
+>      (`~/.bashrc`, `~/.zshrc`); or
+>    - if you use a secrets manager, start Claude Code (or VS Code) through
+>      it, for example `<secrets-cli> run -- claude`.
+> 3. **Restart Claude Code** (in VS Code, restart VS Code itself) so it
+>    picks the token up, then ask me to carry on with the Backpack setup.
+>
+> Please don't paste the token into this conversation.
+
+Also ask the person, without guessing:
+
+- **The Backpack address**, such as `https://backpack.example.com`. If the
+  project already has a `.backpack.json`, it's the `url` there.
+- **The workspace slug**: the project's short name on the board, using
+  lowercase letters, digits and single hyphens, up to 64 characters. Suggest
+  one from the repository's name (for example `my-app`) and let them confirm.
+- **Whether the project has a release stage**: a Released step between Merged
+  and Deployed, for projects that ship merged work in releases. It is set when
+  the workspace is created and can't be changed later. The default is no.
+- **Whether a team shares this project**, which decides how the MCP server is
+  set up in step 4.
+
+In the commands below, replace `my-app` with the workspace slug and
+`https://backpack.example.com` with the address.
+
+## 2. Check the token works
+
+```bash
+curl -fsS -H "Authorization: Bearer $BACKPACK_TOKEN" https://backpack.example.com/v1/whoami
+```
+
+It answers with the name the token was issued to. A `401` means the token is
+wrong or revoked, so give the person the steps in step 1 again. If the address
+can't be reached, check it with them.
+
+## 3. Create the workspace
+
+Skip this if the workspace already exists. To check, run:
+
+```bash
+curl -fsS -H "Authorization: Bearer $BACKPACK_TOKEN" -H "Accept: text/plain" \
+  https://backpack.example.com/v1/workspaces/my-app/status
+```
+
+A `404` means it doesn't exist yet, so create it:
+
+```bash
+curl -fsS -X POST https://backpack.example.com/v1/workspaces \
   -H "Authorization: Bearer $BACKPACK_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"slug": "my-app", "name": "My app", "repo_url": "https://github.com/you/my-app", "has_release_stage": false}'
 ```
 
-`slug` and `name` are required. `repo_url` is optional. `has_release_stage`
-defaults to `false`. A `409` means the slug is already taken.
+`slug` and `name` are required. `repo_url` is optional. `has_release_stage` is
+the person's answer from step 1. A `409` means the slug is already taken, so
+check with the person whether that workspace is this project's.
 
-## 2. Get a token (the person)
+## 4. Connect the MCP server
 
-Each person or agent gets their own token, so every change on the board records
-who made it. Someone with access to the Backpack host runs, in the Backpack
-repository:
+Claude Code reaches Backpack's tools through its MCP server at
+`<address>/mcp`, sending the token as `Authorization: Bearer <token>`. One
+server works for every project, because every tool names its workspace.
+
+First check whether it's already connected, from another project on this
+machine:
 
 ```bash
-make token ACTOR=<name>
+claude mcp list
 ```
 
-The token is shown once. Keep it out of any file the repository tracks.
+If `backpack` is listed, skip to step 5. Otherwise use **one** of these ways.
+Don't use both: a project `.mcp.json` entry named `backpack` overrides the
+person's own one, even when the project entry can't get a token.
 
-## 3. Connect the MCP server (the person)
+### a. Just this person: `claude mcp add`
 
-Claude Code connects to Backpack's MCP server at `<address>/mcp`, sending the
-token as `Authorization: Bearer <token>`. One server works for every project,
-because every tool names its workspace. Choose **one** of these ways to set it
-up.
-
-### a. Just you: `claude mcp add`
-
-Run once per machine. The server and the token are stored in your own Claude
-Code settings (`~/.claude.json`), not in any repository, and work in every
-project.
+This is the default when no team shares the project. It stores the server in
+the person's own Claude Code settings (`~/.claude.json`), outside any
+repository, and it works in every project. The shell fills in the token, and
+its output is discarded so that it can't be shown:
 
 ```bash
 claude mcp add --transport http --scope user backpack https://backpack.example.com/mcp \
-  --header "Authorization: Bearer <token>"
+  --header "Authorization: Bearer $BACKPACK_TOKEN" > /dev/null
 ```
-
-If the server is already added on this machine for another project, there's
-nothing to do.
 
 ### b. A whole team: `.mcp.json` in the repository
 
-A `.mcp.json` committed to the project gives everyone who opens it the server
-automatically, so nobody has to run `claude mcp add`. The file is committed, so
-it must **never contain a token**. It names an environment variable instead:
+Commit this as `.mcp.json` at the project's root. If the file already exists,
+add the `backpack` entry to it. It names the variable, never the token, and
+everyone who opens the project gets the server once their own
+`BACKPACK_TOKEN` is set:
 
 ```json
 {
@@ -104,64 +144,23 @@ it must **never contain a token**. It names an environment variable instead:
 }
 ```
 
-Each person then supplies `BACKPACK_TOKEN` in one of two ways:
+The first time someone opens the project, Claude Code asks them to approve
+its servers.
 
-- **As an environment variable.** Add `export BACKPACK_TOKEN=<token>` to your
-  shell profile, then restart Claude Code. In VS Code, restart VS Code itself.
-  Claude Code reads the variable when it starts. If it's missing, the server
-  shows as failed, and `claude mcp list` warns `Missing environment variables:
-  BACKPACK_TOKEN`.
-- **Injected by a secrets manager at launch.** Most secrets managers can start
-  a program with secrets set as environment variables. Start Claude Code, or VS
-  Code, through it:
-
-  ```bash
-  <secrets-cli> run -- claude
-  <secrets-cli> run -- code .
-  ```
-
-### c. A whole team, fetching the token from a secrets manager on connect
-
-Instead of a fixed header, `.mcp.json` can name a command (`headersHelper`).
-Claude Code runs the command each time it connects, and uses the JSON it prints
-as the request headers. With a secrets manager, nothing needs to be in the
-environment or launched specially. A rotated token is picked up on the next
-connection, and if Backpack refuses a token, Claude Code reruns the command and
-retries once.
+A team that keeps the token in a secrets manager can fetch it at each
+connection instead, with `headersHelper`. Claude Code runs this command and
+uses the JSON it prints as the request headers:
 
 ```json
-{
-  "mcpServers": {
-    "backpack": {
-      "type": "http",
-      "url": "https://backpack.example.com/mcp",
-      "headersHelper": "printf '{\"Authorization\": \"Bearer %s\"}' \"$(<secrets-cli> read backpack-token)\""
-    }
-  }
-}
+"headersHelper": "printf '{\"Authorization\": \"Bearer %s\"}' \"$(<secrets-cli> read backpack-token)\""
 ```
 
-Replace `<secrets-cli> read backpack-token` with your secrets manager's command
-that prints the token. Things to know:
+The command runs in the project's directory and gives up after 10 seconds.
+Claude Code removes variables whose names contain `TOKEN`, `KEY`, `SECRET`,
+`PASSWORD` or `AUTH` from its environment. If the secrets manager signs in
+with one of those, it must get its sign-in another way.
 
-- The command runs in the project's directory, and gives up after 10 seconds.
-- It runs only after the person has trusted the project in Claude Code.
-- Claude Code removes variables whose names contain `TOKEN`, `KEY`, `SECRET`,
-  `PASSWORD` or `AUTH` from the command's environment. If your secrets manager
-  signs in with such a variable rather than a stored session, run it through a
-  script that gets its sign-in another way.
-
-### Things that apply to every way
-
-- **Use one way per project.** A project `.mcp.json` entry named `backpack`
-  overrides your own `claude mcp add` one. If the project entry can't get a
-  token, it shows as failed, even though yours would have worked.
-- The first time someone opens a project with a `.mcp.json`, Claude Code asks
-  them to approve its servers.
-- New MCP servers are picked up when Claude Code starts, so restart it after
-  adding one.
-
-## 4. Add `.backpack.json` (the agent)
+## 5. Add `.backpack.json`
 
 Commit this at the project's root. It names the workspace and where Backpack
 is, and holds no secret:
@@ -170,13 +169,11 @@ is, and holds no secret:
 { "workspace": "my-app", "url": "https://backpack.example.com" }
 ```
 
-## 5. Add the session hook (optional)
+## 6. Add the session hook
 
-The hook prints "where are we" at the start of every Claude Code session.
-
-The agent copies
-[deploy/hook.sh](https://raw.githubusercontent.com/lioneljmorrison/backpack/main/deploy/hook.sh)
-to `.claude/hooks/backpack.sh` in the project:
+This step is optional, but recommended. The hook prints "where are we" at the
+start of every session, so each session starts oriented. Download it into the
+project:
 
 ```bash
 mkdir -p .claude/hooks
@@ -184,8 +181,8 @@ curl -fsSL https://raw.githubusercontent.com/lioneljmorrison/backpack/main/deplo
   -o .claude/hooks/backpack.sh
 ```
 
-Then the agent adds it to `.claude/settings.json`, merging it with anything
-already there:
+Then add it to `.claude/settings.json`, merging it with anything already
+there:
 
 ```json
 {
@@ -198,19 +195,18 @@ already there:
 ```
 
 The hook reads the workspace and address from `.backpack.json`, and the token
-from `BACKPACK_TOKEN` in the environment. It doesn't use the MCP server's
-settings, so with way 3a or 3c the person also sets `BACKPACK_TOKEN` in their
-environment if they want the hook. It never fails a session:
+from `BACKPACK_TOKEN`. It never fails a session:
 - without `.backpack.json` it prints nothing;
 - without a token, or if Backpack can't be reached within 3 seconds, it prints
   "Backpack unreachable — orientation skipped".
 
-## 6. Tell the agents how to track (the agent)
+## 7. Tell the project's agents how to track
 
-Paste this into the project's `CLAUDE.md` (or `AGENTS.md`), with the workspace
-slug filled in. If the project kept a tracking document, it can be retired:
-add its open work to the board with `add_story`, and stop updating the
-document.
+Add this section to the project's `CLAUDE.md` (or `AGENTS.md`), with the
+workspace slug filled in.
+
+If the project kept a tracking document, propose retiring it. Its open work
+goes onto the board with `add_story`, and the document stops being updated.
 
 ```markdown
 ## How this project tracks
@@ -247,18 +243,18 @@ is never committed.
   idea; `drop_idea` closes one that became nothing, with a reason.
 ```
 
-## 7. Check it works
+## 8. Finish
 
-- `claude mcp list`, or `/mcp` in a session, shows `backpack` as connected.
-- The agent calls the `where_are_we` tool with the workspace slug. A new
-  workspace answers with an empty board. An error naming the workspace means
-  step 1 hasn't been done, or the slug in `.backpack.json` is different.
-- With the hook, a new session starts with the same answer instead of
+Commit what you added: `.backpack.json`, `CLAUDE.md`, and, if you used them,
+`.mcp.json` and the hook files. Follow the project's own branch and pull
+request rules.
+
+Then tell the person what you set up, and ask them to **restart Claude Code**,
+so that the `backpack` tools appear. MCP servers are loaded when it starts.
+After the restart:
+
+- `claude mcp list`, or `/mcp` in a session, shows `backpack` as connected;
+- the `where_are_we` tool answers for the workspace (a new one has an empty
+  board);
+- with the hook, the session starts with the same answer instead of
   "Backpack unreachable".
-
-The person can check without Claude Code, too:
-
-```bash
-curl -H "Authorization: Bearer $BACKPACK_TOKEN" -H "Accept: text/plain" \
-  https://backpack.example.com/v1/workspaces/my-app/status
-```
