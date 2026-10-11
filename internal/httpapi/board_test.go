@@ -175,3 +175,18 @@ func TestStatusChangesOverHTTP(t *testing.T) {
 		t.Fatalf("S-2 %v", s)
 	}
 }
+
+func TestStoryLogsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	e := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/log", `{"kind": "note", "text": "hello"}`), http.StatusCreated)
+	if e["id"] != "L-1" || e["actor"] != "tester" {
+		t.Fatalf("logged %v", e)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/log", `{"kind": "status", "text": "x"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/log", `{"kind": "correction", "text": "x", "corrects": "L-9"}`), http.StatusNotFound)
+	l := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1/log", ""), http.StatusOK)
+	if entries := l["entries"].([]any); len(entries) != 1 {
+		t.Fatalf("log %v", l)
+	}
+}

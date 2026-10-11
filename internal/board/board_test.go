@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/FalkorDB/falkordb-go/v2"
+
 	"github.com/lioneljmorrison/backpack/internal/board"
 	"github.com/lioneljmorrison/backpack/internal/falkor/falkortest"
 )
@@ -28,6 +30,20 @@ func newWorkspace(t *testing.T) *board.Board {
 		t.Fatalf("create workspace: %v", err)
 	}
 	return b
+}
+
+// newWorkspaceGraph is newWorkspace with direct access to the workspace's graph.
+func newWorkspaceGraph(t *testing.T) (*board.Board, *falkordb.Graph) {
+	t.Helper()
+	db, prefix := falkortest.Prefix(t)
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "Demo"}); err != nil {
+		t.Fatal(err)
+	}
+	return b, db.SelectGraph(prefix + "ws:demo")
 }
 
 func wantKind(t *testing.T, err error, want board.Kind) {

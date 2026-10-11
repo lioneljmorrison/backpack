@@ -27,6 +27,8 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/stories/{id}", a.updateStory)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/move", a.moveStory)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/status", a.setStatus)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}/log", a.readLog)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/log", a.addLogEntry)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/dependencies", a.addDependency)
 	mux.HandleFunc("DELETE /v1/workspaces/{ws}/stories/{id}/dependencies/{on}", a.removeDependency)
 }
@@ -136,6 +138,20 @@ func (a boardAPI) setStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	s, err := a.b.SetStatus(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
 	respond(w, http.StatusOK, s, err)
+}
+
+func (a boardAPI) readLog(w http.ResponseWriter, r *http.Request) {
+	l, err := a.b.Log(r.PathValue("ws"), r.PathValue("id"))
+	respond(w, http.StatusOK, map[string]any{"entries": l}, err)
+}
+
+func (a boardAPI) addLogEntry(w http.ResponseWriter, r *http.Request) {
+	var in board.NewLogEntry
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	e, err := a.b.AddLogEntry(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
+	respond(w, http.StatusCreated, e, err)
 }
 
 func (a boardAPI) addDependency(w http.ResponseWriter, r *http.Request) {

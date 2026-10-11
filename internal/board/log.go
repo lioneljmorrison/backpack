@@ -22,6 +22,99 @@ type LogEntry struct {
 	CorrectedBy []string `json:"corrected_by,omitempty"`
 }
 
+// NewLogEntry is what AddLogEntry needs. A note needs text; a decision,
+// text and its reason; a commit, its id; a pull request, its link; and a
+// correction, text and the entry it corrects.
+type NewLogEntry struct {
+	Kind     string `json:"kind"`
+	Text     string `json:"text"`
+	Reason   string `json:"reason"`
+	Commit   string `json:"commit"`
+	PRURL    string `json:"pr_url"`
+	Corrects string `json:"corrects"`
+}
+
+// needs is what each kind of entry a caller may write must carry.
+var needs = map[string]string{
+	"note": "text", "decision": "text and reason", "commit": "commit", "pr": "pr_url",
+	"correction": "text and corrects",
+}
+
+func (e NewLogEntry) check() error {
+	if e.Kind == "status" {
+		return refuse(Invalid, "status entries are written only by status changes")
+	}
+	need, ok := needs[e.Kind]
+	if !ok {
+		return refuse(Invalid, "kind is one of note, decision, commit, pr, correction")
+	}
+	missing := map[string]bool{
+		"note":       e.Text == "",
+		"decision":   e.Text == "" || e.Reason == "",
+		"commit":     e.Commit == "",
+		"pr":         e.PRURL == "",
+		"correction": e.Text == "" || e.Corrects == "",
+	}[e.Kind]
+	if missing {
+		return refuse(Invalid, "a %s entry needs %s", e.Kind, need)
+	}
+	only := func(field, value, kind string) error {
+		if value != "" && e.Kind != kind {
+			return refuse(Invalid, "%s belongs only to a %s entry", field, kind)
+		}
+		return nil
+	}
+	for _, err := range []error{
+		only("reason", e.Reason, "decision"),
+		only("commit", e.Commit, "commit"),
+		only("pr_url", e.PRURL, "pr"),
+		only("corrects", e.Corrects, "correction"),
+	} {
+		if err != nil {
+			return err
+		}
+	}
+	return plainText(e.Text, e.Reason, e.Commit, e.PRURL, e.Corrects)
+}
+
+// AddLogEntry appends an entry to a story's log. Entries are never edited
+// or deleted; a correction points to an earlier entry of the same story.
+func (b *Board) AddLogEntry(ws, actor, id string, e NewLogEntry) (LogEntry, error) {
+	if err := e.check(); err != nil {
+		return LogEntry{}, err
+	}
+	g, err := b.workspace(ws)
+	if err != nil {
+		return LogEntry{}, err
+	}
+	at := now()
+	res, err := g.Query(`
+		MATCH (w:Workspace), (s:Story {id: $id})
+		OPTIONAL MATCH (s)-[:LOGGED]->(c:LogEntry {id: $corrects})
+		WITH w, s, c, coalesce(w.next_log, 1) AS n,
+			CASE WHEN $corrects <> '' AND c IS NULL THEN 'corrects' END AS violation
+		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
+			SET w.next_log = n + 1
+			CREATE (s)-[:LOGGED]->(e:LogEntry {id: 'L-' + toString(n), at: $at, actor: $actor, kind: $kind,
+				text: $text, reason: $reason, commit: $commit, pr_url: $pr})
+			FOREACH (x IN CASE WHEN c IS NULL THEN [] ELSE [c] END | CREATE (e)-[:CORRECTS]->(x)))
+		RETURN violation, 'L-' + toString(n) AS id`,
+		map[string]any{"id": id, "corrects": e.Corrects, "at": at, "actor": actor, "kind": e.Kind,
+			"text": orNull(e.Text), "reason": orNull(e.Reason), "commit": orNull(e.Commit), "pr": orNull(e.PRURL)}, nil)
+	if err != nil {
+		return LogEntry{}, fmt.Errorf("add log entry: %w", err)
+	}
+	if !res.Next() {
+		return LogEntry{}, refuse(NotFound, "no story %q", id)
+	}
+	r := res.Record()
+	if str(r, "violation") != "" {
+		return LogEntry{}, refuse(NotFound, "%s has no log entry %q", id, e.Corrects)
+	}
+	return LogEntry{ID: str(r, "id"), At: at, Actor: actor, Kind: e.Kind, Text: e.Text, Reason: e.Reason,
+		Commit: e.Commit, PRURL: e.PRURL, Corrects: e.Corrects}, nil
+}
+
 // Log reads a story's log, oldest entry first.
 func (b *Board) Log(ws, id string) ([]LogEntry, error) {
 	g, err := b.workspace(ws)
