@@ -37,7 +37,7 @@ func decode(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 }
 
 func TestHealthzIsOKWhenEveryCheckPasses(t *testing.T) {
-	h := New(map[string]health.Check{"falkordb": ok, "typesense": ok}, lookup, nil)
+	h := New(map[string]health.Check{"falkordb": ok, "typesense": ok}, lookup, nil, nil)
 	w := serve(h, "GET", "/healthz", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d, want 200", w.Code)
@@ -49,7 +49,7 @@ func TestHealthzIsOKWhenEveryCheckPasses(t *testing.T) {
 }
 
 func TestHealthzNamesTheFailingCheckWithoutLeakingItsError(t *testing.T) {
-	h := New(map[string]health.Check{"falkordb": ok, "typesense": down}, lookup, nil)
+	h := New(map[string]health.Check{"falkordb": ok, "typesense": down}, lookup, nil, nil)
 	w := serve(h, "GET", "/healthz", "")
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status %d, want 503", w.Code)
@@ -64,7 +64,7 @@ func TestHealthzNamesTheFailingCheckWithoutLeakingItsError(t *testing.T) {
 }
 
 func TestEveryV1RouteRequiresAToken(t *testing.T) {
-	h := New(map[string]health.Check{}, lookup, nil)
+	h := New(map[string]health.Check{}, lookup, nil, nil)
 	for _, path := range []string{"/v1/whoami", "/v1/anything"} {
 		if w := serve(h, "GET", path, ""); w.Code != http.StatusUnauthorized {
 			t.Errorf("%s without a token: status %d, want 401", path, w.Code)
@@ -74,7 +74,7 @@ func TestEveryV1RouteRequiresAToken(t *testing.T) {
 
 func TestWhoamiReturnsTheTokensActor(t *testing.T) {
 	known := func(tok string) (string, bool, error) { return "lionel", tok == "bp_good", nil }
-	h := New(map[string]health.Check{}, known, nil)
+	h := New(map[string]health.Check{}, known, nil, nil)
 	w := serve(h, "GET", "/v1/whoami", "bp_good")
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d, want 200", w.Code)
@@ -86,7 +86,7 @@ func TestWhoamiReturnsTheTokensActor(t *testing.T) {
 
 func TestWhoamiOnlyAnswersGET(t *testing.T) {
 	known := func(string) (string, bool, error) { return "lionel", true, nil }
-	h := New(map[string]health.Check{}, known, nil)
+	h := New(map[string]health.Check{}, known, nil, nil)
 	if w := serve(h, "POST", "/v1/whoami", "bp_good"); w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status %d, want 405", w.Code)
 	}

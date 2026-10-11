@@ -741,6 +741,43 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/search:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: Find stories, ideas and phases by keyword and by meaning
+      description: >-
+        Answers "do we already have something about this?". Keywords match
+        every text field, a story's log included; meaning is matched on the
+        title and summary by a model that runs inside the stack. Up to ten
+        matches, best first. Closed stories and dropped ideas are included,
+        with their state. The index is rebuilt from the board; it never
+        decides anything on the board.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, example: sign in without a password }
+      responses:
+        "200":
+          description: The matches, best first; empty when nothing matches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: "#/components/schemas/SearchResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: Search is unavailable; the board itself is unaffected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 components:
   parameters:
     Workspace:
@@ -946,6 +983,21 @@ components:
       properties:
         before: { type: string, example: S-3 }
         after: { type: string, example: S-2 }
+    SearchResult:
+      type: object
+      required: [kind, id, title]
+      properties:
+        kind: { type: string, enum: [story, idea, phase] }
+        id:
+          type: string
+          description: A story's or idea's id, or a phase's number
+          example: S-4
+        title: { type: string }
+        state:
+          type: string
+          description: >-
+            A story's status, or an idea's state (proposed, open or closed). A
+            phase has none.
     Error:
       type: object
       required: [error]

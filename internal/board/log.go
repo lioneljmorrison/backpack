@@ -79,7 +79,8 @@ func (e NewLogEntry) check() error {
 
 // AddLogEntry appends an entry to a story's log. Entries are never edited
 // or deleted; a correction points to an earlier entry of the same story.
-func (b *Board) AddLogEntry(ws, actor, id string, e NewLogEntry) (LogEntry, error) {
+func (b *Board) AddLogEntry(ws, actor, id string, e NewLogEntry) (_ LogEntry, err error) {
+	defer func() { b.changed(err, Change{ws, KindStory, id}) }()
 	if err := e.check(); err != nil {
 		return LogEntry{}, err
 	}

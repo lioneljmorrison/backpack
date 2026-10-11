@@ -7,9 +7,13 @@ import (
 
 	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
+	"github.com/lioneljmorrison/backpack/internal/search"
 )
 
-type tools struct{ b *board.Board }
+type tools struct {
+	b *board.Board
+	x *search.Index
+}
 
 // in is what every tool needs: the workspace it acts on.
 type in struct {
@@ -132,6 +136,11 @@ type moveIdeaIn struct {
 	ideaPosition
 }
 
+type searchIn struct {
+	in
+	Query string `json:"query" jsonschema:"words, or what the work is about in plain language"`
+}
+
 type refineIdeaIn struct {
 	ideaIn
 	Stories []string `json:"stories,omitempty" jsonschema:"the stories the idea became, already added"`
@@ -167,6 +176,12 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "approve_idea", "Approve a proposed idea at its spot, making it open.", t.approveIdea)
 	tool(s, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Add those first, the usual way; none may be closed.", t.refineIdea)
 	tool(s, "drop_idea", "Close an idea that became nothing, with the reason.", t.dropIdea)
+	tool(s, "search", "Check whether a story, idea or phase already covers something, before adding one. Matches by keyword and by meaning, best first, up to ten; closed stories and dropped ideas are included, with their state.", t.search)
+}
+
+func (t tools) search(ctx context.Context, a searchIn) (any, error) {
+	rs, err := t.x.Search(ctx, a.Workspace, a.Query)
+	return map[string]any{"results": rs}, err
 }
 
 func actor(ctx context.Context) string {

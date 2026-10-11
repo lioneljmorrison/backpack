@@ -13,6 +13,8 @@ current state is hard to find. Backpack replaces that document: agents ask it
   Released → Deployed, and each keeps an append-only log. A story an agent
   adds is Proposed until a person approves it.
 - Dependencies are explicit, and a story always ranks below what it depends on.
+- Agents can **search** stories, ideas and phases by keyword or by meaning,
+  to check whether something is already covered before adding it.
 - Agents use it through an **MCP server**; a UI can use the **HTTP API**
   (`api/openapi.yaml`). Every request needs a token.
 
@@ -28,8 +30,16 @@ make up                  # build and start the stack on localhost
 make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
 make token ACTOR=<name>  # issue a token for a person or agent (shown once)
+make reindex             # rebuild the search index from the board
 make gates               # gofmt, vet, tests, build
 ```
+
+The search index is rebuilt from the board at every start. The first start on
+a new Typesense volume also downloads the small embedding model search uses
+for matching by meaning. It runs inside the stack, so nothing tracked is sent
+anywhere. If Typesense is down when the board changes, the change still saves
+and the log says a reindex is needed; `make reindex`, or the next start,
+catches search up.
 
 Locally, Backpack answers on `http://127.0.0.1:8780`. To reach it from other
 machines, `make tunnel` starts `cloudflared` with a token-managed Cloudflare
@@ -211,6 +221,9 @@ is never committed.
   notes. Entries are never edited; fix a mistake with a `correction` that names
   the entry it corrects.
 - **Stuck or no longer needed:** `on_hold` or `closed`, with a reason.
+- **Search first.** Before adding a story or an idea, ask `search` whether
+  one already covers it, by keyword or by meaning. Closed and dropped ones
+  come back too, with their state.
 - **New work** goes in with `add_story`, placed with `before` or `after`, with
   the `reasoning` for that spot. It waits as **proposed** until a person
   approves it (`set_status` to `backlog`, after `move_story` if they pick

@@ -81,7 +81,8 @@ var activities = []string{"planning", "building", "testing", "waiting"}
 const placeAttempts = 3
 
 // AddStory creates a story in the backlog at the given position.
-func (b *Board) AddStory(ws, actor string, s NewStory) (Story, error) {
+func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
+	defer func() { b.changed(err, Change{ws, KindStory, out.ID}) }()
 	if s.Title == "" {
 		return Story{}, refuse(Invalid, "title is required")
 	}
@@ -283,7 +284,8 @@ func (b *Board) Stories(ws string) ([]Story, error) {
 
 // UpdateStory edits a story's text, branch and pull request, and what it
 // is doing while in progress.
-func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (Story, error) {
+func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, err error) {
+	defer func() { b.changed(err, Change{ws, KindStory, id}) }()
 	if patch.Title != nil && *patch.Title == "" {
 		return Story{}, refuse(Invalid, "title cannot be empty")
 	}

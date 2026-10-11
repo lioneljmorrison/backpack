@@ -11,6 +11,7 @@ import (
 
 	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
+	"github.com/lioneljmorrison/backpack/internal/search"
 )
 
 const maxBody = 1 << 20
@@ -323,10 +324,15 @@ func respond(w http.ResponseWriter, status int, v any, err error) {
 	writeJSON(w, status, v)
 }
 
-// fail reports a board refusal with its reason. Anything else is logged and
-// reported without detail.
+// fail reports a board refusal with its reason, and search being down as
+// such. Anything else is logged and reported without detail.
 func fail(w http.ResponseWriter, err error) {
 	var be *board.Error
+	if errors.Is(err, search.ErrUnavailable) {
+		log.Printf("search: %v", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "search unavailable"})
+		return
+	}
 	if !errors.As(err, &be) {
 		log.Printf("board: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})

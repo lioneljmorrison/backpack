@@ -20,7 +20,7 @@ func newAPI(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	tester := func(string) (string, bool, error) { return "tester", true, nil }
-	return New(map[string]health.Check{}, tester, b)
+	return New(map[string]health.Check{}, tester, b, nil)
 }
 
 func call(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {

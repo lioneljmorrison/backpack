@@ -48,7 +48,8 @@ type PhasePatch struct {
 }
 
 // AddPhase appends a phase, numbered after the last one.
-func (b *Board) AddPhase(ws, actor, title, description string) (Phase, error) {
+func (b *Board) AddPhase(ws, actor, title, description string) (out Phase, err error) {
+	defer func() { b.changed(err, Change{ws, KindPhase, phaseID(out.Number)}) }()
 	if title == "" {
 		return Phase{}, refuse(Invalid, "title is required")
 	}
@@ -85,7 +86,8 @@ func (b *Board) Phases(ws string) ([]Phase, error) {
 }
 
 // UpdatePhase edits a phase's title or description.
-func (b *Board) UpdatePhase(ws, actor string, number int, patch PhasePatch) (Phase, error) {
+func (b *Board) UpdatePhase(ws, actor string, number int, patch PhasePatch) (_ Phase, err error) {
+	defer func() { b.changed(err, Change{ws, KindPhase, phaseID(number)}) }()
 	if patch.Title != nil && *patch.Title == "" {
 		return Phase{}, refuse(Invalid, "title cannot be empty")
 	}
@@ -118,7 +120,8 @@ func (b *Board) UpdatePhase(ws, actor string, number int, patch PhasePatch) (Pha
 }
 
 // AddGoal adds a goal to a phase. Goals are numbered across the workspace.
-func (b *Board) AddGoal(ws, actor string, phase int, text string) (Goal, error) {
+func (b *Board) AddGoal(ws, actor string, phase int, text string) (_ Goal, err error) {
+	defer func() { b.changed(err, Change{ws, KindPhase, phaseID(phase)}) }()
 	if text == "" {
 		return Goal{}, refuse(Invalid, "text is required")
 	}

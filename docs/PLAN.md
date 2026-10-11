@@ -1,7 +1,7 @@
 # Backpack — Plan
 
-**Status:** Approved 2026-10-10. Slices 1–4 merged; slice 5 in review.
-**Last updated:** 2026-10-10
+**Status:** Approved 2026-10-10. Slices 1–6 merged; slice 7 (search) in review.
+**Last updated:** 2026-10-11
 **Integration branch:** `dev` (released to `main`)
 
 **Backpack now tracks itself** in its own workspace, `backpack`, at
@@ -280,6 +280,29 @@ Each slice is its own branch and pull request into `dev`.
   phase is missing. Dropping closes it with a reason. Closed is final.
 - **No idea log.** The reasoning lives on the idea; nothing yet needs more.
 
+**Slice 7 details, search** (settled 2026-10-11, S-3):
+- **Hybrid, with a local model.** Keywords and meaning together. Meaning
+  uses Typesense's built-in `ts/all-MiniLM-L12-v2`, which runs inside the
+  stack, so tracked content never leaves the host. The model is downloaded
+  once per Typesense volume.
+- **What is indexed.** One entry per story, idea and phase, in one collection
+  per workspace. Meaning reads the title and summary (a story's description
+  and goal, an idea's notes, a phase's description and goals); keywords also
+  read the detail (a story's plan and log text, an idea's reasoning and drop
+  reason). Closed stories and dropped ideas stay in, with their state.
+- **Results.** Up to ten, best first: kind, id, title and state. A match by
+  meaning further than a cosine distance of 0.75 is left out, measured on
+  invented fixtures; a keyword match always stays.
+- **Kept current after each write.** The board reports which item a
+  successful write changed, and the index reads it back and replaces its
+  entry. Moves and dependencies report nothing. If Typesense can't be
+  reached, the board change stands and the failure is logged with "reindex
+  needed".
+- **Rebuilt at every start and on demand** (`backpack reindex`). A rebuild
+  drops and recreates the collection, so a change to the search schema
+  applies at the next start whatever was there before: that is its
+  migration.
+
 Questions about remaining work are logged on their stories in Backpack.
 
 ---
@@ -297,7 +320,8 @@ Questions about remaining work are logged on their stories in Backpack.
   2026-09-29 and is held back until it has settled; revisit once slice 2 is
   done. Go client: `github.com/FalkorDB/falkordb-go/v2` v2.1.0.
 - Typesense server `typesense/typesense:30.2` (31.0 is still in release
-  candidates). Go client: `github.com/typesense/typesense-go/v3` v3.2.0.
+  candidates). No Go client: the index needs five REST calls, made with
+  `net/http` (decided 2026-10-11, in place of `typesense-go`).
   Auto-embedding with the built-in `ts/all-MiniLM-L12-v2` model, on CPU.
 - MCP: `github.com/modelcontextprotocol/go-sdk` v1.8.0, streamable HTTP at
   `/mcp` on the same server.
@@ -386,7 +410,7 @@ POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
 GET  /v1/workspaces/{ws}/stories/{id}/log            POST
 GET  /v1/workspaces/{ws}/ideas                       POST
 GET  /v1/workspaces/{ws}/ideas/{id}                  PATCH; POST /move, /approve, /refine, /drop
-GET  /v1/workspaces/{ws}/search?q=                                                (slice 7)
+GET  /v1/workspaces/{ws}/search?q=                   stories, ideas and phases by keyword and meaning
 ```
 
 Auth: `Authorization: Bearer <token>`. Tokens (`bp_` + 32 random bytes) are
@@ -406,7 +430,7 @@ true or false). Every tool takes `workspace`. Since slice 6, `add_story`
 proposes: the story goes in as `proposed`, with a required `reasoning`.
 Ideas add `add_idea` (which suggests, with a required `reasoning`),
 `list_ideas`, `get_idea`, `update_idea`, `move_idea`, `approve_idea`,
-`refine_idea` and `drop_idea`. Search tools come with slice 7.
+`refine_idea` and `drop_idea`. Search adds `search`.
 
 ### Per-project config and hook (slice 5)
 
@@ -443,7 +467,7 @@ tests run against the real thing.
 ### Layout
 
 ```
-cmd/backpack/        main: serve, token create|revoke (reindex in slice 7)
+cmd/backpack/        main: serve, token create|revoke, reindex
 internal/falkor/     connection and numbered migrations, applied at start-up
 internal/auth/       tokens, the actor store, the bearer middleware
 internal/health/     dependency checks

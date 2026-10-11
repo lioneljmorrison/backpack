@@ -14,6 +14,7 @@ import (
 	"github.com/lioneljmorrison/backpack/internal/falkor/falkortest"
 	"github.com/lioneljmorrison/backpack/internal/health"
 	"github.com/lioneljmorrison/backpack/internal/httpapi"
+	"github.com/lioneljmorrison/backpack/internal/search"
 )
 
 // bearer adds the test's token to every request the client sends.
@@ -37,16 +38,28 @@ func demo(t *testing.T) (*board.Board, string) {
 	if _, err := b.CreateWorkspace("tester", board.Workspace{Slug: "demo", Name: "Demo"}); err != nil {
 		t.Fatal(err)
 	}
+	return b, serve(t, b, nil)
+}
+
+// serve serves the whole API over b, searching with x, and returns the MCP
+// address.
+func serve(t *testing.T, b *board.Board, x *search.Index) string {
+	t.Helper()
 	tester := func(tok string) (string, bool, error) { return "tester", tok == "bp_good", nil }
-	srv := httptest.NewServer(httpapi.New(map[string]health.Check{}, tester, b))
+	srv := httptest.NewServer(httpapi.New(map[string]health.Check{}, tester, b, x))
 	t.Cleanup(srv.Close)
-	return b, srv.URL + "/mcp"
+	return srv.URL + "/mcp"
 }
 
 // connect returns an MCP client session on the board, sending the token.
 func connect(t *testing.T) (*board.Board, *mcp.ClientSession) {
 	t.Helper()
 	b, url := demo(t)
+	return b, session(t, url)
+}
+
+func session(t *testing.T, url string) *mcp.ClientSession {
+	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil)
 	transport := &mcp.StreamableClientTransport{Endpoint: url, HTTPClient: &http.Client{Transport: bearer{}},
 		DisableStandaloneSSE: true}
@@ -55,7 +68,7 @@ func connect(t *testing.T) (*board.Board, *mcp.ClientSession) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { cs.Close() })
-	return b, cs
+	return cs
 }
 
 // use calls a tool that must succeed and returns its JSON answer.
