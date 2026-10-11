@@ -7,7 +7,7 @@ TEST_ENV := BACKPACK_TEST_FALKORDB=falkor://localhost:16379 \
             BACKPACK_TEST_TYPESENSE=http://localhost:18108 \
             BACKPACK_TEST_TYPESENSE_KEY=$(TYPESENSE_API_KEY)
 
-.PHONY: up tunnel down logs test gates token
+.PHONY: up tunnel down logs test gates token reindex
 
 up:            ## start the whole stack, rebuilding the service
 	$(COMPOSE) up -d --build
@@ -33,3 +33,6 @@ gates:         ## every gate in docs/ENGINEERING-STANDARD.md §7.3
 
 token:         ## make token ACTOR=<name>
 	@$(COMPOSE) exec backpack /backpack token create --actor $(ACTOR)
+
+reindex:       ## rebuild every workspace's search index from the board
+	@$(COMPOSE) exec backpack /backpack reindex

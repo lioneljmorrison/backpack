@@ -3,6 +3,7 @@
 //	backpack serve
 //	backpack token create --actor <name>
 //	backpack token revoke --actor <name>
+//	backpack reindex [--workspace <slug>]
 package main
 
 import (
@@ -30,13 +31,8 @@ const usage = `usage:
   backpack serve
   backpack token create --actor <name>
   backpack token revoke --actor <name>
+  backpack reindex [--workspace <slug>]
 `
-
-// workspacePrefix names each workspace's graph: ws:<slug>.
-const workspacePrefix = "ws:"
-
-// collectionPrefix names each workspace's search collection: ws_<slug>.
-const collectionPrefix = "ws_"
 
 // rebuildTimeout bounds a full rebuild of the search index. The first one on
 // a new Typesense volume also downloads the embedding model.
@@ -48,6 +44,11 @@ type config struct {
 	TypesenseURL string
 	TypesenseKey string
 	SystemGraph  string
+	// WorkspacePrefix names each workspace's graph, ws:<slug>, and
+	// CollectionPrefix its search collection, ws_<slug>. They are fixed;
+	// only tests change them.
+	WorkspacePrefix  string
+	CollectionPrefix string
 }
 
 func loadConfig(getenv func(string) string) config {
@@ -58,11 +59,13 @@ func loadConfig(getenv func(string) string) config {
 		return def
 	}
 	return config{
-		Addr:         or("BACKPACK_ADDR", ":8780"),
-		FalkorURL:    or("BACKPACK_FALKORDB_URL", "falkor://localhost:6379"),
-		TypesenseURL: or("BACKPACK_TYPESENSE_URL", "http://localhost:8108"),
-		TypesenseKey: getenv("BACKPACK_TYPESENSE_API_KEY"),
-		SystemGraph:  or("BACKPACK_SYSTEM_GRAPH", "backpack"),
+		Addr:             or("BACKPACK_ADDR", ":8780"),
+		FalkorURL:        or("BACKPACK_FALKORDB_URL", "falkor://localhost:6379"),
+		TypesenseURL:     or("BACKPACK_TYPESENSE_URL", "http://localhost:8108"),
+		TypesenseKey:     getenv("BACKPACK_TYPESENSE_API_KEY"),
+		SystemGraph:      or("BACKPACK_SYSTEM_GRAPH", "backpack"),
+		WorkspacePrefix:  "ws:",
+		CollectionPrefix: "ws_",
 	}
 }
 
@@ -75,15 +78,60 @@ func run(args []string, getenv func(string) string, out, errOut io.Writer) int {
 		fmt.Fprint(errOut, usage)
 		return 2
 	}
-	cfg := loadConfig(getenv)
+	return dispatch(loadConfig(getenv), args, out, errOut)
+}
+
+func dispatch(cfg config, args []string, out, errOut io.Writer) int {
 	switch args[0] {
 	case "serve":
 		return report(errOut, serve(cfg))
 	case "token":
 		return token(cfg, args[1:], out, errOut)
+	case "reindex":
+		return reindex(cfg, args[1:], out, errOut)
 	}
 	fmt.Fprint(errOut, usage)
 	return 2
+}
+
+// reindex rebuilds one workspace's search index, or every workspace's, from
+// the board.
+func reindex(cfg config, args []string, out, errOut io.Writer) int {
+	fs := flag.NewFlagSet("reindex", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	ws := fs.String("workspace", "", "only this workspace")
+	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
+		fmt.Fprint(errOut, usage)
+		return 2
+	}
+	db, err := falkor.Connect(cfg.FalkorURL)
+	if err != nil {
+		return report(errOut, err)
+	}
+	defer db.Conn.Close()
+	b, err := board.New(db, cfg.SystemGraph, cfg.WorkspacePrefix)
+	if err != nil {
+		return report(errOut, err)
+	}
+	x := search.New(cfg.TypesenseURL, cfg.TypesenseKey, cfg.CollectionPrefix, b)
+	ctx, cancel := context.WithTimeout(context.Background(), rebuildTimeout)
+	defer cancel()
+	if *ws != "" {
+		if err := x.Rebuild(ctx, *ws); err != nil {
+			return report(errOut, err)
+		}
+		fmt.Fprintf(out, "reindexed %s\n", *ws)
+		return 0
+	}
+	all, err := b.Workspaces()
+	if err != nil {
+		return report(errOut, err)
+	}
+	if err := x.RebuildAll(ctx); err != nil {
+		return report(errOut, err)
+	}
+	fmt.Fprintf(out, "reindexed %d workspace(s)\n", len(all))
+	return 0
 }
 
 func report(errOut io.Writer, err error) int {
@@ -152,11 +200,11 @@ func serve(cfg config) error {
 	if err != nil {
 		return err
 	}
-	b, err := board.New(db, cfg.SystemGraph, workspacePrefix)
+	b, err := board.New(db, cfg.SystemGraph, cfg.WorkspacePrefix)
 	if err != nil {
 		return err
 	}
-	x := search.New(cfg.TypesenseURL, cfg.TypesenseKey, collectionPrefix, b)
+	x := search.New(cfg.TypesenseURL, cfg.TypesenseKey, cfg.CollectionPrefix, b)
 	b.OnChange(x.Report)
 	rebuild(x)
 	checks := map[string]health.Check{
