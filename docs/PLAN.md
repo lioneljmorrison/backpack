@@ -234,8 +234,10 @@ Each slice is its own branch and pull request into `dev`.
   left out: changing a story's fields, branch or PR link, adding a goal,
   unmarking a goal, removing a dependency and reading a log. What a story
   is doing is one of its fields, so there is no separate activity tool.
-  Creating and listing workspaces, the full board, editing a phase and
-  listing every story stay HTTP-only until an agent needs them.
+  Creating workspaces, the full board, editing a phase and listing every
+  story stay HTTP-only until an agent needs them. Listing workspaces became
+  a tool on 2026-10-11 (S-8): a client without the project's
+  `.backpack.json`, such as chat, had no way to learn a workspace's slug.
 - **Workspace.** Every tool takes the workspace's slug, so one MCP address
   serves every project.
 - **Answers.** Every tool answers with the same JSON as the HTTP API, "where
@@ -430,7 +432,9 @@ true or false). Every tool takes `workspace`. Since slice 6, `add_story`
 proposes: the story goes in as `proposed`, with a required `reasoning`.
 Ideas add `add_idea` (which suggests, with a required `reasoning`),
 `list_ideas`, `get_idea`, `update_idea`, `move_idea`, `approve_idea`,
-`refine_idea` and `drop_idea`. Search adds `search`.
+`refine_idea` and `drop_idea`. Search adds `search`. `list_workspaces` is the
+one tool that takes no `workspace`: it answers with every workspace, the same
+JSON as `GET /v1/workspaces`.
 
 ### Per-project config and hook (slice 5)
 
