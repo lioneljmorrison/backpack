@@ -222,11 +222,11 @@ func TestTheQuickReadsOverHTTP(t *testing.T) {
 		t.Fatalf("next %v", n)
 	}
 	st := want(t, call(t, h, "GET", "/v1/workspaces/demo/status", ""), http.StatusOK)
-	if len(st["in_progress"].([]any)) != 1 || len(st["next"].([]any)) != 1 {
+	if len(st["in_progress"].([]any)) != 1 || len(st["next"].([]any)) != 1 || len(st["proposed"].([]any)) != 0 {
 		t.Fatalf("status %v", st)
 	}
 	b := want(t, call(t, h, "GET", "/v1/workspaces/demo/board", ""), http.StatusOK)
-	if cols := b["columns"].([]any); len(cols) != 7 {
+	if cols := b["columns"].([]any); len(cols) != 8 {
 		t.Fatalf("board %v", b)
 	}
 	want(t, call(t, h, "GET", "/v1/workspaces/nope/status", ""), http.StatusNotFound)

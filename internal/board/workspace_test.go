@@ -131,7 +131,7 @@ func TestPreparingAnExistingWorkspaceGraphKeepsItsReleaseStage(t *testing.T) {
 	if !w.HasReleaseStage || !listed[0].HasReleaseStage {
 		t.Fatalf("created %+v, listed %+v", w, listed)
 	}
-	if cols, _ := b.Board("demo"); len(cols) != 8 {
+	if cols, _ := b.Board("demo"); len(cols) != 9 {
 		t.Fatalf("the graph lost its release stage: %d columns", len(cols))
 	}
 }

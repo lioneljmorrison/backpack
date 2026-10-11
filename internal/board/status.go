@@ -7,7 +7,9 @@ import (
 )
 
 // The columns a story moves through, then the two it can be pulled into.
+// Proposed holds an agent's new story until a person approves it.
 const (
+	Proposed   = "proposed"
 	Backlog    = "backlog"
 	InProgress = "in_progress"
 	InReview   = "in_review"
@@ -19,7 +21,7 @@ const (
 )
 
 // statuses is every status, in board order.
-var statuses = []string{Backlog, InProgress, InReview, Merged, Released, Deployed, OnHold, Closed}
+var statuses = []string{Proposed, Backlog, InProgress, InReview, Merged, Released, Deployed, OnHold, Closed}
 
 // complete is every status in which a story's work has landed.
 var complete = []string{Merged, Released, Deployed}
@@ -28,6 +30,7 @@ var complete = []string{Merged, Released, Deployed}
 // or its workspace: a story on hold resumes in the column it left, and
 // Merged goes to Released or Deployed by the workspace's release stage.
 var moves = []string{
+	Proposed + ">" + Backlog, Proposed + ">" + Closed,
 	Backlog + ">" + InProgress, InProgress + ">" + InReview, InReview + ">" + Merged,
 	Merged + ">" + Released, Merged + ">" + Deployed, Released + ">" + Deployed,
 	InProgress + ">" + Backlog, InReview + ">" + InProgress,

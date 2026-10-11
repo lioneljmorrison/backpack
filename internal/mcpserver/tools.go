@@ -36,6 +36,7 @@ type addStoryIn struct {
 	Goal        string `json:"goal,omitempty"`
 	Plan        string `json:"plan,omitempty"`
 	Phase       int    `json:"phase,omitempty" jsonschema:"the number of the phase the story belongs to; it can't be changed later"`
+	Reasoning   string `json:"reasoning" jsonschema:"why the story belongs at this spot, for the person who approves it"`
 	position
 }
 
@@ -103,10 +104,10 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
 	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, and the next three in the backlog.", t.whereAreWe)
 	tool(s, "get_story", "One story, with its status, what blocks it and what it blocks.", t.getStory)
-	tool(s, "add_story", "Add a story to the backlog, directly before or after another story, or at the bottom when neither is given. It must rank below everything it will depend on.", t.addStory)
+	tool(s, "add_story", "Propose a story: it goes in as proposed, directly before or after another story or at the bottom when neither is given, with the reasoning for that spot logged as a decision. It waits until a person approves it by setting its status to backlog. It must rank below everything it will depend on.", t.addStory)
 	tool(s, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing.", t.updateStory)
 	tool(s, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it.", t.moveStory)
-	tool(s, "set_status", "Move a story across the board: forward one column, or back one before merged. Merged, released and deployed are complete. on_hold resumes to the column it left; closed is final. Every change is logged.", t.setStatus)
+	tool(s, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog or declined by closing it. Merged, released and deployed are complete. on_hold resumes to the column it left; closed is final. Every change is logged.", t.setStatus)
 	tool(s, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
 	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
 	tool(s, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
@@ -137,7 +138,8 @@ func (t tools) getStory(_ context.Context, a storyIn) (any, error) {
 
 func (t tools) addStory(ctx context.Context, a addStoryIn) (any, error) {
 	return t.b.AddStory(a.Workspace, actor(ctx), board.NewStory{Title: a.Title, Description: a.Description,
-		Goal: a.Goal, Plan: a.Plan, Phase: a.Phase, Position: board.Position(a.position)})
+		Goal: a.Goal, Plan: a.Plan, Phase: a.Phase, Proposed: true, Reasoning: a.Reasoning,
+		Position: board.Position(a.position)})
 }
 
 func (t tools) updateStory(ctx context.Context, a updateStoryIn) (any, error) {
