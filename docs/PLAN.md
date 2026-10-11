@@ -1,7 +1,8 @@
 # Backpack — Plan
 
-**Status:** Approved 2026-10-10. Slices 1–4 merged; slice 5 in review.
-**Last updated:** 2026-10-10
+**Status:** Approved 2026-10-10. Slices 1–4 merged before Backpack took over;
+progress since then is on the board, not here.
+**Last updated:** 2026-10-11
 **Integration branch:** `dev` (released to `main`)
 
 **Backpack now tracks itself** in its own workspace, `backpack`, at
@@ -17,7 +18,7 @@ next and open questions about remaining work live on the stories.
 | 2. The board | Merged (PR #4) |
 | 3. Work moving across the board | Merged (PR #5) |
 | 4. The MCP server | Merged (PR #7) |
-| 5–7 | In Backpack: S-1, S-2, S-3 |
+| 5–7 | In Backpack: S-1 (slice 5), S-2 and S-4 (slice 6), S-3 (slice 7) |
 
 ---
 
