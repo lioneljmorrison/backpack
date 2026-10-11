@@ -7,8 +7,8 @@ import (
 
 func TestIdeasOverHTTP(t *testing.T) {
 	h := withDemo(t)
-	i := want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas", `{"title": "A", "notes": "rough"}`), http.StatusCreated)
-	if i["id"] != "I-1" || i["state"] != "open" || i["created_by"] != "tester" {
+	i := want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas", `{"title": "A", "context": "rough"}`), http.StatusCreated)
+	if i["id"] != "I-1" || i["state"] != "open" || i["context"] != "rough" || i["created_by"] != "tester" {
 		t.Fatalf("added %v", i)
 	}
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas", `{"title": "B", "before": "I-1"}`), http.StatusCreated)
@@ -17,22 +17,22 @@ func TestIdeasOverHTTP(t *testing.T) {
 		t.Fatalf("ideas %v", list)
 	}
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas/I-2/move", `{"after": "I-1"}`), http.StatusOK)
-	i = want(t, call(t, h, "PATCH", "/v1/workspaces/demo/ideas/I-1", `{"notes": "grown"}`), http.StatusOK)
-	if i["notes"] != "grown" || i["title"] != "A" {
+	i = want(t, call(t, h, "PATCH", "/v1/workspaces/demo/ideas/I-1", `{"context": "grown"}`), http.StatusOK)
+	if i["context"] != "grown" || i["title"] != "A" {
 		t.Fatalf("updated %v", i)
 	}
 	i = want(t, call(t, h, "GET", "/v1/workspaces/demo/ideas/I-1", ""), http.StatusOK)
-	if i["notes"] != "grown" {
+	if i["context"] != "grown" {
 		t.Fatalf("read %v", i)
 	}
 }
 
-func TestAnIdeaAddedOverHTTPIsOpenAndCannotBeApprovedAgain(t *testing.T) {
+func TestIdeasHaveNoApprovalOverHTTP(t *testing.T) {
 	h := withDemo(t)
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas", `{"title": "A"}`), http.StatusCreated)
-	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas/I-1/approve", ""), http.StatusConflict)
-	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas/I-9/approve", ""), http.StatusNotFound)
-	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas", `{"title": "A", "reasoning": "x"}`), http.StatusBadRequest)
+	if w := call(t, h, "POST", "/v1/workspaces/demo/ideas/I-1/approve", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("approve: status %d, want 404", w.Code)
+	}
 }
 
 func TestRefiningAndDroppingIdeasOverHTTP(t *testing.T) {

@@ -20,6 +20,15 @@ var migrations = []string{
 	"CREATE INDEX FOR (g:Goal) ON (g.id)",
 	"CREATE INDEX FOR (l:LogEntry) ON (l.id)",
 	"CREATE INDEX FOR (i:Idea) ON (i.id)",
+	// Ideas lose their approval step and gain context: notes and any
+	// reasoning become the context, proposed ideas become open.
+	`MATCH (i:Idea) SET
+		i.context = CASE
+			WHEN i.reasoning IS NULL THEN coalesce(i.notes, '')
+			WHEN coalesce(i.notes, '') = '' THEN i.reasoning
+			ELSE i.notes + '\n\n' + i.reasoning END,
+		i.state = CASE i.state WHEN 'proposed' THEN 'open' ELSE i.state END,
+		i.notes = NULL, i.reasoning = NULL, i.approved_by = NULL, i.approved_at = NULL`,
 }
 
 // Kind says why the board refused a request.

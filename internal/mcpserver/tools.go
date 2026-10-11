@@ -119,16 +119,15 @@ type ideaPosition struct {
 
 type addIdeaIn struct {
 	in
-	Title     string `json:"title"`
-	Notes     string `json:"notes,omitempty"`
-	Reasoning string `json:"reasoning" jsonschema:"why the idea belongs at this spot, for the person who approves it"`
+	Title   string `json:"title"`
+	Context string `json:"context,omitempty" jsonschema:"anything that helps understand the idea and turn it into work: notes, links, documents, background. Optional, but an idea without context is only as good as its title"`
 	ideaPosition
 }
 
 type updateIdeaIn struct {
 	ideaIn
-	Title *string `json:"title,omitempty"`
-	Notes *string `json:"notes,omitempty"`
+	Title   *string `json:"title,omitempty"`
+	Context *string `json:"context,omitempty"`
 }
 
 type moveIdeaIn struct {
@@ -169,13 +168,12 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "add_phase", "Add a phase, numbered after the last one.", t.addPhase)
 	tool(s, "add_goal", "Add a goal to a phase.", t.addGoal)
 	tool(s, "mark_goal_met", "Mark a goal met, or not met.", t.markGoalMet)
-	tool(s, "add_idea", "Suggest an idea: a rough thought, not yet work. It goes into the ideas list, apart from the backlog, directly before or after another idea or at the bottom, and waits as proposed, with the reasoning for its spot, until a person approves it.", t.addIdea)
+	tool(s, "add_idea", "Add an idea: a rough thought, not yet work. It goes into the ideas list, apart from the backlog, directly before or after another idea or at the bottom, and is open at once; no approval is needed. Give it context: anything that helps understand the idea and turn it into work, such as notes, links, documents or background. An idea without context is only as good as its title.", t.addIdea)
 	tool(s, "list_ideas", "The ideas that are not closed, in order, top first.", t.listIdeas)
 	tool(s, "get_idea", "One idea, closed or not, with what it became or why it was dropped.", t.getIdea)
-	tool(s, "update_idea", "Change an idea's title or notes while it is not closed; fields not given are left as they are.", t.updateIdea)
+	tool(s, "update_idea", "Change an idea's title or context while it is not closed; fields not given are left as they are.", t.updateIdea)
 	tool(s, "move_idea", "Move an idea that is not closed directly before or after another, or to the bottom of the ideas list.", t.moveIdea)
-	tool(s, "approve_idea", "Approve a proposed idea at its spot, making it open.", t.approveIdea)
-	tool(s, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Add those first, the usual way; none may be closed.", t.refineIdea)
+	tool(s, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Build those from the idea's context first, the usual way; none may be closed.", t.refineIdea)
 	tool(s, "drop_idea", "Close an idea that became nothing, with the reason.", t.dropIdea)
 	tool(s, "search", "Check whether a story, idea or phase already covers something, before adding one. Matches by keyword and by meaning, best first, up to ten; closed stories and dropped ideas are included, with their state.", t.search)
 }
@@ -267,8 +265,7 @@ func (t tools) markGoalMet(ctx context.Context, a markGoalMetIn) (any, error) {
 }
 
 func (t tools) addIdea(ctx context.Context, a addIdeaIn) (any, error) {
-	return t.b.AddIdea(a.Workspace, actor(ctx), board.NewIdea{Title: a.Title, Notes: a.Notes, Proposed: true,
-		Reasoning: a.Reasoning, Position: board.Position(a.ideaPosition)})
+	return t.b.AddIdea(a.Workspace, actor(ctx), board.NewIdea{Title: a.Title, Context: a.Context, Position: board.Position(a.ideaPosition)})
 }
 
 func (t tools) listIdeas(_ context.Context, a in) (any, error) {
@@ -281,15 +278,11 @@ func (t tools) getIdea(_ context.Context, a ideaIn) (any, error) {
 }
 
 func (t tools) updateIdea(ctx context.Context, a updateIdeaIn) (any, error) {
-	return t.b.UpdateIdea(a.Workspace, actor(ctx), a.ID, board.IdeaPatch{Title: a.Title, Notes: a.Notes})
+	return t.b.UpdateIdea(a.Workspace, actor(ctx), a.ID, board.IdeaPatch{Title: a.Title, Context: a.Context})
 }
 
 func (t tools) moveIdea(ctx context.Context, a moveIdeaIn) (any, error) {
 	return t.b.MoveIdea(a.Workspace, actor(ctx), a.ID, board.Position(a.ideaPosition))
-}
-
-func (t tools) approveIdea(ctx context.Context, a ideaIn) (any, error) {
-	return t.b.ApproveIdea(a.Workspace, actor(ctx), a.ID)
 }
 
 func (t tools) refineIdea(ctx context.Context, a refineIdeaIn) (any, error) {

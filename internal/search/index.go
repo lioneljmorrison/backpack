@@ -270,7 +270,7 @@ func storyDoc(s board.Story, entries []board.LogEntry) doc {
 
 func ideaDoc(i board.Idea) doc {
 	return doc{ID: i.ID, Kind: board.KindIdea, Ref: i.ID, Title: i.Title,
-		Summary: i.Notes, Detail: join(i.Reasoning, i.DropReason), State: i.State}
+		Summary: i.Context, Detail: i.DropReason, State: i.State}
 }
 
 func phaseDoc(p board.Phase) doc {
