@@ -37,6 +37,14 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/log", a.addLogEntry)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/dependencies", a.addDependency)
 	mux.HandleFunc("DELETE /v1/workspaces/{ws}/stories/{id}/dependencies/{on}", a.removeDependency)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/ideas", a.listIdeas)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas", a.addIdea)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/ideas/{id}", a.getIdea)
+	mux.HandleFunc("PATCH /v1/workspaces/{ws}/ideas/{id}", a.updateIdea)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas/{id}/move", a.moveIdea)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas/{id}/approve", a.approveIdea)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas/{id}/refine", a.refineIdea)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/ideas/{id}/drop", a.dropIdea)
 }
 
 type boardAPI struct{ b *board.Board }
@@ -216,6 +224,70 @@ func (a boardAPI) removeDependency(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a boardAPI) listIdeas(w http.ResponseWriter, r *http.Request) {
+	is, err := a.b.Ideas(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"ideas": is}, err)
+}
+
+// addIdea adds an idea directly, as open: only an agent's ideas, through the
+// MCP, wait for approval.
+func (a boardAPI) addIdea(w http.ResponseWriter, r *http.Request) {
+	var in board.NewIdea
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	i, err := a.b.AddIdea(r.PathValue("ws"), actor(r), in)
+	respond(w, http.StatusCreated, i, err)
+}
+
+func (a boardAPI) getIdea(w http.ResponseWriter, r *http.Request) {
+	i, err := a.b.Idea(r.PathValue("ws"), r.PathValue("id"))
+	respond(w, http.StatusOK, i, err)
+}
+
+func (a boardAPI) updateIdea(w http.ResponseWriter, r *http.Request) {
+	var in board.IdeaPatch
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	i, err := a.b.UpdateIdea(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
+	respond(w, http.StatusOK, i, err)
+}
+
+func (a boardAPI) moveIdea(w http.ResponseWriter, r *http.Request) {
+	var in board.Position
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	i, err := a.b.MoveIdea(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
+	respond(w, http.StatusOK, i, err)
+}
+
+func (a boardAPI) approveIdea(w http.ResponseWriter, r *http.Request) {
+	i, err := a.b.ApproveIdea(r.PathValue("ws"), actor(r), r.PathValue("id"))
+	respond(w, http.StatusOK, i, err)
+}
+
+func (a boardAPI) refineIdea(w http.ResponseWriter, r *http.Request) {
+	var in board.Refinement
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	i, err := a.b.RefineIdea(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
+	respond(w, http.StatusOK, i, err)
+}
+
+func (a boardAPI) dropIdea(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	i, err := a.b.DropIdea(r.PathValue("ws"), actor(r), r.PathValue("id"), in.Reason)
+	respond(w, http.StatusOK, i, err)
 }
 
 func actor(r *http.Request) string {
