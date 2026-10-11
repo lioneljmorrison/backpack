@@ -38,9 +38,6 @@ type Where struct {
 	OnHold     []Story `json:"on_hold"`
 	// Next is the top of the backlog, blocked stories included.
 	Next []Story `json:"next"`
-
-	// waiting is each blocked story's incomplete dependencies.
-	waiting map[string][]string
 }
 
 // Where reads the current phase, the work under way and what comes next.
@@ -57,8 +54,7 @@ func (b *Board) Where(ws string) (Where, error) {
 	if err != nil {
 		return Where{}, err
 	}
-	w := Where{InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{},
-		waiting: waiting(ss)}
+	w := Where{InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}}
 	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete }); i >= 0 {
 		w.Phase = &ps[i]
 	}
@@ -77,23 +73,6 @@ func (b *Board) Where(ws string) (Where, error) {
 		}
 	}
 	return w, nil
-}
-
-// waiting maps each blocked story to its dependencies that are not complete.
-func waiting(ss []Story) map[string][]string {
-	status := map[string]string{}
-	for _, s := range ss {
-		status[s.ID] = s.Status
-	}
-	out := map[string][]string{}
-	for _, s := range ss {
-		for _, d := range s.BlockedBy {
-			if !slices.Contains(complete, status[d]) {
-				out[s.ID] = append(out[s.ID], d)
-			}
-		}
-	}
-	return out
 }
 
 // Text is "where are we" as a few lines for a session hook.
@@ -116,8 +95,8 @@ func (w Where) Text() string {
 		b.WriteString(title + ":\n")
 		for _, s := range ss {
 			parts := detail(s)
-			if ws := w.waiting[s.ID]; len(ws) > 0 {
-				blocked := "blocked by " + list(ws)
+			if s.Blocked {
+				blocked := "blocked by " + list(s.waiting)
 				if s.Workaround != "" {
 					blocked += ", working around it: " + s.Workaround
 				}
@@ -171,18 +150,16 @@ func (b *Board) Board(ws string) ([]Column, error) {
 	if err != nil {
 		return nil, err
 	}
+	in := map[string][]Story{}
+	for _, s := range ss {
+		in[s.Status] = append(in[s.Status], s)
+	}
 	cols := []Column{}
-	for _, status := range []string{Backlog, InProgress, InReview, Merged, Released, Deployed, OnHold, Closed} {
+	for _, status := range statuses {
 		if status == Released && !release {
 			continue
 		}
-		c := Column{Status: status, Stories: []Story{}}
-		for _, s := range ss {
-			if s.Status == status {
-				c.Stories = append(c.Stories, s)
-			}
-		}
-		cols = append(cols, c)
+		cols = append(cols, Column{Status: status, Stories: append([]Story{}, in[status]...)})
 	}
 	return cols, nil
 }

@@ -34,6 +34,9 @@ type Story struct {
 	MovedAt    string   `json:"moved_at,omitempty"`
 	UpdatedBy  string   `json:"updated_by,omitempty"`
 	UpdatedAt  string   `json:"updated_at,omitempty"`
+
+	// waiting is the dependencies that are not yet complete.
+	waiting []string
 }
 
 // Position places a story directly before or directly after another one.
@@ -314,11 +317,12 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		MATCH (s:Story) WHERE $id = '' OR s.id = $id
 		OPTIONAL MATCH (p:Phase)-[:CONTAINS]->(s)
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story)
-		WITH s, p, collect(t.id) AS blocked_by, sum(CASE WHEN t IS NULL OR t.status IN $complete THEN 0 ELSE 1 END) AS waiting
+		WITH s, p, collect(t.id) AS blocked_by,
+			collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS waiting
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
 		WITH s, p, blocked_by, waiting, collect(d.id) AS blocks
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks, waiting > 0 AS blocked,
+			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
 			s.waiting_on AS waiting_on, s.branch AS branch, s.pr_url AS pr_url, s.workaround AS workaround,
 			s.created_by AS created_by, s.created_at AS created_at,
@@ -332,10 +336,12 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 	out := []Story{}
 	for res.Next() {
 		r := res.Record()
+		waiting := byNumber(strs(r, "waiting"))
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
 			Goal: str(r, "goal"), Plan: str(r, "plan"), Status: str(r, "status"), Phase: num(r, "phase"),
-			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")), Blocked: flag(r, "blocked"),
+			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
+			Blocked: len(waiting) > 0, waiting: waiting,
 			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
 			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), PRURL: str(r, "pr_url"),
 			Workaround: str(r, "workaround"),

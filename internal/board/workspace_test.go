@@ -109,3 +109,29 @@ func TestAWorkspaceHasNoReleaseStageUnlessCreatedWithOne(t *testing.T) {
 		t.Fatalf("listed %+v", got)
 	}
 }
+
+// A create that loses a race for the slug, or repeats an interrupted one,
+// prepares the workspace graph again. It must not change the release stage
+// the graph already has, and the registry must agree with the graph.
+func TestPreparingAnExistingWorkspaceGraphKeepsItsReleaseStage(t *testing.T) {
+	db, prefix := falkortest.Prefix(t)
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SelectGraph(prefix+"ws:demo").Query(
+		"CREATE (:Workspace {slug: 'demo', next_story: 1, next_goal: 1, next_log: 1, has_release_stage: true})", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	w, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "Demo", HasReleaseStage: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, _ := b.Workspaces()
+	if !w.HasReleaseStage || !listed[0].HasReleaseStage {
+		t.Fatalf("created %+v, listed %+v", w, listed)
+	}
+	if cols, _ := b.Board("demo"); len(cols) != 8 {
+		t.Fatalf("the graph lost its release stage: %d columns", len(cols))
+	}
+}

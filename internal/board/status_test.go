@@ -362,3 +362,26 @@ func TestAStoryWithNoDependenciesIsNotBlocked(t *testing.T) {
 		t.Fatalf("added %+v", s)
 	}
 }
+
+func TestAWorkaroundIsGivenOnlyWhenStartingFromTheBacklog(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "A"})
+	addStory(t, b, board.NewStory{Title: "B"})
+	depend(t, b, "S-2", "S-1")
+	setStatus(t, b, "S-2", board.StatusChange{To: "in_progress", Workaround: "mocks"})
+	walk(t, b, "S-2", "in_review")
+	_, err := b.SetStatus("demo", actor, "S-2", board.StatusChange{To: "in_progress", Workaround: "other mocks"})
+	wantKind(t, err, board.Conflict)
+	if s := wantStatus(t, b, "S-2", "in_review"); s.Workaround != "mocks" {
+		t.Fatalf("workaround replaced %+v", s)
+	}
+}
+
+func TestAClosedDependentDoesNotStopAStoryBeingClosed(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "A"})
+	addStory(t, b, board.NewStory{Title: "B"})
+	depend(t, b, "S-2", "S-1")
+	setStatus(t, b, "S-2", board.StatusChange{To: "closed", Reason: "dropped"})
+	setStatus(t, b, "S-1", board.StatusChange{To: "closed", Reason: "dropped too"})
+}

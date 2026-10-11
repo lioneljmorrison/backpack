@@ -42,15 +42,21 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (Workspace, error) {
 	if err := falkor.Migrate(g, migrations); err != nil {
 		return Workspace{}, err
 	}
-	if _, err := g.Query(`MERGE (w:Workspace {slug: $slug})
-		ON CREATE SET w.next_story = 1, w.next_goal = 1, w.next_log = 1
-		SET w.has_release_stage = $release`,
-		map[string]any{"slug": w.Slug, "release": w.HasReleaseStage}, nil); err != nil {
+	// A graph that already exists keeps its release stage, and the registry
+	// records the one the graph has, which is the one status changes read.
+	res, err := g.Query(`MERGE (w:Workspace {slug: $slug})
+		ON CREATE SET w.next_story = 1, w.next_goal = 1, w.next_log = 1, w.has_release_stage = $release
+		RETURN coalesce(w.has_release_stage, false) AS release`,
+		map[string]any{"slug": w.Slug, "release": w.HasReleaseStage}, nil)
+	if err != nil {
 		return Workspace{}, fmt.Errorf("create workspace graph: %w", err)
+	}
+	if res.Next() {
+		w.HasReleaseStage = flag(res.Record(), "release")
 	}
 
 	w.CreatedBy, w.CreatedAt = actor, now()
-	res, err := b.system.Query(`
+	res, err = b.system.Query(`
 		OPTIONAL MATCH (taken:WorkspaceEntry {slug: $slug})
 		WITH taken
 		FOREACH (_ IN CASE WHEN taken IS NULL THEN [1] ELSE [] END |

@@ -18,6 +18,9 @@ const (
 	Closed     = "closed"
 )
 
+// statuses is every status, in board order.
+var statuses = []string{Backlog, InProgress, InReview, Merged, Released, Deployed, OnHold, Closed}
+
 // complete is every status in which a story's work has landed.
 var complete = []string{Merged, Released, Deployed}
 
@@ -45,7 +48,7 @@ type StatusChange struct {
 }
 
 func (c StatusChange) check() error {
-	if !slices.Contains([]string{Backlog, InProgress, InReview, Merged, Released, Deployed, OnHold, Closed}, c.To) {
+	if !slices.Contains(statuses, c.To) {
 		return refuse(Invalid, "no status %q", c.To)
 	}
 	only := func(field, value, to, when string) error {
@@ -89,7 +92,7 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (Story, error) {
 		MATCH (w:Workspace), (s:Story {id: $id})
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story) WHERE NOT t.status IN $complete
 		WITH w, s, collect(t.id) AS waiting
-		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
+		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s) WHERE d.status <> 'closed'
 		WITH w, s, waiting, collect(d.id) AS dependents, s.status AS from,
 			coalesce(w.has_release_stage, false) AS release, coalesce(w.next_log, 1) AS n
 		WITH w, s, waiting, dependents, from, n, CASE
@@ -98,6 +101,7 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (Story, error) {
 			WHEN from = 'merged' AND $to = 'deployed' AND release THEN 'release'
 			WHEN $to = 'closed' AND size(dependents) > 0 THEN 'dependents'
 			WHEN $to = 'merged' AND size(waiting) > 0 THEN 'blocked merge'
+			WHEN $workaround <> '' AND from <> 'backlog' THEN 'not starting'
 			WHEN $workaround <> '' AND size(waiting) = 0 THEN 'not blocked'
 			WHEN from = 'backlog' AND $to = 'in_progress' AND size(waiting) > 0 AND $workaround = '' THEN 'blocked'
 		END AS violation
@@ -117,7 +121,7 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (Story, error) {
 				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + 1), at: $now, actor: $actor,
 					kind: 'decision', reason: $workaround, text: 'Started while blocked by ' +
 					reduce(t = '', x IN waiting | t + CASE WHEN t = '' THEN '' ELSE ', ' END + x)})))
-		RETURN violation, from, waiting, dependents`,
+		RETURN violation, from, s.held_from AS held_from, waiting, dependents`,
 		map[string]any{
 			"id": id, "to": c.To, "moves": moves, "complete": complete, "actor": actor, "now": now(),
 			"reason": orNull(c.Reason), "branch": orNull(c.Branch), "pr": orNull(c.PRURL), "commit": orNull(c.Commit),
@@ -136,8 +140,7 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (Story, error) {
 		return story(g, id)
 	case "move":
 		if from == OnHold {
-			s, _ := story(g, id)
-			return Story{}, refuse(Conflict, "%s is on hold from %s and resumes there", id, label(s.HeldFrom))
+			return Story{}, refuse(Conflict, "%s is on hold from %s and resumes there", id, label(str(r, "held_from")))
 		}
 		return Story{}, refuse(Conflict, "%s cannot go from %s to %s", id, label(from), label(c.To))
 	case "no release":
@@ -150,6 +153,8 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (Story, error) {
 	case "blocked merge":
 		return Story{}, refuse(Conflict, "%s is blocked by %s and cannot be merged until it is complete",
 			id, list(strs(r, "waiting")))
+	case "not starting":
+		return Story{}, refuse(Conflict, "a workaround is given only when starting %s from the backlog", id)
 	case "not blocked":
 		return Story{}, refuse(Conflict, "%s is not blocked; a workaround is only for starting blocked work", id)
 	default: // blocked
