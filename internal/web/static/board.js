@@ -1,6 +1,7 @@
 // Drag a backlog card onto another to place it there. It submits the same
 // move a card's arrow buttons do, so the board checks it the same way.
-document.addEventListener("DOMContentLoaded", () => {
+// The cards are bound again whenever live.js swaps in a fresh board.
+function bindCards() {
   let dragged = null;
   const cards = document.querySelectorAll("[data-move]");
   for (const card of cards) {
@@ -36,4 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
       form.submit();
     });
   }
-});
+}
+
+document.addEventListener("DOMContentLoaded", bindCards);
+document.addEventListener("backpack:refreshed", bindCards);
