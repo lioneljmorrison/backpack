@@ -46,7 +46,7 @@ func demo(t *testing.T) (*board.Board, string) {
 func serve(t *testing.T, b *board.Board, x *search.Index) string {
 	t.Helper()
 	tester := func(tok string) (string, bool, error) { return "tester", tok == "bp_good", nil }
-	srv := httptest.NewServer(httpapi.New(map[string]health.Check{}, tester, b, x))
+	srv := httptest.NewServer(httpapi.New(map[string]health.Check{}, tester, b, x, nil))
 	t.Cleanup(srv.Close)
 	return srv.URL + "/mcp"
 }

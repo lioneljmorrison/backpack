@@ -15,6 +15,7 @@ import (
 
 	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
+	"github.com/lioneljmorrison/backpack/internal/live"
 	"github.com/lioneljmorrison/backpack/internal/search"
 )
 
@@ -32,6 +33,7 @@ type site struct {
 	lookup auth.LookupFunc
 	board  *board.Board
 	search *search.Index
+	live   *live.Hub
 	pages  map[string]*template.Template
 }
 
@@ -41,14 +43,18 @@ type page struct {
 	Actor string
 	Error string
 	// WS is the workspace a page is about, and Nav which of its pages.
-	WS   *board.Workspace
-	Nav  string
+	WS  *board.Workspace
+	Nav string
+	// Live names the kinds of change, such as "story phase", after which
+	// the page fetches itself again; empty, the page doesn't watch.
+	Live string
 	Data any
 }
 
 // New returns the pages. Only /sign-in and /static/ are open without a token.
-func New(lookup auth.LookupFunc, b *board.Board, x *search.Index) http.Handler {
-	s := &site{lookup: lookup, board: b, search: x, pages: parse()}
+// Pages that watch the board hear of its changes from hub.
+func New(lookup auth.LookupFunc, b *board.Board, x *search.Index, hub *live.Hub) http.Handler {
+	s := &site{lookup: lookup, board: b, search: x, live: hub, pages: parse()}
 
 	signedIn := http.NewServeMux()
 	signedIn.HandleFunc("GET /{$}", s.workspaces)

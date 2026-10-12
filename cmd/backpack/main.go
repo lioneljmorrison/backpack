@@ -24,6 +24,7 @@ import (
 	"github.com/lioneljmorrison/backpack/internal/falkor"
 	"github.com/lioneljmorrison/backpack/internal/health"
 	"github.com/lioneljmorrison/backpack/internal/httpapi"
+	"github.com/lioneljmorrison/backpack/internal/live"
 	"github.com/lioneljmorrison/backpack/internal/search"
 )
 
@@ -205,7 +206,12 @@ func serve(cfg config) error {
 		return err
 	}
 	x := search.New(cfg.TypesenseURL, cfg.TypesenseKey, cfg.CollectionPrefix, b)
-	b.OnChange(x.Report)
+	// Pages hear of a change first; updating search can take a while.
+	hub := live.New()
+	b.OnChange(func(c board.Change) {
+		hub.Publish(c)
+		x.Report(c)
+	})
 	rebuild(x)
 	checks := map[string]health.Check{
 		"falkordb":  func(context.Context) error { return falkor.Ping(db) },
@@ -213,7 +219,7 @@ func serve(cfg config) error {
 	}
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.New(checks, store.ActorFor, b, x),
+		Handler:           httpapi.New(checks, store.ActorFor, b, x, hub),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
