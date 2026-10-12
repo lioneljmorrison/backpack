@@ -1,0 +1,12 @@
+{{define "content"}}
+<h1>Ideas</h1>
+{{range .Data}}
+<article class="idea" id="{{.ID}}">
+  <h2><span class="id">{{.ID}}</span> {{.Title}} {{if ne .State "open"}}<span class="tag">{{label .State}}</span>{{end}}</h2>
+  {{with .Context}}<p class="text">{{.}}</p>{{end}}
+  <p class="muted">Added by {{.CreatedBy}} · {{when .CreatedAt}}</p>
+</article>
+{{else}}
+<p class="muted">No open ideas.</p>
+{{end}}
+{{end}}

@@ -1,0 +1,51 @@
+{{define "content"}}
+{{$ws := .WS.Slug}}
+{{with .Data}}
+{{$titles := .Titles}}
+{{with .Story}}
+<p class="muted"><a href="/w/{{$ws}}">← Board</a></p>
+<h1><span class="id">{{.ID}}</span> {{.Title}}</h1>
+<div class="tags">
+  <span class="tag status">{{label .Status}}</span>
+  {{if .Phase}}<a class="tag" href="/w/{{$ws}}/phases#phase-{{.Phase}}">Phase {{.Phase}}</a>{{end}}
+  {{if .Activity}}<span class="tag activity">{{label .Activity}}{{with .WaitingOn}}: {{.}}{{end}}</span>{{end}}
+  {{if .Blocked}}<span class="tag bad">Blocked</span>{{end}}
+  {{with .HoldReason}}<span class="tag warn">On hold: {{.}}</span>{{end}}
+  {{with .Branch}}<span class="tag"><code>{{.}}</code></span>{{end}}
+  {{with .PRURL}}<a class="tag" href="{{.}}">Pull request</a>{{end}}
+</div>
+<div class="detail">
+  {{with .Description}}<h2>Description</h2><p class="text">{{.}}</p>{{end}}
+  {{with .Goal}}<h2>Goal</h2><p class="text">{{.}}</p>{{end}}
+  {{with .Plan}}<h2>Plan</h2><p class="text">{{.}}</p>{{end}}
+  {{with .Workaround}}<h2>Workaround</h2><p class="text">{{.}}</p>{{end}}
+  {{with .BlockedBy}}
+  <h2>Depends on</h2>
+  <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
+  {{end}}
+  {{with .Blocks}}
+  <h2>Blocks</h2>
+  <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
+  {{end}}
+</div>
+{{end}}
+<h2>Log</h2>
+<ol class="log">
+  {{range .Log}}
+  <li id="{{.ID}}" class="entry {{.Kind}}{{if .CorrectedBy}} corrected{{end}}">
+    <div class="meta"><span class="id">{{.ID}}</span> {{label .Kind}} · {{.Actor}} · <time datetime="{{.At}}">{{when .At}}</time></div>
+    {{with .Corrects}}<div><a href="#{{.}}">Corrects {{.}}</a></div>{{end}}
+    {{if .From}}<div>{{label .From}} → {{label .To}}</div>{{end}}
+    {{with .Text}}<p class="text">{{.}}</p>{{end}}
+    {{with .Reason}}<p class="text muted">Because {{.}}</p>{{end}}
+    {{with .Commit}}<div><code>{{.}}</code></div>{{end}}
+    {{with .Branch}}<div><code>{{.}}</code></div>{{end}}
+    {{with .PRURL}}<div><a href="{{.}}">{{.}}</a></div>{{end}}
+    {{with .CorrectedBy}}<div class="warn-text">Corrected by {{range $i, $c := .}}{{if $i}}, {{end}}<a href="#{{$c}}">{{$c}}</a>{{end}}</div>{{end}}
+  </li>
+  {{else}}
+  <li class="empty">No entries yet.</li>
+  {{end}}
+</ol>
+{{end}}
+{{end}}

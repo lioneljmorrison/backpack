@@ -1,0 +1,40 @@
+{{define "content"}}
+{{$ws := .WS.Slug}}
+{{with .Data}}
+<section class="where" aria-label="Where are we">
+  {{with .Where.Phase}}
+  <div>
+    <div class="muted">Current phase</div>
+    <a href="/w/{{$ws}}/phases#phase-{{.Number}}"><strong>{{.Number}}. {{.Title}}</strong></a>
+    <div class="progress" aria-hidden="true"><span style="width: {{percent .StoriesComplete .StoriesTotal}}%"></span></div>
+    <div class="muted">{{.StoriesComplete}} of {{.StoriesTotal}} complete</div>
+  </div>
+  {{else}}
+  <div><div class="muted">Current phase</div><strong>None open</strong></div>
+  {{end}}
+  <div>
+    <div class="muted">Next</div>
+    {{with .Next}}<a href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}}</a>{{else}}<span>Nothing ready</span>{{end}}
+  </div>
+  <div><div class="muted">In progress</div><strong>{{len .Where.InProgress}}</strong></div>
+  <div><div class="muted">In review</div><strong>{{len .Where.InReview}}</strong></div>
+  <div><div class="muted">Waiting for approval</div><strong>{{len .Where.Proposed}}</strong></div>
+</section>
+
+<div class="board">
+  {{range .Columns}}
+  <section class="column" aria-label="{{label .Status}}">
+    <h2>{{label .Status}} <span class="count">{{len .Stories}}</span></h2>
+    {{range .Stories}}{{template "card" (cardOf $ws .)}}{{else}}<p class="empty">Nothing here</p>{{end}}
+  </section>
+  {{end}}
+</div>
+
+{{with .Closed}}
+<details class="closed">
+  <summary>Closed ({{len .}})</summary>
+  {{range .}}{{template "card" (cardOf $ws .)}}{{end}}
+</details>
+{{end}}
+{{end}}
+{{end}}
