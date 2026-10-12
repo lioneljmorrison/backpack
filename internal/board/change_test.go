@@ -112,7 +112,10 @@ func TestARefusedWriteReportsNothing(t *testing.T) {
 	}
 }
 
-func TestMovesAndDependenciesReportNothing(t *testing.T) {
+// Moves and dependencies change no searchable text, but the pages show them:
+// a dependency is shown on both stories' pages.
+func TestMovesAndDependenciesReportTheStoriesTheyChange(t *testing.T) {
+	story := func(id string) board.Change { return board.Change{Workspace: "demo", Kind: board.KindStory, ID: id} }
 	b := newWorkspace(t)
 	addStory(t, b, board.NewStory{Title: "First"})
 	addStory(t, b, board.NewStory{Title: "Second"})
@@ -123,6 +126,29 @@ func TestMovesAndDependenciesReportNothing(t *testing.T) {
 	}
 	if _, err := b.MoveStory("demo", actor, "S-3", board.Position{Before: "S-1"}); err != nil {
 		t.Fatal(err)
+	}
+	if err := b.RemoveDependency("demo", actor, "S-2", "S-1"); err != nil {
+		t.Fatal(err)
+	}
+	want := []board.Change{story("S-2"), story("S-1"), story("S-3"), story("S-2"), story("S-1")}
+	if !slices.Equal(*got, want) {
+		t.Fatalf("reported %+v, want %+v", *got, want)
+	}
+}
+
+func TestARefusedMoveOrDependencyReportsNothing(t *testing.T) {
+	b := newWorkspace(t)
+	addStory(t, b, board.NewStory{Title: "First"})
+	addStory(t, b, board.NewStory{Title: "Second"})
+	got := recorder(b)
+	if _, err := b.MoveStory("demo", actor, "S-9", board.Position{Before: "S-1"}); err == nil {
+		t.Fatal("moving a missing story succeeded")
+	}
+	if _, err := b.AddDependency("demo", actor, "S-1", "S-2"); err == nil {
+		t.Fatal("depending on a story ranked below succeeded")
+	}
+	if err := b.RemoveDependency("demo", actor, "S-2", "S-1"); err == nil {
+		t.Fatal("removing a missing dependency succeeded")
 	}
 	if len(*got) != 0 {
 		t.Fatalf("reported %+v", *got)
