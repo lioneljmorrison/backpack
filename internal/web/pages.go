@@ -16,6 +16,7 @@ func (s *site) routePages(mux *http.ServeMux) {
 	mux.HandleFunc("GET /w/{ws}/phases", s.phasesPage)
 	mux.HandleFunc("GET /w/{ws}/ideas", s.ideasPage)
 	mux.HandleFunc("GET /w/{ws}/search", s.searchPage)
+	mux.HandleFunc("GET /w/{ws}/events", s.events)
 }
 
 // workspace finds the workspace a page is about.
@@ -84,7 +85,7 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Columns = append(d.Columns, col)
 	}
-	s.render(w, r, http.StatusOK, "board", page{Title: ws.Name, WS: ws, Nav: "board", Data: d})
+	s.render(w, r, http.StatusOK, "board", page{Title: ws.Name, WS: ws, Nav: "board", Live: "story phase", Data: d})
 }
 
 type storyData struct {
@@ -118,7 +119,7 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 	for _, st := range all {
 		d.Titles[st.ID] = st.Title
 	}
-	s.render(w, r, http.StatusOK, "story", page{Title: d.Story.ID + " " + d.Story.Title, WS: ws, Nav: "board", Data: d})
+	s.render(w, r, http.StatusOK, "story", page{Title: d.Story.ID + " " + d.Story.Title, WS: ws, Nav: "board", Live: "story", Data: d})
 }
 
 type phaseData struct {

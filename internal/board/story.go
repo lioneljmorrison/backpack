@@ -160,7 +160,8 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 
 // MoveStory moves a story to a new position, keeping it below everything it
 // depends on and above everything that depends on it.
-func (b *Board) MoveStory(ws, actor, id string, to Position) (Story, error) {
+func (b *Board) MoveStory(ws, actor, id string, to Position) (_ Story, err error) {
+	defer func() { b.changed(err, Change{ws, KindStory, id}) }()
 	if to.Before != "" && to.After != "" {
 		return Story{}, refuse(Invalid, "give before or after, not both")
 	}

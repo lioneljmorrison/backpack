@@ -102,6 +102,17 @@ input, select, textarea {
   padding: 0.6rem 0.9rem;
 }
 
+.notice {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+}
+
+.notice a {
+  color: inherit;
+}
+
 .signin { max-width: 26rem; margin: 3rem auto; }
 .signin form { display: grid; gap: 0.5rem; }
 

@@ -135,7 +135,7 @@ func TestSearchLinksEachMatchToItsPage(t *testing.T) {
 	url, key, cprefix := typesensetest.Prefix(t)
 	x := search.New(url, key, cprefix, b)
 	b.OnChange(x.Report)
-	h := New(known, b, x)
+	h := New(known, b, x, nil)
 	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "demo", Name: "Demo"}))
 	story(t, b, board.NewStory{Title: "Export invoices as PDF"})
 

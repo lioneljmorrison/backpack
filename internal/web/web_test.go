@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
 	"github.com/lioneljmorrison/backpack/internal/falkor/falkortest"
+	"github.com/lioneljmorrison/backpack/internal/live"
 )
 
 // known holds one live token, bp_good, belonging to "tester".
@@ -16,13 +18,21 @@ func known(tok string) (string, bool, error) { return "tester", tok == "bp_good"
 
 // newSite serves the pages over a real, empty board.
 func newSite(t *testing.T) (http.Handler, *board.Board) {
+	return newSiteWith(t, known)
+}
+
+// newSiteWith serves the pages over a real, empty board, checking tokens
+// with lookup. The board's changes reach the pages' live updates.
+func newSiteWith(t *testing.T, lookup auth.LookupFunc) (http.Handler, *board.Board) {
 	t.Helper()
 	db, prefix := falkortest.Prefix(t)
 	b, err := board.New(db, prefix+"system", prefix+"ws:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(known, b, nil), b
+	hub := live.New()
+	b.OnChange(hub.Publish)
+	return New(lookup, b, nil, hub), b
 }
 
 // get fetches path as a browser signed in with token; no token, signed out.

@@ -121,6 +121,15 @@ agent see what was done in which commit, and what was later found wrong.
 **Search.** Ideas, phases, stories and logs can be searched by meaning as well
 as by keyword, for example "do we already have a story about this?"
 
+**Live updates.** The board page and a story's page update on their own when
+the board changes, whoever changed it, so a person watching sees an agent's
+move within a moment. Every board change sends a notice naming only what
+changed. A hub inside Backpack passes it to each page watching that
+workspace, and the page fetches itself again. Nothing is sent through an
+outside service: Backpack is one process, and board content stays on the
+host. A page never replaces something a person is typing or choosing; it
+says the page has changed instead. It also waits for a drag to finish.
+
 ## How it will be built
 
 - **A Go service with three ways in:** an **MCP server** for AI agents, an

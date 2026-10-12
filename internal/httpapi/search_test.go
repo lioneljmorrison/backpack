@@ -24,7 +24,7 @@ func withSearch(t *testing.T) http.Handler {
 	x := search.New(url, key, cprefix, b)
 	b.OnChange(x.Report)
 	tester := func(string) (string, bool, error) { return "tester", true, nil }
-	h := New(map[string]health.Check{}, tester, b, x)
+	h := New(map[string]health.Check{}, tester, b, x, nil)
 	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "demo", "name": "Demo"}`), http.StatusCreated)
 	return h
 }
@@ -70,7 +70,7 @@ func TestSearchWithTypesenseUnreachableIsUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	tester := func(string) (string, bool, error) { return "tester", true, nil }
-	h := New(map[string]health.Check{}, tester, b, search.New("http://127.0.0.1:1", "none", "nothing_", b))
+	h := New(map[string]health.Check{}, tester, b, search.New("http://127.0.0.1:1", "none", "nothing_", b), nil)
 	got := want(t, call(t, h, "GET", "/v1/workspaces/demo/search?q=invoices", ""), http.StatusServiceUnavailable)
 	if got["error"] != "search unavailable" {
 		t.Fatalf("answer %v", got)
