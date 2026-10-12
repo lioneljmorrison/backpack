@@ -27,8 +27,9 @@ Three ways in: an **MCP server** for AI agents, an **HTTP API**, and **web
 pages** for people (sign in once with a pasted token).
 **FalkorDB** is the store, with one graph per workspace. **Typesense** is a
 search index rebuilt from it. It runs in Docker on any host. The dev instance
-runs on localhost and is reached at `backpack.eldernerds.us` through a
-Cloudflare tunnel. Every request is authenticated. `docs/PLAN.md` has the full
+runs on a separate Docker host on the LAN, driven from here through a Docker
+context, and is reached at `backpack.eldernerds.us` through a Cloudflare
+tunnel. Every request is authenticated. `docs/PLAN.md` has the full
 design.
 
 ## Read this first, every session
@@ -64,13 +65,18 @@ standard or the API contract, stop and ask.
 make up                  # build and start backpack, FalkorDB and Typesense
 make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
-make gates               # gofmt, vet, tests against the local stack, build
+make forward             # bring a remote stack's ports here over SSH
+make gates               # gofmt, vet, tests against the stack's ports here, build
 make token ACTOR=<name>  # issue a bearer token (shown once)
 make reindex             # rebuild the search index from the board
 ```
 
-Local ports, all bound to 127.0.0.1: backpack 8780, FalkorDB 16379, Typesense
-18108. Configuration is environment variables: `BACKPACK_ADDR`,
+Ports, all bound to the stack host's 127.0.0.1: backpack 8780, FalkorDB 16379,
+Typesense 18108. The commands drive the local Docker unless
+`BACKPACK_DOCKER_CONTEXT` names another Docker host (a `docker context`, set
+in the shell profile, never in a tracked file). With a remote stack, run
+`make forward` before `make gates`. `make tunnel` refuses to start when the
+public address is already served from another host. Configuration is environment variables: `BACKPACK_ADDR`,
 `BACKPACK_FALKORDB_URL`, `BACKPACK_TYPESENSE_URL`,
 `BACKPACK_TYPESENSE_API_KEY`, `BACKPACK_SYSTEM_GRAPH`.
 `ENVs.txt` (gitignored, never read into context unless needed) holds deploy

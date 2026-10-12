@@ -148,8 +148,8 @@ says the page has changed instead. It also waits for a drag to finish.
   person or an agent, and every change records its actor. There is one person
   today. Logins for more people can be added later without changing the
   record.
-- **Where it runs:** in Docker, on any host. The dev instance runs on
-  localhost and is reached through a Cloudflare tunnel.
+- **Where it runs:** in Docker, on any host. The dev instance runs on a
+  separate Docker host on the LAN and is reached through a Cloudflare tunnel.
 
 ## Delivery, in slices
 
@@ -262,6 +262,13 @@ Each slice is its own branch and pull request into `dev`.
    localhost and is reached at `backpack.eldernerds.us` through the Cloudflare
    tunnel, using the development tunnel token. The stack runs on any Docker
    host; no particular host is part of the design.
+   **2026-10-12:** the dev instance moved to a separate Linux Docker host on
+   the LAN. The WSL 6.18 kernel is built without per-process I/O accounting,
+   so `/proc/<pid>/io` is missing, and Typesense's bundled metrics library
+   crashes at startup without it. The commands drive the remote host through
+   a Docker context named by `BACKPACK_DOCKER_CONTEXT`; `make forward` brings
+   its ports here over SSH for the tests. The whole stack moved together, so
+   board content still never leaves the host it runs on.
 
 **Slice 6 details, placement proposals** (settled 2026-10-11, S-2):
 - **A proposal is a story** in a new status, **Proposed**, before Backlog. It
@@ -488,7 +495,14 @@ project's CLAUDE.md.
 - `cloudflared` (`cloudflare/cloudflared:2026.9.3`), under the `tunnel`
   profile: `make up` leaves it off, `make tunnel` starts it with
   `CLOUDFLARE_TOKEN`. The tunnel is token-managed; its public hostname routes
-  to `http://backpack:8780` in the Cloudflare dashboard.
+  to `http://backpack:8780` in the Cloudflare dashboard. `make tunnel` first
+  runs `deploy/tunnel-guard.sh`, which refuses when the public address already
+  answers and the tunnel isn't running on this Docker host: two copies on one
+  tunnel would split requests between two boards.
+
+The commands drive whichever Docker host `BACKPACK_DOCKER_CONTEXT` names (the
+local one when unset). For a remote host reached over SSH, `make forward`
+(`deploy/forward.sh`) forwards its ports to this machine's `127.0.0.1`.
 
 Only the tunnel reaches `backpack` from outside. FalkorDB and Typesense are on the internal
 network only.
@@ -511,5 +525,5 @@ internal/search/     Typesense indexing and queries
 internal/httpapi/    handlers
 internal/mcpserver/  tool definitions
 api/openapi.yaml
-deploy/              Dockerfile, docker-compose.yml, hook script
+deploy/              Dockerfile, docker-compose.yml, hook, tunnel guard and forward scripts
 ```
