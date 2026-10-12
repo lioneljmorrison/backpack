@@ -34,9 +34,10 @@ You need Docker. The stack is Backpack, FalkorDB (the store) and Typesense (the
 search index).
 
 ```bash
-make up                  # build and start the stack on localhost
+make up                  # build and start the stack
 make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
+make forward             # bring a remote stack's ports here over SSH
 make token ACTOR=<name>  # issue a token for a person or agent (shown once)
 make reindex             # rebuild the search index from the board
 make gates               # gofmt, vet, tests, build
@@ -49,12 +50,23 @@ anywhere. If Typesense is down when the board changes, the change still saves
 and the log says a reindex is needed; `make reindex`, or the next start,
 catches search up.
 
-Locally, Backpack answers on `http://127.0.0.1:8780`. To reach it from other
-machines, `make tunnel` starts `cloudflared` with a token-managed Cloudflare
+Locally, Backpack answers on `http://127.0.0.1:8780`.
+
+The stack can also run on another machine. Make it a Docker context, for
+example `docker context create box --docker "host=ssh://box"`, and set
+`BACKPACK_DOCKER_CONTEXT=box` in your shell profile: every `make` command
+then builds and runs the stack there. Its ports stay bound to that machine's
+`127.0.0.1`; `make forward` brings them to this machine over SSH, which the
+tests (`make gates`) and a local browser need.
+
+To reach Backpack from other machines, `make tunnel` starts `cloudflared` with a token-managed Cloudflare
 tunnel. In the Cloudflare dashboard, route the tunnel's public hostname to the
 service **HTTP**, URL **`backpack:8780`**. That URL is the Backpack container's
 name inside Docker. `localhost` won't work there, because inside the tunnel's
-container it means the tunnel itself.
+container it means the tunnel itself. Before starting, `make tunnel` checks
+the public address in `.backpack.json`: if Backpack already answers there and
+the tunnel isn't running on the Docker host being started, it refuses, since
+two copies on one tunnel would split requests between two boards.
 
 ## Using the pages
 
