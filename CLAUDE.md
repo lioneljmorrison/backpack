@@ -23,7 +23,8 @@ dependency of the code.
   person approves it.
 - Every story keeps an **append-only log**.
 
-Two ways in: an **MCP server** for AI agents and an **HTTP API** for a UI.
+Three ways in: an **MCP server** for AI agents, an **HTTP API**, and **web
+pages** for people (sign in once with a pasted token).
 **FalkorDB** is the store, with one graph per workspace. **Typesense** is a
 search index rebuilt from it. It runs in Docker on any host. The dev instance
 runs on localhost and is reached at `backpack.eldernerds.us` through a

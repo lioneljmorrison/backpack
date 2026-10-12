@@ -43,6 +43,31 @@ func Require(lookup LookupFunc) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireCookie admits only browsers whose cookie name holds a live token,
+// and attaches its actor. Any other browser is sent to signIn.
+func RequireCookie(lookup LookupFunc, name, signIn string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, err := r.Cookie(name)
+			if err != nil || c.Value == "" {
+				http.Redirect(w, r, signIn, http.StatusSeeOther)
+				return
+			}
+			actor, ok, err := lookup(c.Value)
+			if err != nil {
+				log.Printf("auth: %v", err)
+				http.Error(w, "authentication is unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if !ok {
+				http.Redirect(w, r, signIn, http.StatusSeeOther)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, actor)))
+		})
+	}
+}
+
 func unauthorized(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	writeError(w, http.StatusUnauthorized, "a valid bearer token is required")

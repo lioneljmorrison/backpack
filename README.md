@@ -22,8 +22,9 @@ current state is hard to find. Backpack replaces that document: agents ask it
 - Dependencies are explicit, and a story always ranks below what it depends on.
 - Agents can **search** stories, ideas and phases by keyword or by meaning,
   to check whether something is already covered before adding it.
-- Agents use it through an **MCP server**; a UI can use the **HTTP API**
-  (`api/openapi.yaml`). Every request needs a token.
+- Agents use it through an **MCP server**, people through **web pages** at
+  `/`, and scripts through the **HTTP API** (`api/openapi.yaml`). Every
+  request needs a token; in a browser you paste it once to sign in.
 
 The full design is in [docs/PLAN.md](docs/PLAN.md).
 

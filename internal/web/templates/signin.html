@@ -1,0 +1,11 @@
+{{define "content"}}
+<section class="signin">
+  <h1>Sign in</h1>
+  <p>Paste a Backpack token. Issue one with <code>make token ACTOR=&lt;name&gt;</code>.</p>
+  <form method="post" action="/sign-in">
+    <label for="token">Token</label>
+    <input id="token" name="token" type="password" autocomplete="off" required autofocus>
+    <button type="submit">Sign in</button>
+  </form>
+</section>
+{{end}}
