@@ -67,3 +67,15 @@ func (h *Hub) drop(ws string, ch chan board.Change) {
 	}
 	close(ch)
 }
+
+// Close ends every watcher's stream, for the server's shutdown: a stream
+// never finishes on its own, and the pages reconnect to the next server.
+func (h *Hub) Close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ws, chans := range h.watchers {
+		for ch := range chans {
+			h.drop(ws, ch)
+		}
+	}
+}

@@ -105,3 +105,20 @@ func TestWatchersComeAndGoWhileChangesArePublished(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// Closing ends every stream, so the server can shut down without waiting
+// for pages that never finish.
+func TestClosingEndsEveryWatcher(t *testing.T) {
+	h := live.New()
+	a, stopA := h.Subscribe("demo")
+	b, stopB := h.Subscribe("other")
+	h.Close()
+	for _, ch := range []<-chan board.Change{a, b} {
+		if _, ok := <-ch; ok {
+			t.Fatal("a watcher was kept")
+		}
+	}
+	stopA() // stopping after closing is harmless
+	stopB()
+	h.Publish(change("demo", "S-1"))
+}

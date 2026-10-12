@@ -225,6 +225,8 @@ func serve(cfg config) error {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
+	// Shutdown waits for open requests; live pages' streams never finish.
+	srv.RegisterOnShutdown(hub.Close)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
