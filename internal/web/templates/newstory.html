@@ -1,0 +1,26 @@
+{{define "content"}}
+{{$ws := .WS.Slug}}
+<p class="muted"><a href="/w/{{$ws}}">← Board</a></p>
+<h1>New story</h1>
+<form class="panel story-form" method="post" action="/w/{{$ws}}/stories">
+  <label>Title <input name="title" required></label>
+  <label>Description <textarea name="description" rows="3"></textarea></label>
+  <label>Goal <textarea name="goal" rows="2"></textarea></label>
+  <label>Plan <textarea name="plan" rows="3"></textarea></label>
+  {{with .Data}}
+  <label>Phase (can't be changed later)
+    <select name="phase">
+      <option value="">No phase</option>
+      {{range .Phases}}{{if not .Complete}}<option value="{{.Number}}">{{.Number}}. {{.Title}}</option>{{end}}{{end}}
+    </select>
+  </label>
+  <label>Place it
+    <select name="after">
+      <option value="">At the bottom of the backlog</option>
+      {{range .Stories}}{{if or (eq .Status "backlog") (eq .Status "proposed")}}<option value="{{.ID}}">After {{.ID}} {{.Title}}</option>{{end}}{{end}}
+    </select>
+  </label>
+  {{end}}
+  <button type="submit">Add to the backlog</button>
+</form>
+{{end}}

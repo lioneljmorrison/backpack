@@ -1,6 +1,7 @@
 package board_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -384,4 +385,24 @@ func TestAClosedDependentDoesNotStopAStoryBeingClosed(t *testing.T) {
 	depend(t, b, "S-2", "S-1")
 	setStatus(t, b, "S-2", board.StatusChange{To: "closed", Reason: "dropped"})
 	setStatus(t, b, "S-1", board.StatusChange{To: "closed", Reason: "dropped too"})
+}
+
+func TestMovesListsWhereAStoryCanGoNext(t *testing.T) {
+	for _, c := range []struct {
+		s       board.Story
+		release bool
+		want    []string
+	}{
+		{board.Story{Status: board.Proposed}, false, []string{board.Backlog, board.Closed}},
+		{board.Story{Status: board.Backlog}, false, []string{board.InProgress, board.OnHold, board.Closed}},
+		{board.Story{Status: board.InReview}, false, []string{board.InProgress, board.Merged, board.OnHold, board.Closed}},
+		{board.Story{Status: board.Merged}, false, []string{board.Deployed}},
+		{board.Story{Status: board.Merged}, true, []string{board.Released}},
+		{board.Story{Status: board.OnHold, HeldFrom: board.InProgress}, false, []string{board.InProgress, board.Closed}},
+		{board.Story{Status: board.Deployed}, false, nil},
+	} {
+		if got := board.Moves(c.s, c.release); !slices.Equal(got, c.want) {
+			t.Errorf("%s (release %v): %v, want %v", c.s.Status, c.release, got, c.want)
+		}
+	}
 }

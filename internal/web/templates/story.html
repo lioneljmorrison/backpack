@@ -29,6 +29,37 @@
   {{end}}
 </div>
 {{end}}
+{{$id := .Story.ID}}
+<section class="act">
+  {{with .Moves}}
+  <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/status">
+    <h2>Move</h2>
+    <div class="choices">
+      {{range .}}<label><input type="radio" name="to" value="{{.}}" required> {{label .}}</label>{{end}}
+    </div>
+    <details>
+      <summary>Details for the move</summary>
+      <label>Branch, when starting <input name="branch"></label>
+      <label>Workaround, when starting while blocked <input name="workaround"></label>
+      <label>Pull request link, when opening review <input name="pr_url" type="url"></label>
+      <label>Merge commit, when merging <input name="commit"></label>
+    </details>
+    <label>Reason, when putting on hold or closing <input name="reason"></label>
+    <button type="submit">Move</button>
+  </form>
+  {{end}}
+  {{if eq .Story.Status "in_progress"}}
+  <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/activity">
+    <h2>Doing</h2>
+    <select name="activity" aria-label="Activity">
+      {{range (list "planning" "building" "testing" "waiting")}}<option value="{{.}}"{{if eq . $.Data.Story.Activity}} selected{{end}}>{{label .}}</option>{{end}}
+    </select>
+    <label>Waiting on <input name="waiting_on" value="{{.Story.WaitingOn}}"></label>
+    <button type="submit">Save</button>
+  </form>
+  {{end}}
+</section>
+
 <h2>Log</h2>
 <ol class="log">
   {{range .Log}}
@@ -47,5 +78,21 @@
   <li class="empty">No entries yet.</li>
   {{end}}
 </ol>
+<form class="panel log-form" method="post" action="/w/{{$ws}}/stories/{{$id}}/log">
+  <h2>Add to the log</h2>
+  <select name="kind" aria-label="Kind">
+    <option value="note">Note</option>
+    <option value="decision">Decision</option>
+    <option value="correction">Correction</option>
+    <option value="commit">Commit</option>
+    <option value="pr">Pull request</option>
+  </select>
+  <textarea name="text" rows="3" aria-label="Text" placeholder="What to record"></textarea>
+  <input name="reason" placeholder="Reason, for a decision" aria-label="Reason">
+  <input name="corrects" placeholder="Entry it corrects, such as L-3" aria-label="Corrects">
+  <input name="commit" placeholder="Commit, for a commit" aria-label="Commit">
+  <input name="pr_url" type="url" placeholder="Link, for a pull request" aria-label="Pull request link">
+  <button type="submit">Add</button>
+</form>
 {{end}}
 {{end}}

@@ -32,9 +32,9 @@
 </html>
 {{end}}
 
-{{/* card is one story on a board or in a list; it is given the workspace slug and the story. */}}
+{{/* card is one story on a board or in a list: a card value from cardOf. */}}
 {{define "card"}}
-<article class="card{{if .S.Blocked}} blocked{{end}}">
+<article class="card{{if .S.Blocked}} blocked{{end}}"{{if .Movable}} draggable="true" data-move="/w/{{.WS}}/stories/{{.S.ID}}/move" data-id="{{.S.ID}}"{{end}}>
   <a class="card-title" href="/w/{{.WS}}/stories/{{.S.ID}}"><span class="id">{{.S.ID}}</span> {{.S.Title}}</a>
   <div class="tags">
     {{if .S.Phase}}<span class="tag">Phase {{.S.Phase}}</span>{{end}}
@@ -42,5 +42,11 @@
     {{if .S.Blocked}}<span class="tag bad">Blocked by {{range $i, $b := .S.BlockedBy}}{{if $i}}, {{end}}{{$b}}{{end}}</span>{{end}}
     {{if .S.HoldReason}}<span class="tag warn">{{.S.HoldReason}}</span>{{end}}
   </div>
+  {{if and .Movable (or .Up .Down)}}
+  <div class="moves">
+    {{with .Up}}<form method="post" action="/w/{{$.WS}}/stories/{{$.S.ID}}/move"><input type="hidden" name="before" value="{{.}}"><button class="quiet" type="submit" aria-label="Move {{$.S.ID}} above {{.}}" title="Move up">↑</button></form>{{end}}
+    {{with .Down}}<form method="post" action="/w/{{$.WS}}/stories/{{$.S.ID}}/move"><input type="hidden" name="after" value="{{.}}"><button class="quiet" type="submit" aria-label="Move {{$.S.ID}} below {{.}}" title="Move down">↓</button></form>{{end}}
+  </div>
+  {{end}}
 </article>
 {{end}}

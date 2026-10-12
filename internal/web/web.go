@@ -54,6 +54,7 @@ func New(lookup auth.LookupFunc, b *board.Board, x *search.Index) http.Handler {
 	signedIn.HandleFunc("GET /{$}", s.workspaces)
 	signedIn.HandleFunc("POST /sign-out", s.signOut)
 	s.routePages(signedIn)
+	s.routeActions(signedIn)
 
 	static, _ := fs.Sub(files, "static")
 	mux := http.NewServeMux()
@@ -65,7 +66,7 @@ func New(lookup auth.LookupFunc, b *board.Board, x *search.Index) http.Handler {
 }
 
 func parse() map[string]*template.Template {
-	names := []string{"signin", "workspaces", "board", "story", "phases", "ideas", "search"}
+	names := []string{"signin", "workspaces", "board", "story", "phases", "ideas", "search", "newstory"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, name := range names {
 		pages[name] = template.Must(template.New("").Funcs(funcs).ParseFS(files, "templates/layout.html", "templates/"+name+".html"))
@@ -73,20 +74,27 @@ func parse() map[string]*template.Template {
 	return pages
 }
 
-var funcs = template.FuncMap{"label": label, "when": when, "percent": percent, "cardOf": cardOf}
+var funcs = template.FuncMap{"label": label, "when": when, "percent": percent, "cardOf": cardOf,
+	"list": func(v ...string) []string { return v }}
 
-// card is what the card template is given: a story and its workspace.
+// card is what the card template is given: a story and its workspace, and
+// for a backlog story the stories either side, to move it past.
 type card struct {
-	WS string
-	S  board.Story
+	WS       string
+	S        board.Story
+	Up, Down string
+	Movable  bool
 }
 
-func cardOf(ws string, s board.Story) card { return card{ws, s} }
+func cardOf(ws string, s board.Story) card { return card{WS: ws, S: s} }
 
 // render writes the named page, or a plain error if it can't be built, so a
 // half-written page is never sent.
 func (s *site) render(w http.ResponseWriter, r *http.Request, status int, name string, p page) {
 	p.Actor, _ = auth.ActorFrom(r.Context())
+	if msg := s.takeFlash(w, r); msg != "" && p.Error == "" {
+		p.Error = msg
+	}
 	var buf bytes.Buffer
 	if err := s.pages[name].ExecuteTemplate(&buf, "layout", p); err != nil {
 		log.Printf("web: render %s: %v", name, err)

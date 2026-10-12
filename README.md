@@ -56,6 +56,18 @@ service **HTTP**, URL **`backpack:8780`**. That URL is the Backpack container's
 name inside Docker. `localhost` won't work there, because inside the tunnel's
 container it means the tunnel itself.
 
+## Using the pages
+
+Open Backpack's address in a browser (`http://127.0.0.1:8780` locally) and
+paste a token from `make token ACTOR=<your name>`. The browser keeps it until
+you sign out or the token is revoked. Each workspace has its board, with where
+it stands above, and pages for each story, its phases, its ideas and search.
+From the pages you can approve or decline proposed stories, re-rank the
+backlog (drag a card, or use its arrows), move a story across the board, say
+what it is doing, add to its log, add stories and ideas, and refine or drop
+ideas. Every change is recorded under the token's actor, and the board's
+rules apply exactly as they do for agents.
+
 ## Connecting a project
 
 [docs/ADOPTING.md](docs/ADOPTING.md) is written for an AI agent in the

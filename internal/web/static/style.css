@@ -215,3 +215,43 @@ h2 .tag, h1 .tag { vertical-align: middle; }
   .board { grid-auto-flow: row; grid-auto-columns: auto; overflow-x: visible; }
   .where { grid-template-columns: 1fr 1fr; }
 }
+
+button.secondary { background: transparent; color: var(--bad); border-color: var(--bad); }
+.toolbar { display: flex; justify-content: flex-end; margin: 0 0 0.75rem; }
+.button:hover { text-decoration: none; }
+
+.panel {
+  display: grid;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.25rem 1rem 1rem;
+  margin: 1rem 0;
+  max-width: 48rem;
+}
+.panel h2 { margin-top: 0.75rem; }
+.panel label { display: grid; gap: 0.2rem; color: var(--muted); font-size: 0.9rem; }
+.panel button { justify-self: start; }
+.panel details { color: var(--muted); }
+.panel details label { margin-top: 0.4rem; }
+.choices { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; }
+.choices label { display: flex; align-items: center; gap: 0.3rem; color: var(--text); font-size: 1rem; }
+.act { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 0 1rem; max-width: 48rem; }
+
+.approve { background: var(--warn-bg); border-radius: var(--radius); padding: 0.25rem 1rem 1rem; margin-bottom: 1rem; }
+.approve h2 { color: var(--warn); }
+.approve .row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
+.approve .row a { margin-left: auto; font-size: 0.85rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.actions input { flex: 1; min-width: 10rem; }
+
+.moves { display: flex; gap: 0.3rem; margin-top: 0.4rem; }
+.moves form { margin: 0; }
+.card[draggable="true"] { cursor: grab; }
+.card.dragging { opacity: 0.5; }
+.card.drop-above { box-shadow: 0 -3px 0 var(--accent); }
+.card.drop-below { box-shadow: 0 3px 0 var(--accent); }
+
+.inline { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0; }
+.inline input { flex: 1; min-width: 8rem; }
