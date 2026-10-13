@@ -356,3 +356,33 @@ func TestAMergeFromTheBoardOrAStoryPageRecordsTheBranch(t *testing.T) {
 		t.Fatal("the story page does not say Merged (main) and offer deployed")
 	}
 }
+
+// With dev and staging both merging into main, a story in review can be
+// merged into either: its card is allowed on both columns and its page offers
+// each, and a merge that names neither is refused.
+func TestAStoryInReviewCanBeMergedIntoAnyStartingBranch(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}))
+	must[board.Branch](t)(b.AddBranch("staged", "tester", board.Branch{Name: "staging", Into: "main"}))
+	s := must[board.Story](t)(b.AddStory("staged", "tester", board.NewStory{Title: "Work"}))
+	path := "/w/staged/stories/" + s.ID + "/status"
+	act(t, h, path, url.Values{"to": {"in_progress"}, "back": {"board"}}, "/w/staged")
+	act(t, h, path, url.Values{"to": {"in_review"}, "back": {"board"}}, "/w/staged")
+
+	body := get(h, "/w/staged", "bp_good").Body.String()
+	if !strings.Contains(body, `data-moves="on_hold in_progress merged:dev merged:staging closed"`) ||
+		!strings.Contains(body, `data-into="staging"`) {
+		t.Fatalf("the board does not offer both merges: %s", body)
+	}
+	page := get(h, "/w/staged/stories/"+s.ID, "bp_good").Body.String()
+	if !strings.Contains(page, `value="merged:dev"`) || !strings.Contains(page, `value="merged:staging"`) {
+		t.Fatal("the story page does not offer a merge into each starting branch")
+	}
+	if p := act(t, h, path, url.Values{"to": {"merged"}, "back": {"board"}}, "/w/staged"); !strings.Contains(p, "dev or staging") {
+		t.Fatal("a merge naming no branch was not refused with the choices")
+	}
+	act(t, h, path, url.Values{"to": {"merged:staging"}}, "/w/staged/stories/"+s.ID)
+	if into := must[board.Story](t)(b.Story("staged", s.ID)).Into; into != "staging" {
+		t.Fatalf("into %q, want staging", into)
+	}
+}

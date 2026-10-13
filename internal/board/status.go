@@ -61,36 +61,43 @@ func ParseMove(s string) Move {
 	return Move{To: to, Into: into}
 }
 
-// firstBranch is the branch stories are merged into first: the one no other
-// branch merges into.
-func firstBranch(bs []Branch) string {
+// startingBranches are the branches nothing merges into, in merge order: where
+// a story from review is merged first. A workspace has one until a branch is
+// added beside it (staging into main while dev still merges into main); then a
+// merge from review has to name which.
+func startingBranches(bs []Branch) []string {
+	var out []string
 	for _, b := range bs {
 		if !slices.ContainsFunc(bs, func(o Branch) bool { return o.Into == b.Name }) {
-			return b.Name
+			out = append(out, b.Name)
 		}
 	}
-	return ""
+	return out
 }
 
 // Moves lists the changes s can make, in board order, for a workspace with
-// the given branches. A merge names its branch. SetStatus still checks the
-// rest.
+// the given branches. A merge names its branch: from review there is one per
+// starting branch. SetStatus still checks the rest.
 func Moves(s Story, bs []Branch) []Move {
 	var to []Move
 	for _, st := range statuses {
 		ok := slices.Contains(moves, s.Status+">"+st) || (s.Status == OnHold && st == s.HeldFrom)
 		m := Move{To: st}
 		if st == Merged && ok {
+			var into []string
 			switch s.Status {
 			case InReview:
-				m.Into = firstBranch(bs)
+				into = startingBranches(bs)
 			case Merged:
 				i := slices.IndexFunc(bs, func(b Branch) bool { return b.Name == s.Into })
-				if i >= 0 {
-					m.Into = bs[i].Into
+				if i >= 0 && bs[i].Into != "" {
+					into = []string{bs[i].Into}
 				}
 			}
-			ok = m.Into != ""
+			for _, name := range into {
+				to = append(to, Move{To: Merged, Into: name})
+			}
+			continue
 		}
 		if st == Deployed && s.Status == Merged {
 			i := slices.IndexFunc(bs, func(b Branch) bool { return b.Name == s.Into })
@@ -105,7 +112,8 @@ func Moves(s Story, bs []Branch) []Move {
 
 // StatusChange moves a story to another column. Branch is given only when
 // starting, PRURL when opening review, Commit and Into when merging (Into
-// names the branch merged into; with none, the first branch), Workaround when
+// names the branch merged into; with none, the only starting branch, and
+// with several the merge is refused until it names one), Workaround when
 // starting a blocked story, and Reason when holding or closing.
 type StatusChange struct {
 	To         string `json:"to"`
@@ -174,13 +182,15 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 			collect(CASE WHEN br.name = s.into THEN br.into END) AS afters,
 			collect(CASE WHEN br.into IS NULL THEN br.name END) AS releases
 		WITH w, s, waiting, dependents, from, n, names, intos, afters[0] AS after, releases[0] AS release,
-			[x IN names WHERE NOT x IN intos][0] AS first
-		WITH w, s, waiting, dependents, from, n, names, after, release, first,
-			CASE WHEN from = 'merged' THEN $into ELSE coalesce($into, first) END AS target
-		WITH w, s, waiting, dependents, from, n, target, first, after, release, CASE
+			[x IN names WHERE NOT x IN intos] AS starts
+		WITH w, s, waiting, dependents, from, n, names, after, release, starts,
+			CASE WHEN from = 'merged' THEN $into
+				ELSE coalesce($into, CASE WHEN size(starts) = 1 THEN starts[0] END) END AS target
+		WITH w, s, waiting, dependents, from, n, target, starts, after, release, CASE
 			WHEN NOT ((from + '>' + $to) IN $moves OR (from = 'on_hold' AND $to = s.held_from)) THEN 'move'
 			WHEN $to = 'merged' AND $into IS NOT NULL AND NOT $into IN names THEN 'no branch'
-			WHEN from = 'in_review' AND $to = 'merged' AND (target IS NULL OR target <> first) THEN 'skip'
+			WHEN from = 'in_review' AND $to = 'merged' AND $into IS NULL AND size(starts) > 1 THEN 'name'
+			WHEN from = 'in_review' AND $to = 'merged' AND (target IS NULL OR NOT target IN starts) THEN 'skip'
 			WHEN from = 'merged' AND $to = 'merged' AND after IS NULL THEN 'last'
 			WHEN from = 'merged' AND $to = 'merged' AND target IS NULL THEN 'next'
 			WHEN from = 'merged' AND $to = 'merged' AND target <> after THEN 'next'
@@ -209,7 +219,7 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + 1), at: $now, actor: $actor,
 					kind: 'decision', reason: $workaround, text: 'Started while blocked by ' +
 					reduce(t = '', x IN waiting | t + CASE WHEN t = '' THEN '' ELSE ', ' END + x)})))
-		RETURN violation, from, s.held_from AS held_from, waiting, dependents, first, after, release, s.into AS into`,
+		RETURN violation, from, s.held_from AS held_from, waiting, dependents, starts, after, release, s.into AS into`,
 		map[string]any{
 			"id": id, "to": c.To, "moves": moves, "complete": complete, "actor": actor, "now": now(),
 			"reason": orNull(c.Reason), "branch": orNull(c.Branch), "pr": orNull(c.PRURL), "commit": orNull(c.Commit), "into": orNull(c.Into),
@@ -233,8 +243,10 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 		return Story{}, refuse(Conflict, "%s cannot go from %s to %s", id, label(from), label(c.To))
 	case "no branch":
 		return Story{}, refuse(Conflict, "%s has no branch %q", ws, c.Into)
+	case "name":
+		return Story{}, refuse(Conflict, "%s is in review and several branches start the line; name the branch: %s", id, orList(strs(r, "starts")))
 	case "skip":
-		return Story{}, refuse(Conflict, "%s is in review; merge it into %s first, then on from there", id, str(r, "first"))
+		return Story{}, refuse(Conflict, "%s is in review; merge it into %s first, then on from there", id, orList(strs(r, "starts")))
 	case "last":
 		return Story{}, refuse(Conflict, "%s is already in %s, which merges nowhere", id, str(r, "into"))
 	case "next":
@@ -255,6 +267,16 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 		return Story{}, refuse(Conflict, "%s is blocked by %s; give a workaround to start it anyway",
 			id, list(strs(r, "waiting")))
 	}
+}
+
+// orList joins names for a choice: "dev or staging", "a, b or c".
+func orList(names []string) string {
+	names = slices.Clone(names)
+	slices.Sort(names)
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }
 
 // label is a status as people write it: "in_review" reads "in review".

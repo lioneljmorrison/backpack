@@ -401,3 +401,42 @@ func TestRenameBranchOverHTTPKeepsStoriesWhereTheyAre(t *testing.T) {
 	want(t, call(t, h, "PATCH", m+"nope", `{"name": "x"}`), http.StatusNotFound)
 	want(t, call(t, h, "PATCH", m+"develop", `{}`), http.StatusOK)
 }
+
+func TestAddBranchAndRepointOverHTTPKeepStoriesWhereTheyAre(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	want(t, call(t, h, "POST", p, `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"in_progress", "in_review"} {
+		want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+	b := "/v1/workspaces/staged/branches"
+	got := want(t, call(t, h, "POST", b, `{"name": "staging", "into": "main", "alias": "Pre-prod"}`), http.StatusCreated)
+	if got["name"] != "staging" || got["into"] != "main" || got["alias"] != "Pre-prod" {
+		t.Fatalf("answered %v", got)
+	}
+	want(t, call(t, h, "POST", b, `{"name": "staging", "into": "main"}`), http.StatusConflict)
+	want(t, call(t, h, "POST", b, `{"name": "other"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", b, `{"name": "a b", "into": "main"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", b, `{"name": "x", "into": "nope"}`), http.StatusNotFound)
+	want(t, call(t, h, "POST", "/v1/workspaces/none/branches", `{"name": "x", "into": "main"}`), http.StatusNotFound)
+
+	re := want(t, call(t, h, "PATCH", b+"/dev", `{"into": "staging"}`), http.StatusOK)
+	if re["into"] != "staging" {
+		t.Fatalf("answered %v", re)
+	}
+	s := want(t, call(t, h, "GET", p+"/S-1", ""), http.StatusOK)
+	if s["status"] != "merged" || s["into"] != "dev" {
+		t.Fatalf("story %v", s)
+	}
+	want(t, call(t, h, "PATCH", b+"/staging", `{"into": "dev"}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", b+"/dev", `{"into": "dev"}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", b+"/main", `{"into": "dev"}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", b+"/dev", `{"into": ""}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", b+"/dev", `{"into": "nope"}`), http.StatusNotFound)
+	moved := want(t, call(t, h, "POST", b+"/dev/merged", `{"commit": "x9"}`), http.StatusOK)["stories"].([]any)
+	if len(moved) != 1 || moved[0].(map[string]any)["into"] != "staging" {
+		t.Fatalf("moved %v", moved)
+	}
+}
