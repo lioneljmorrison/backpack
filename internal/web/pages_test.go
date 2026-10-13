@@ -417,6 +417,19 @@ func TestAReleasedStoryReadsAsReleasedAndOffersNoMove(t *testing.T) {
 	}
 }
 
+func TestAReleasedStoryPageLinksToItsReleaseAndAnUnreleasedOneDoesNot(t *testing.T) {
+	h, b := withDemo(t)
+	one, two := shipped(t, b, "Shipped"), story(t, b, board.NewStory{Title: "Waiting"})
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.0.0", Tag: "v1.0.0"}))
+	page := get(h, "/w/demo/stories/"+one.ID, "bp_good").Body.String()
+	if !strings.Contains(page, `href="/w/demo/releases/R-1"`) || !strings.Contains(page, "v1.0.0") {
+		t.Error("the released story's page does not link to its release")
+	}
+	if page := get(h, "/w/demo/stories/"+two.ID, "bp_good").Body.String(); strings.Contains(page, "/releases/") {
+		t.Error("an unreleased story's page links to a release")
+	}
+}
+
 // Old log entries and old search states may still say "deployed".
 func TestAnOldDeployedEntryStillReadsSensibly(t *testing.T) {
 	if got := label("deployed"); got != "Deployed" {

@@ -1222,6 +1222,15 @@ components:
         into: { type: string, description: "A merged story: the furthest branch it reached" }
         pr_url: { type: string }
         workaround: { type: string, description: "How it was started while blocked" }
+        release:
+          type: object
+          description: >-
+            The release a released story shipped in. Absent before release, and
+            for a story released before releases were recorded.
+          required: [id, version]
+          properties:
+            id: { type: string, example: R-1 }
+            version: { type: string, example: v1.0.0 }
     Status:
       type: string
       enum: [proposed, backlog, in_progress, in_review, merged, released, on_hold, closed]
