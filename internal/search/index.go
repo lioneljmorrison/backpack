@@ -108,6 +108,8 @@ func (x *Index) Sync(ctx context.Context, c board.Change) error {
 	switch c.Kind {
 	case board.KindWorkspace:
 		return x.Rebuild(ctx, c.Workspace)
+	case board.KindBranch:
+		return nil // branches are not searched; the stories that moved have their own notices
 	case board.KindStory:
 		s, err := x.b.Story(c.Workspace, c.ID)
 		if err != nil {

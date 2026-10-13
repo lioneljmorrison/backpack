@@ -103,7 +103,7 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Columns = append(d.Columns, col)
 	}
-	s.render(w, r, http.StatusOK, "board", page{Title: ws.Name, WS: ws, Nav: "board", Live: "story phase idea", Data: d})
+	s.render(w, r, http.StatusOK, "board", page{Title: ws.Name, WS: ws, Nav: "board", Live: "story phase idea branch", Data: d})
 }
 
 type storyData struct {
@@ -142,7 +142,7 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 	for _, st := range all {
 		d.Titles[st.ID] = st.Title
 	}
-	s.render(w, r, http.StatusOK, "story", page{Title: d.Story.ID + " " + d.Story.Title, WS: ws, Nav: "board", Live: "story", Data: d})
+	s.render(w, r, http.StatusOK, "story", page{Title: d.Story.ID + " " + d.Story.Title, WS: ws, Nav: "board", Live: "story branch", Data: d})
 }
 
 type phaseData struct {

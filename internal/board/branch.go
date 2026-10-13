@@ -224,6 +224,7 @@ func (b *Board) AddBranch(ws, actor string, br Branch) (Branch, error) {
 	default: // no target
 		return Branch{}, refuse(NotFound, "%s has no branch %q to merge into", ws, br.Into)
 	}
+	b.changed(nil, Change{Workspace: ws, Kind: KindBranch})
 	return branchNamed(g, "add branch", br.Name)
 }
 
@@ -250,7 +251,8 @@ type BranchPatch struct {
 // other branch (it would make a second release branch); merging into where it
 // already merges, or clearing the release branch's, changes nothing. It is one
 // query, so every reference follows or none does. It answers with the branch as
-// it is now, and tells the board's watchers about each story it renamed.
+// it is now, and tells the board's watchers about each story it renamed and,
+// when anything changed, that the branches did.
 func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Branch, err error) {
 	if patch.Name != nil {
 		if err := checkBranchName(*patch.Name); err != nil {
@@ -292,11 +294,13 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 				WHEN $into IS NOT NULL AND $into <> '' AND b.into IS NULL THEN 'release'
 				WHEN $into = '' AND b.into IS NOT NULL THEN 'second release'
 				WHEN $into IS NOT NULL AND $into <> '' AND $branch IN walk THEN 'cycle' END AS violation,
-			b IS NOT NULL AND $name IS NOT NULL AND $name <> b.name AS renames
+			b IS NOT NULL AND $name IS NOT NULL AND $name <> b.name AS renames,
+			b IS NOT NULL AND (($alias IS NOT NULL AND coalesce(b.alias, '') <> $alias)
+				OR ($into IS NOT NULL AND $into <> '' AND coalesce(b.into, '') <> $into)) AS edits
 		OPTIONAL MATCH (s:Story {into: $branch}) WHERE violation IS NULL AND renames
-		WITH b, violation, renames, collect(s) AS ss
+		WITH b, violation, renames, edits, collect(s) AS ss
 		OPTIONAL MATCH (c:Branch {into: $branch}) WHERE violation IS NULL AND renames
-		WITH b, violation, renames, ss, collect(c) AS cs
+		WITH b, violation, renames, edits, ss, collect(c) AS cs
 		FOREACH (_ IN CASE WHEN violation IS NULL AND renames THEN [1] ELSE [] END |
 			SET b.name = $name
 			FOREACH (s IN ss | SET s.into = $name)
@@ -305,7 +309,7 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 			SET b.alias = CASE WHEN $alias = '' THEN null ELSE $alias END)
 		FOREACH (_ IN CASE WHEN violation IS NULL AND $into IS NOT NULL AND $into <> '' THEN [1] ELSE [] END |
 			SET b.into = $into)
-		RETURN violation, [s IN ss | s.id] AS ids`,
+		RETURN violation, renames OR edits AS changed, [s IN ss | s.id] AS ids`,
 		map[string]any{"branch": branch, "name": opt(patch.Name), "alias": opt(patch.Alias), "into": opt(patch.Into)}, nil)
 	if err != nil {
 		return Branch{}, fmt.Errorf("update branch: %w", err)
@@ -340,6 +344,10 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 	}
 	for _, id := range ids {
 		b.changed(nil, Change{ws, KindStory, id})
+	}
+	// Nothing changed (the same name, an empty patch) is told to no one.
+	if v, _ := r.Get("changed"); v == true {
+		b.changed(nil, Change{Workspace: ws, Kind: KindBranch})
 	}
 	return branchNamed(g, "update branch", name)
 }
@@ -391,6 +399,7 @@ func (b *Board) RemoveBranch(ws, actor, branch string) error {
 	r := res.Record()
 	switch str(r, "violation") {
 	case "":
+		b.changed(nil, Change{Workspace: ws, Kind: KindBranch})
 		return nil
 	case "no branch":
 		return refuse(NotFound, "%s has no branch %q", ws, branch)
