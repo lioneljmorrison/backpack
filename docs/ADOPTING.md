@@ -309,7 +309,12 @@ is never committed. The branches are in `list_branches`; change them with
   - `dev` merged into `main`: one `merge_branch` call (branch `dev`, with the
     merge commit) moves every story merged into `dev` to `main`, each logged
     with that commit, in place of a `set_status` per story. Stories still in
-    progress or in review stay put. `deployed` follows once a story is in `main`.
+    progress or in review stay put.
+  - a release cut: one `cut_release` call (the `version`, its git `tag`, and the
+    release `commit` if you have it) takes every story merged into `main` that
+    isn't in a release yet, marks it Released under the new release (R-n) and
+    logs it. Create the git tag yourself; Backpack only records it. Released
+    is final, and there is no `deployed` status.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,

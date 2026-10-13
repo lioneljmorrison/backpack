@@ -352,8 +352,8 @@ func TestAMergeFromTheBoardOrAStoryPageRecordsTheBranch(t *testing.T) {
 		t.Fatalf("into %q, want main", into())
 	}
 	page = get(h, "/w/staged/stories/"+s.ID, "bp_good").Body.String()
-	if !strings.Contains(page, "Merged (main)") || !strings.Contains(page, `value="deployed"`) {
-		t.Fatal("the story page does not say Merged (main) and offer deployed")
+	if !strings.Contains(page, "Merged (main)") || strings.Contains(page, `value="deployed"`) || strings.Contains(page, `value="released"`) {
+		t.Fatal("the story page does not say Merged (main), or offers a move into Released (only cut_release does that)")
 	}
 }
 

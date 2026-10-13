@@ -314,12 +314,10 @@ func TestMergesOverHTTPNameTheBranchAndGoOneStepAtATime(t *testing.T) {
 	if s["status"] != "merged" || s["into"] != "dev" {
 		t.Fatalf("merged %v", s)
 	}
-	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "deployed"}`), http.StatusConflict)
 	s = want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "into": "main", "commit": "def5678"}`), http.StatusOK)
 	if s["into"] != "main" {
 		t.Fatalf("merged %v", s)
 	}
-	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "deployed"}`), http.StatusOK)
 
 	log := want(t, call(t, h, "GET", p+"/S-1/log", ""), http.StatusOK)["entries"].([]any)
 	if m := log[2].(map[string]any); m["into"] != "dev" || m["commit"] != "abc1234" {
@@ -341,12 +339,58 @@ func TestMergesOverHTTPNameTheBranchAndGoOneStepAtATime(t *testing.T) {
 	}
 }
 
-func TestTheOldReleasedStatusIsABadRequestOverHTTP(t *testing.T) {
+func TestReleasedAndDeployedAreBadRequestsOverHTTPAndNameCutRelease(t *testing.T) {
 	h := withDemo(t)
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
-	e := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "released"}`), http.StatusBadRequest)
-	if !strings.Contains(e["error"].(string), "release branch") {
-		t.Fatalf("refusal %v", e)
+	for _, to := range []string{"released", "deployed"} {
+		e := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "`+to+`"}`), http.StatusBadRequest)
+		if !strings.Contains(e["error"].(string), "cut_release") {
+			t.Fatalf("refusal %v", e)
+		}
+	}
+}
+
+func TestCuttingAReleaseOverHTTPReleasesWhatIsMergedIntoTheReleaseBranch(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	for _, title := range []string{"A", "B"} {
+		want(t, call(t, h, "POST", p, `{"title": "`+title+`"}`), http.StatusCreated)
+	}
+	for _, id := range []string{"S-1", "S-2"} {
+		for _, to := range []string{"in_progress", "in_review"} {
+			want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "`+to+`"}`), http.StatusOK)
+		}
+		want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+	}
+	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "into": "main", "commit": "c2"}`), http.StatusOK)
+
+	rp := "/v1/workspaces/staged/releases"
+	// A version and a tag are required.
+	want(t, call(t, h, "POST", rp, `{"tag": "v1.0.0"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", rp, `{"version": "v1.0.0"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", rp, `{"version": "v1.0.0", "tag": "v1.0.0", "colour": "red"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", "/v1/workspaces/nope/releases", `{"version": "v1.0.0", "tag": "v1.0.0"}`), http.StatusNotFound)
+
+	r := want(t, call(t, h, "POST", rp, `{"version": "v1.0.0", "tag": "v1.0.0", "commit": "abc1234", "notes": "First"}`), http.StatusCreated)
+	stories, _ := r["stories"].([]any)
+	if r["id"] != "R-1" || r["version"] != "v1.0.0" || r["tag"] != "v1.0.0" || r["commit"] != "abc1234" || r["notes"] != "First" ||
+		len(stories) != 1 || stories[0] != "S-1" {
+		t.Fatalf("release %v", r)
+	}
+	if s := want(t, call(t, h, "GET", p+"/S-1", ""), http.StatusOK); s["status"] != "released" || s["into"] != "main" {
+		t.Fatalf("S-1 %v", s)
+	}
+	if s := want(t, call(t, h, "GET", p+"/S-2", ""), http.StatusOK); s["status"] != "merged" || s["into"] != "dev" {
+		t.Fatalf("S-2 %v", s)
+	}
+	// The same version again, and a cut with nothing left, are conflicts.
+	want(t, call(t, h, "POST", rp, `{"version": "v1.0.0", "tag": "x"}`), http.StatusConflict)
+	want(t, call(t, h, "POST", rp, `{"version": "v1.1.0", "tag": "v1.1.0"}`), http.StatusConflict)
+	// The board's last column but Closed is Released.
+	cols := want(t, call(t, h, "GET", "/v1/workspaces/staged/board", ""), http.StatusOK)["columns"].([]any)
+	if len(cols) < 2 || cols[len(cols)-2].(map[string]any)["status"] != "released" {
+		t.Fatalf("columns %v", cols)
 	}
 }
 

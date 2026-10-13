@@ -25,6 +25,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/branches/{name}", a.updateBranch)
 	mux.HandleFunc("DELETE /v1/workspaces/{ws}/branches/{name}", a.removeBranch)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/branches/{name}/merged", a.mergeBranch)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/releases", a.cutRelease)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/status", a.where)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/board", a.board)
@@ -118,6 +119,15 @@ func (a boardAPI) mergeBranch(w http.ResponseWriter, r *http.Request) {
 	}
 	moved, err := a.b.MergeBranch(r.PathValue("ws"), actor(r), r.PathValue("name"), in.Commit)
 	respond(w, http.StatusOK, map[string]any{"stories": moved}, err)
+}
+
+func (a boardAPI) cutRelease(w http.ResponseWriter, r *http.Request) {
+	var in board.NewRelease
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	rel, err := a.b.CutRelease(r.PathValue("ws"), actor(r), in)
+	respond(w, http.StatusCreated, rel, err)
 }
 
 func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {

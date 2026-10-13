@@ -19,8 +19,9 @@ dependency of the code.
 - **Dependencies** are explicit and read both ways (blocks / blocked by). A
   story always ranks below what it depends on.
 - Stories move: (Proposed →) Backlog → In progress → In review → Merged
-  (complete, one column per branch: Merged (dev), Merged (main)) → Deployed. A story an agent adds is Proposed until a
-  person approves it.
+  (complete, one column per branch: Merged (dev), Merged (main)) → Released
+  (in an official release, cut with `cut_release`). A story an agent adds is
+  Proposed until a person approves it.
 - Every story keeps an **append-only log**.
 
 Three ways in: an **MCP server** for AI agents, an **HTTP API**, and **web
@@ -119,7 +120,12 @@ The branches are in `list_branches`; change them with `add_branch`,
   - `dev` merged into `main`: one `merge_branch` call (branch `dev`, with the
     merge commit) moves every story merged into `dev` to `main`, each logged
     with that commit, in place of a `set_status` per story. Stories still in
-    progress or in review stay put. `deployed` follows once a story is in `main`.
+    progress or in review stay put.
+  - a release cut: one `cut_release` call (the `version`, its git `tag`, and the
+    release `commit` if you have it) takes every story merged into `main` that
+    isn't in a release yet, marks it Released under the new release (R-n) and
+    logs it. Create the git tag yourself; Backpack only records it. Released
+    is final, and there is no `deployed` status.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,
