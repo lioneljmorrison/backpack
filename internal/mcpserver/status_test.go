@@ -124,3 +124,73 @@ func TestSetStatusMergesIntoANamedBranchOneStepAtATime(t *testing.T) {
 		t.Fatalf("refusal %q", why)
 	}
 }
+
+// mergedIntoDev puts a story in workspace staged (dev merging into main) and
+// merges it into dev.
+func mergedIntoDev(t *testing.T, b *board.Board, title string) {
+	t.Helper()
+	s, err := b.AddStory("staged", "tester", board.NewStory{Title: title})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []board.StatusChange{{To: "in_progress"}, {To: "in_review"}, {To: "merged", Commit: "c-" + s.ID}} {
+		if _, err := b.SetStatus("staged", "tester", s.ID, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func stagedWorkspace(t *testing.T, b *board.Board) {
+	t.Helper()
+	if _, err := b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMergeBranchMovesEveryStoryOnItAndRefusesTheReleaseBranch(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	mergedIntoDev(t, b, "Second")
+	got := use(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "dev", "commit": "x9"})
+	stories, _ := got["stories"].([]any)
+	if len(stories) != 2 {
+		t.Fatalf("answer %v", got)
+	}
+	for _, s := range stories {
+		if m := s.(map[string]any); m["status"] != "merged" || m["into"] != "main" {
+			t.Fatalf("story %v", m)
+		}
+	}
+	if why := refused(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "main", "commit": "x9"}); !strings.Contains(why, "release branch") {
+		t.Fatalf("refusal %q", why)
+	}
+	refused(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "nope", "commit": "x9"})
+	refused(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "dev"})
+	empty := use(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "dev", "commit": "y1"})
+	if list, ok := empty["stories"].([]any); !ok || len(list) != 0 {
+		t.Fatalf("a branch with nothing on it answered %v, want an empty list", empty)
+	}
+}
+
+func TestMergeBranchRunsInsideABatch(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	mergedIntoDev(t, b, "Second")
+	rs := resultsIn(t, cs, "staged",
+		action("merge_branch", map[string]any{"branch": "dev", "commit": "x9"}),
+		action("merge_branch", map[string]any{"branch": "main", "commit": "x9"}))
+	res, _ := rs[0]["result"].(map[string]any)
+	if stories, _ := res["stories"].([]any); rs[0]["ok"] != true || len(stories) != 2 {
+		t.Fatalf("merge in a batch: %v", rs[0])
+	}
+	if why, _ := rs[1]["error"].(string); rs[1]["ok"] != false || !strings.Contains(why, "release branch") {
+		t.Fatalf("a refused merge in a batch: %v", rs[1])
+	}
+	for _, id := range []string{"S-1", "S-2"} {
+		if s, err := b.Story("staged", id); err != nil || s.Into != "main" {
+			t.Fatalf("%s: %+v, %v", id, s, err)
+		}
+	}
+}

@@ -570,7 +570,8 @@ true or false). Every tool takes `workspace`. Since slice 6, `add_story`
 proposes: the story goes in as `proposed`, with a required `reasoning`.
 Ideas add `add_idea` (open at once, with optional `context`),
 `list_ideas`, `get_idea`, `update_idea`, `move_idea`,
-`refine_idea` and `drop_idea`. Search adds `search`. `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `list_workspaces` is the
+`refine_idea` and `drop_idea`. Search adds `search`. `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `merge_branch` (2026-10-13, S-25) takes a branch and its merge commit and answers
+`{"stories": [...]}`, the stories it moved; it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.
 

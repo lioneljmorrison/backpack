@@ -349,3 +349,30 @@ func TestTheOldReleasedStatusIsABadRequestOverHTTP(t *testing.T) {
 		t.Fatalf("refusal %v", e)
 	}
 }
+
+func TestMergeBranchOverHTTPMovesEveryStoryOnIt(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	for _, title := range []string{"A", "B"} {
+		want(t, call(t, h, "POST", p, `{"title": "`+title+`"}`), http.StatusCreated)
+	}
+	for _, id := range []string{"S-1", "S-2"} {
+		for _, to := range []string{"in_progress", "in_review"} {
+			want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "`+to+`"}`), http.StatusOK)
+		}
+		want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+	}
+	m := "/v1/workspaces/staged/branches/"
+	want(t, call(t, h, "POST", m+"main/merged", `{"commit": "x9"}`), http.StatusConflict)
+	want(t, call(t, h, "POST", m+"nope/merged", `{"commit": "x9"}`), http.StatusNotFound)
+	want(t, call(t, h, "POST", m+"dev/merged", `{}`), http.StatusBadRequest)
+	got := want(t, call(t, h, "POST", m+"dev/merged", `{"commit": "x9"}`), http.StatusOK)["stories"].([]any)
+	if len(got) != 2 || got[0].(map[string]any)["into"] != "main" {
+		t.Fatalf("moved %v", got)
+	}
+	again := want(t, call(t, h, "POST", m+"dev/merged", `{"commit": "y1"}`), http.StatusOK)["stories"].([]any)
+	if len(again) != 0 {
+		t.Fatalf("moved again %v", again)
+	}
+}

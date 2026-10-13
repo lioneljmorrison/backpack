@@ -207,6 +207,48 @@ paths:
                     items: { $ref: "#/components/schemas/Branch" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/branches/{name}/merged:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: name
+        in: path
+        required: true
+        description: The branch that was merged, such as dev
+        schema: { type: string }
+    post:
+      summary: Record a branch merged into the next, moving every story on it
+      description: >-
+        Moves every story merged into the branch to the branch it merges into,
+        as one change, each with a status entry in its log naming the merge
+        commit. Stories still in progress or in review stay put. A branch with
+        nothing merged into it answers with an empty list. The release branch
+        merges nowhere, so it is refused.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commit]
+              additionalProperties: false
+              properties:
+                commit: { type: string, description: The merge commit }
+      responses:
+        "200":
+          description: The stories that moved, as they are now
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stories]
+                properties:
+                  stories:
+                    type: array
+                    items: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/workspaces/{ws}/phases:
     parameters:
       - $ref: "#/components/parameters/Workspace"

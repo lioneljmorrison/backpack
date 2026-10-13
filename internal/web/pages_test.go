@@ -336,3 +336,13 @@ func TestABlockedCardSaysSo(t *testing.T) {
 		}
 	}
 }
+
+// Search answers a merged story's state as "merged:main"; a page reads it as
+// the column is named.
+func TestASearchStateWithABranchReadsAsTheColumnIsNamed(t *testing.T) {
+	for state, want := range map[string]string{"merged:main": "Merged (main)", "merged:dev": "Merged (dev)", "in_review": "In review"} {
+		if got := label(state); got != want {
+			t.Errorf("label(%q) = %q, want %q", state, got, want)
+		}
+	}
+}
