@@ -288,6 +288,21 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      summary: Remove a branch
+      description: >-
+        Removes a branch only when nothing refers to it: no story is merged
+        into it (whatever its status) and no branch merges into it. It is
+        refused with 409, the reason naming the stories and branches still on
+        it, and for the release branch and for the first branch (the only
+        branch nothing merges into). With several branches nothing merges into,
+        an empty one can be removed. Past log entries keep the removed name.
+        An unknown branch is 404.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/workspaces/{ws}/branches/{name}/merged:
     parameters:
       - $ref: "#/components/parameters/Workspace"

@@ -409,9 +409,12 @@ not part of the board.
   only ever one release branch), re-pointed to merge elsewhere (nothing
   moves; refused into itself, into anything that leads back to it, for the
   release branch, or to clear it on any other), and removed only when nothing refers to it: no story merged into it
-  and no branch merging into it. The release branch and the first branch are
-  never removed. An abandoned branch's stories are put on hold or closed
-  first.
+  (whatever its status) and no branch merging into it. The release branch is
+  never removed, nor the first branch. (Settled 2026-10-13, S-29: "the first
+  branch" means a starting branch that is the only one; with several starting
+  branches an empty one can be removed.) A refusal names the stories and
+  branches still on it, and past log entries keep the removed name. An
+  abandoned branch's stories are put on hold or closed first.
 - **Setup.** When an agent first connects a repository it works out the
   branching (default, integration and protected branches, how pull requests
   flow), proposes it in conversation, and a person approves or adjusts it.
@@ -581,7 +584,7 @@ proposes: the story goes in as `proposed`, with a required `reasoning`.
 Ideas add `add_idea` (open at once, with optional `context`),
 `list_ideas`, `get_idea`, `update_idea`, `move_idea`,
 `refine_idea` and `drop_idea`. Search adds `search`. `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `merge_branch` (2026-10-13, S-25) takes a branch and its merge commit and answers
-`{"stories": [...]}`, the stories it moved; it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `add_branch` (2026-10-13, S-28) takes a `name`, the branch it merges `into` (required) and an optional `alias`, answers with the branch, and is the same action as `POST /v1/workspaces/{ws}/branches` (201); an unknown `into` is a 404, a taken name a 409, a missing `into` or a bad name a 400, and it runs inside `batch`. `update_branch` (2026-10-13, S-26, S-27, S-28) takes a branch and an optional new `name`, `alias` and `into`, answers with the branch, and is the same action as `PATCH /v1/workspaces/{ws}/branches/{name}`; `into` re-points where the branch merges (nothing moves; one query, with the cycle check a bounded walk of the branches' `into` names, since `into` is a property and not an edge), and is refused for the branch itself or one leading back to it, an unknown branch, the release branch, or empty on any other branch (409, or 404 for an unknown one); fields not given are left alone, a name already in use or with whitespace or over 100 characters is refused, and renaming to the branch's own name changes nothing. An `alias` (plain text, at most 100 characters; empty clears it) replaces only the branch name inside its web column heading, "Merged (Production)"; the story page, API, tools and logs keep the name. `list_workspaces` is the
+`{"stories": [...]}`, the stories it moved; it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `add_branch` (2026-10-13, S-28) takes a `name`, the branch it merges `into` (required) and an optional `alias`, answers with the branch, and is the same action as `POST /v1/workspaces/{ws}/branches` (201); an unknown `into` is a 404, a taken name a 409, a missing `into` or a bad name a 400, and it runs inside `batch`. `update_branch` (2026-10-13, S-26, S-27, S-28) takes a branch and an optional new `name`, `alias` and `into`, answers with the branch, and is the same action as `PATCH /v1/workspaces/{ws}/branches/{name}`; `into` re-points where the branch merges (nothing moves; one query, with the cycle check a bounded walk of the branches' `into` names, since `into` is a property and not an edge), and is refused for the branch itself or one leading back to it, an unknown branch, the release branch, or empty on any other branch (409, or 404 for an unknown one); fields not given are left alone, a name already in use or with whitespace or over 100 characters is refused, and renaming to the branch's own name changes nothing. An `alias` (plain text, at most 100 characters; empty clears it) replaces only the branch name inside its web column heading, "Merged (Production)"; the story page, API, tools and logs keep the name. `remove_branch` (2026-10-13, S-29) takes a branch, answers `{"removed": true}`, and is the same action as `DELETE /v1/workspaces/{ws}/branches/{name}` (204, as removing a dependency); it is one query and runs inside `batch`. It is refused with 409 for the release branch, the only starting branch, and a branch that still has stories merged into it or branches merging into it (the reason names them), and with 404 for an unknown branch. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.
 

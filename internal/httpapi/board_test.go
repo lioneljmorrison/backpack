@@ -440,3 +440,17 @@ func TestAddBranchAndRepointOverHTTPKeepStoriesWhereTheyAre(t *testing.T) {
 		t.Fatalf("moved %v", moved)
 	}
 }
+
+func TestRemoveBranchOverHTTP(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	m := "/v1/workspaces/staged/branches"
+	want(t, call(t, h, "POST", m, `{"name": "staging", "into": "main"}`), http.StatusCreated)
+	want(t, call(t, h, "DELETE", m+"/main", ""), http.StatusConflict)
+	want(t, call(t, h, "DELETE", m+"/nope", ""), http.StatusNotFound)
+	want(t, call(t, h, "DELETE", "/v1/workspaces/nope/branches/dev", ""), http.StatusNotFound)
+	want(t, call(t, h, "DELETE", m+"/staging", ""), http.StatusNoContent)
+	want(t, call(t, h, "DELETE", m+"/staging", ""), http.StatusNotFound)
+	// dev is now the only starting branch.
+	want(t, call(t, h, "DELETE", m+"/dev", ""), http.StatusConflict)
+}

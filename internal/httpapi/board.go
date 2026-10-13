@@ -23,6 +23,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("GET /v1/workspaces/{ws}/branches", a.listBranches)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/branches", a.addBranch)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/branches/{name}", a.updateBranch)
+	mux.HandleFunc("DELETE /v1/workspaces/{ws}/branches/{name}", a.removeBranch)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/branches/{name}/merged", a.mergeBranch)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/status", a.where)
@@ -98,6 +99,14 @@ func (a boardAPI) updateBranch(w http.ResponseWriter, r *http.Request) {
 	}
 	br, err := a.b.UpdateBranch(r.PathValue("ws"), actor(r), r.PathValue("name"), patch)
 	respond(w, http.StatusOK, br, err)
+}
+
+func (a boardAPI) removeBranch(w http.ResponseWriter, r *http.Request) {
+	if err := a.b.RemoveBranch(r.PathValue("ws"), actor(r), r.PathValue("name")); err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a boardAPI) mergeBranch(w http.ResponseWriter, r *http.Request) {
