@@ -54,6 +54,11 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 	}
 	var d boardData
 	var cols []board.Column
+	release, err := s.board.ReleaseStage(ws.Slug)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	if d.Where, err = s.board.Where(ws.Slug); err == nil {
 		if d.Next, err = s.board.Next(ws.Slug); err == nil {
 			if cols, err = s.board.Board(ws.Slug); err == nil {
@@ -69,7 +74,7 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		col := column{Status: c.Status, Cards: make([]card, len(c.Stories))}
 		for i, st := range c.Stories {
 			col.Cards[i] = cardOf(ws.Slug, st)
-			col.Cards[i].Moves = board.Moves(st, ws.HasReleaseStage)
+			col.Cards[i].Moves = board.Moves(st, release)
 			// The backlog is where order is chosen; a card moves past its
 			// neighbours there.
 			if c.Status == board.Backlog {
@@ -113,7 +118,12 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	d.Moves = board.Moves(d.Story, ws.HasReleaseStage)
+	release, err := s.board.ReleaseStage(ws.Slug)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	d.Moves = board.Moves(d.Story, release)
 	d.Titles = make(map[string]string, len(all))
 	for _, st := range all {
 		d.Titles[st.ID] = st.Title

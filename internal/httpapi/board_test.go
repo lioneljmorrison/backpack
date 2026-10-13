@@ -283,3 +283,17 @@ func TestAProposalCanBeHeldAndResumedOverHTTP(t *testing.T) {
 		t.Fatalf("resumed %v", s)
 	}
 }
+
+func TestListBranches(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	got := want(t, call(t, h, "GET", "/v1/workspaces/staged/branches", ""), http.StatusOK)["branches"].([]any)
+	if len(got) != 2 {
+		t.Fatalf("branches %v", got)
+	}
+	dev, main := got[0].(map[string]any), got[1].(map[string]any)
+	if dev["name"] != "dev" || dev["into"] != "main" || main["name"] != "main" || main["release"] != true {
+		t.Fatalf("branches %v", got)
+	}
+	want(t, call(t, h, "GET", "/v1/workspaces/nope/branches", ""), http.StatusNotFound)
+}

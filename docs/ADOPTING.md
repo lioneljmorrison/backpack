@@ -107,7 +107,8 @@ curl -fsS -X POST https://backpack.example.com/v1/workspaces \
 ```
 
 `slug` and `name` are required. `repo_url` is optional. `has_release_stage` is
-the person's answer from step 1. A `409` means the slug is already taken, so
+the person's answer from step 1; it seeds the workspace's branches (`main` alone,
+or `dev` merging into `main`), which `list_branches` shows. A `409` means the slug is already taken, so
 check with the person whether that workspace is this project's.
 
 ## 4. Connect the MCP server

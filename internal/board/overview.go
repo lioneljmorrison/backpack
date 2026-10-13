@@ -169,10 +169,11 @@ func (b *Board) Board(ws string) ([]Column, error) {
 	return cols, nil
 }
 
+// hasReleaseStage is true when some branch merges into another.
 func hasReleaseStage(g *falkordb.Graph) (bool, error) {
-	res, err := g.ROQuery("MATCH (w:Workspace) RETURN coalesce(w.has_release_stage, false) AS release", nil, nil)
+	res, err := g.ROQuery("MATCH (b:Branch) WHERE b.into IS NOT NULL RETURN count(b) > 0 AS release", nil, nil)
 	if err != nil {
-		return false, fmt.Errorf("read release stage: %w", err)
+		return false, fmt.Errorf("read branches: %w", err)
 	}
 	return res.Next() && flag(res.Record(), "release"), nil
 }

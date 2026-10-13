@@ -20,6 +20,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	a := boardAPI{b}
 	mux.HandleFunc("GET /v1/workspaces", a.listWorkspaces)
 	mux.HandleFunc("POST /v1/workspaces", a.createWorkspace)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/branches", a.listBranches)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/status", a.where)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/board", a.board)
@@ -67,6 +68,11 @@ func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL,
 		HasReleaseStage: in.HasReleaseStage})
 	respond(w, http.StatusCreated, ws, err)
+}
+
+func (a boardAPI) listBranches(w http.ResponseWriter, r *http.Request) {
+	bs, err := a.b.Branches(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"branches": bs}, err)
 }
 
 func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {
