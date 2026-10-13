@@ -94,6 +94,11 @@ its log. Approving moves it to Backlog; declining closes it with a reason.
 | Merged (*branch*) | In that branch — **complete**. One column per branch, in merge order, each named by its branch (for example Merged (dev), Merged (main)) | merged to `dev`, then `dev` merged to `main` |
 | Released | In an official release (R-n) — the last step | a release cut from `main` |
 
+The web board has no Released column (2026-10-13): it ends at the last Merged
+column, then Closed, so cutting a release takes its stories off the board. They
+are read on the Releases pages. The API and MCP board listings keep their
+released list, and a released story's page and search still work.
+
 The Merged columns come from the workspace's branches, not from a switch (see
 "Branches and releases", 2026-10-13). A workspace with one branch has one
 Merged column. Before 2026-10-13 the board had a fixed Released column that
