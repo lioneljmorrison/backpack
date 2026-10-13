@@ -8,11 +8,13 @@ const (
 	KindIdea      = "idea"
 	KindPhase     = "phase"
 	KindWorkspace = "workspace"
+	KindBranch    = "branch"
 )
 
 // Change names an item a write changed: a story (its log, rank and
-// dependencies included), an idea, a phase (its goals included), or a new
-// workspace, which has no ID.
+// dependencies included), an idea, a phase (its goals included), a new
+// workspace, or a change to a workspace's branches (added, changed or
+// removed), which have no ID.
 type Change struct {
 	Workspace string
 	Kind      string

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -302,5 +303,86 @@ func TestWarmWithTypesenseUnreachableIsUnavailable(t *testing.T) {
 	b, _ := newBoard(t)
 	if err := unreachable(b).Warm(ctx); !errors.Is(err, search.ErrUnavailable) {
 		t.Fatalf("error = %v, want ErrUnavailable", err)
+	}
+}
+
+// A branch merge notifies the index of every story it moved (a failed sync
+// fails the test), and search still finds each in its state: merged for the
+// ones moved, in review for the one left behind.
+func TestAfterABranchMergeSearchFindsEveryMovedStoryAndTheOneLeftBehind(t *testing.T) {
+	b, x := newBoard(t)
+	b.OnChange(func(c board.Change) {
+		if err := x.Sync(ctx, c); err != nil {
+			t.Errorf("sync %+v: %v", c, err)
+		}
+	})
+	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "demo", HasReleaseStage: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Export invoices", "Export receipts", "Export statements", "Export refunds"} {
+		addStory(t, b, "demo", board.NewStory{Title: title})
+	}
+	for i, id := range []string{"S-1", "S-2", "S-3", "S-4"} {
+		steps := []board.StatusChange{{To: board.InProgress}, {To: board.InReview}}
+		if i < 3 {
+			steps = append(steps, board.StatusChange{To: board.Merged, Commit: "c1"})
+		}
+		for _, c := range steps {
+			if _, err := b.SetStatus("demo", actor, id, c); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	states := func() map[string]string {
+		got := map[string]string{}
+		for _, r := range find(t, x, "demo", "export") {
+			got[r.ID] = r.State
+		}
+		return got
+	}
+	before := map[string]string{"S-1": "merged:dev", "S-2": "merged:dev", "S-3": "merged:dev", "S-4": "in_review"}
+	if got := states(); !maps.Equal(got, before) {
+		t.Fatalf("before the merge search found %v, want %v", got, before)
+	}
+	moved, err := b.MergeBranch("demo", actor, "dev", "x9")
+	if err != nil || len(moved) != 3 {
+		t.Fatalf("moved %+v, %v", moved, err)
+	}
+	want := map[string]string{"S-1": "merged:main", "S-2": "merged:main", "S-3": "merged:main", "S-4": "in_review"}
+	if got := states(); !maps.Equal(got, want) {
+		t.Fatalf("search found %v, want %v", got, want)
+	}
+}
+
+// Renaming a branch notifies the index of every story that reached it, so
+// search reads "merged:develop" and not the old name.
+func TestAfterABranchRenameSearchReadsTheNewBranchInEachStoryState(t *testing.T) {
+	b, x := newBoard(t)
+	b.OnChange(func(c board.Change) {
+		if err := x.Sync(ctx, c); err != nil {
+			t.Errorf("sync %+v: %v", c, err)
+		}
+	})
+	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "demo", HasReleaseStage: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Export invoices", "Export receipts"} {
+		addStory(t, b, "demo", board.NewStory{Title: title})
+	}
+	for _, id := range []string{"S-1", "S-2"} {
+		for _, c := range []board.StatusChange{{To: board.InProgress}, {To: board.InReview}, {To: board.Merged, Commit: "c1"}} {
+			if _, err := b.SetStatus("demo", actor, id, c); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	name := "develop"
+	if _, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Name: &name}); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range find(t, x, "demo", "export") {
+		if r.State != "merged:develop" {
+			t.Fatalf("%s is %q in search, want merged:develop", r.ID, r.State)
+		}
 	}
 }

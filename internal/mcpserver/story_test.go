@@ -98,3 +98,25 @@ func TestMoveStoryChangesItsPlaceInTheBacklog(t *testing.T) {
 		t.Fatalf("next %v", n)
 	}
 }
+
+func TestGetStoryOfAReleasedStoryIncludesItsRelease(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	mergedIntoDev(t, b, "Second")
+	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CutRelease("staged", "tester", board.NewRelease{Version: "v1.0.0", Tag: "v1.0.0"}); err != nil {
+		t.Fatal(err)
+	}
+	s := use(t, cs, "get_story", map[string]any{"workspace": "staged", "id": "S-1"})
+	rel, _ := s["release"].(map[string]any)
+	if rel["id"] != "R-1" || rel["version"] != "v1.0.0" {
+		t.Fatalf("story %v", s)
+	}
+	addStory(t, b, "Unreleased")
+	if u := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-1"}); u["release"] != nil {
+		t.Fatalf("unreleased story %v", u)
+	}
+}

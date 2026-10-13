@@ -19,8 +19,9 @@ dependency of the code.
 - **Dependencies** are explicit and read both ways (blocks / blocked by). A
   story always ranks below what it depends on.
 - Stories move: (Proposed →) Backlog → In progress → In review → Merged
-  (complete) → Released → Deployed. A story an agent adds is Proposed until a
-  person approves it.
+  (complete, one column per branch: Merged (dev), Merged (main)) → Released
+  (in an official release, cut with `cut_release`). A story an agent adds is
+  Proposed until a person approves it.
 - Every story keeps an **append-only log**.
 
 Three ways in: an **MCP server** for AI agents, an **HTTP API**, and **web
@@ -105,14 +106,26 @@ secrets.
 Delivery is tracked in Backpack, workspace `backpack` (see `.backpack.json`),
 through the `backpack` MCP tools, added to Claude Code once per machine (see
 `docs/ADOPTING.md`). There is no tracking document, and tracking is never committed.
+The branches are in `list_branches`; change them with `add_branch`,
+`update_branch` and `remove_branch`.
 
 - **Orientation.** The session starts with "where are we". Ask `whats_next`
   for the next story and `get_story` for its detail. Don't guess the next task.
 - **Record each move as it happens**, with `set_status`:
   - start work: `in_progress`, with the task branch;
   - open the pull request: `in_review`, with its link;
-  - merged into `dev`: `merged`, with the merge commit;
-  - released when `dev` is merged into `main`.
+  - merged into `dev`: `merged`, with the merge commit (`dev` is the first
+    branch, so no `into` is needed; when several branches start the line,
+    name the one with `into`);
+  - `dev` merged into `main`: one `merge_branch` call (branch `dev`, with the
+    merge commit) moves every story merged into `dev` to `main`, each logged
+    with that commit, in place of a `set_status` per story. Stories still in
+    progress or in review stay put.
+  - a release cut: one `cut_release` call (the `version`, its git `tag`, and the
+    release `commit` if you have it) takes every story merged into `main` that
+    isn't in a release yet, marks it Released under the new release (R-n) and
+    logs it. Create the git tag yourself; Backpack only records it. Released
+    is final, and there is no `deployed` status.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,

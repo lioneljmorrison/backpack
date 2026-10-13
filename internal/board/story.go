@@ -26,17 +26,29 @@ type Story struct {
 	Activity   string   `json:"activity,omitempty"`
 	WaitingOn  string   `json:"waiting_on,omitempty"`
 	Branch     string   `json:"branch,omitempty"`
-	PRURL      string   `json:"pr_url,omitempty"`
-	Workaround string   `json:"workaround,omitempty"`
-	CreatedBy  string   `json:"created_by"`
-	CreatedAt  string   `json:"created_at"`
-	MovedBy    string   `json:"moved_by,omitempty"`
-	MovedAt    string   `json:"moved_at,omitempty"`
-	UpdatedBy  string   `json:"updated_by,omitempty"`
-	UpdatedAt  string   `json:"updated_at,omitempty"`
+	// Into is the furthest branch a merged story reached, by name; none
+	// before it is merged. Branch is the task branch it is built on.
+	Into       string `json:"into,omitempty"`
+	PRURL      string `json:"pr_url,omitempty"`
+	Workaround string `json:"workaround,omitempty"`
+	// Release is the release a released story shipped in; none before that,
+	// and none for a story released before releases were recorded.
+	Release   *ReleaseRef `json:"release,omitempty"`
+	CreatedBy string      `json:"created_by"`
+	CreatedAt string      `json:"created_at"`
+	MovedBy   string      `json:"moved_by,omitempty"`
+	MovedAt   string      `json:"moved_at,omitempty"`
+	UpdatedBy string      `json:"updated_by,omitempty"`
+	UpdatedAt string      `json:"updated_at,omitempty"`
 
 	// waiting is the dependencies that are not yet complete.
 	waiting []string
+}
+
+// ReleaseRef names a release from a story: enough to show and to link.
+type ReleaseRef struct {
+	ID      string `json:"id"`
+	Version string `json:"version"`
 }
 
 // Position places a story directly before or directly after another one.
@@ -354,15 +366,17 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 	res, err := g.ROQuery(`
 		MATCH (s:Story) WHERE $id = '' OR s.id = $id
 		OPTIONAL MATCH (p:Phase)-[:CONTAINS]->(s)
+		OPTIONAL MATCH (rel:Release)<-[:IN_RELEASE]-(s)
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story)
-		WITH s, p, collect(t.id) AS blocked_by,
+		WITH s, p, rel, collect(t.id) AS blocked_by,
 			collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS waiting
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
-		WITH s, p, blocked_by, waiting, collect(d.id) AS blocks
+		WITH s, p, rel, blocked_by, waiting, collect(d.id) AS blocks
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
 			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
+			rel.id AS release_id, rel.version AS release_version,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
-			s.waiting_on AS waiting_on, s.branch AS branch, s.pr_url AS pr_url, s.workaround AS workaround,
+			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
 			s.created_by AS created_by, s.created_at AS created_at,
 			s.moved_by AS moved_by, s.moved_at AS moved_at,
 			s.updated_by AS updated_by, s.updated_at AS updated_at
@@ -375,15 +389,19 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 	for res.Next() {
 		r := res.Record()
 		waiting := byNumber(strs(r, "waiting"))
+		var rel *ReleaseRef
+		if id := str(r, "release_id"); id != "" {
+			rel = &ReleaseRef{ID: id, Version: str(r, "release_version")}
+		}
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
 			Goal: str(r, "goal"), Plan: str(r, "plan"), Status: str(r, "status"), Phase: num(r, "phase"),
 			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
 			Blocked: len(waiting) > 0, waiting: waiting,
 			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
-			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), PRURL: str(r, "pr_url"),
-			Workaround: str(r, "workaround"),
-			CreatedBy:  str(r, "created_by"), CreatedAt: str(r, "created_at"),
+			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), Into: str(r, "into"), PRURL: str(r, "pr_url"),
+			Workaround: str(r, "workaround"), Release: rel,
+			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"),
 		})

@@ -115,8 +115,8 @@ func TestAWorkspaceFromBeforeIdeasIsMigratedAtStartUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restart: %v", err)
 	}
-	if v, _ := falkor.Version(g); v != 6 {
-		t.Fatalf("version %d, want 6", v)
+	if v, _ := falkor.Version(g); v != 9 {
+		t.Fatalf("version %d, want 9", v)
 	}
 	if _, err := b.AddIdea("demo", actor, board.NewIdea{Title: "A"}); err != nil {
 		t.Fatal(err)
@@ -148,8 +148,8 @@ func TestAWorkspaceFromBeforeIdeaContextIsMigratedAtStartUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restart: %v", err)
 	}
-	if v, _ := falkor.Version(g); v != 6 {
-		t.Fatalf("version %d, want 6", v)
+	if v, _ := falkor.Version(g); v != 9 {
+		t.Fatalf("version %d, want 9", v)
 	}
 	for id, want := range map[string][2]string{
 		"I-1": {"rough\n\nit fits", "open"},

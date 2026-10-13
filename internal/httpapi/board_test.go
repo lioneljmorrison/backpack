@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -282,4 +283,259 @@ func TestAProposalCanBeHeldAndResumedOverHTTP(t *testing.T) {
 	if s["status"] != "proposed" {
 		t.Fatalf("resumed %v", s)
 	}
+}
+
+func TestListBranches(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	got := want(t, call(t, h, "GET", "/v1/workspaces/staged/branches", ""), http.StatusOK)["branches"].([]any)
+	if len(got) != 2 {
+		t.Fatalf("branches %v", got)
+	}
+	dev, main := got[0].(map[string]any), got[1].(map[string]any)
+	if dev["name"] != "dev" || dev["into"] != "main" || main["name"] != "main" || main["release"] != true {
+		t.Fatalf("branches %v", got)
+	}
+	want(t, call(t, h, "GET", "/v1/workspaces/nope/branches", ""), http.StatusNotFound)
+}
+
+func TestMergesOverHTTPNameTheBranchAndGoOneStepAtATime(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	want(t, call(t, h, "POST", p, `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"in_progress", "in_review"} {
+		want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	e := want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "into": "main"}`), http.StatusConflict)
+	if !strings.Contains(e["error"].(string), "dev") {
+		t.Fatalf("refusal %v", e)
+	}
+	s := want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "commit": "abc1234"}`), http.StatusOK)
+	if s["status"] != "merged" || s["into"] != "dev" {
+		t.Fatalf("merged %v", s)
+	}
+	s = want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "into": "main", "commit": "def5678"}`), http.StatusOK)
+	if s["into"] != "main" {
+		t.Fatalf("merged %v", s)
+	}
+
+	log := want(t, call(t, h, "GET", p+"/S-1/log", ""), http.StatusOK)["entries"].([]any)
+	if m := log[2].(map[string]any); m["into"] != "dev" || m["commit"] != "abc1234" {
+		t.Fatalf("first merge entry %v", m)
+	}
+	if m := log[3].(map[string]any); m["into"] != "main" || m["commit"] != "def5678" {
+		t.Fatalf("second merge entry %v", m)
+	}
+	// The board has one merged column per branch, in merge order.
+	cols := want(t, call(t, h, "GET", "/v1/workspaces/staged/board", ""), http.StatusOK)["columns"].([]any)
+	var merged []string
+	for _, c := range cols {
+		if c := c.(map[string]any); c["status"] == "merged" {
+			merged = append(merged, c["branch"].(string))
+		}
+	}
+	if len(merged) != 2 || merged[0] != "dev" || merged[1] != "main" {
+		t.Fatalf("merged columns %v", merged)
+	}
+}
+
+func TestReleasedAndDeployedAreBadRequestsOverHTTPAndNameCutRelease(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"released", "deployed"} {
+		e := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "`+to+`"}`), http.StatusBadRequest)
+		if !strings.Contains(e["error"].(string), "cut_release") {
+			t.Fatalf("refusal %v", e)
+		}
+	}
+}
+
+func TestCuttingAReleaseOverHTTPReleasesWhatIsMergedIntoTheReleaseBranch(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	for _, title := range []string{"A", "B"} {
+		want(t, call(t, h, "POST", p, `{"title": "`+title+`"}`), http.StatusCreated)
+	}
+	for _, id := range []string{"S-1", "S-2"} {
+		for _, to := range []string{"in_progress", "in_review"} {
+			want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "`+to+`"}`), http.StatusOK)
+		}
+		want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+	}
+	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "into": "main", "commit": "c2"}`), http.StatusOK)
+
+	rp := "/v1/workspaces/staged/releases"
+	// A version and a tag are required.
+	want(t, call(t, h, "POST", rp, `{"tag": "v1.0.0"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", rp, `{"version": "v1.0.0"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", rp, `{"version": "v1.0.0", "tag": "v1.0.0", "colour": "red"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", "/v1/workspaces/nope/releases", `{"version": "v1.0.0", "tag": "v1.0.0"}`), http.StatusNotFound)
+
+	r := want(t, call(t, h, "POST", rp, `{"version": "v1.0.0", "tag": "v1.0.0", "commit": "abc1234", "notes": "First"}`), http.StatusCreated)
+	stories, _ := r["stories"].([]any)
+	if r["id"] != "R-1" || r["version"] != "v1.0.0" || r["tag"] != "v1.0.0" || r["commit"] != "abc1234" || r["notes"] != "First" ||
+		len(stories) != 1 || stories[0] != "S-1" {
+		t.Fatalf("release %v", r)
+	}
+	if s := want(t, call(t, h, "GET", p+"/S-1", ""), http.StatusOK); s["status"] != "released" || s["into"] != "main" {
+		t.Fatalf("S-1 %v", s)
+	} else if rel, _ := s["release"].(map[string]any); rel["id"] != "R-1" || rel["version"] != "v1.0.0" {
+		t.Fatalf("S-1 names no release: %v", s)
+	}
+	if s := want(t, call(t, h, "GET", p+"/S-2", ""), http.StatusOK); s["status"] != "merged" || s["into"] != "dev" || s["release"] != nil {
+		t.Fatalf("S-2 %v", s)
+	}
+	// The same version again, and a cut with nothing left, are conflicts.
+	want(t, call(t, h, "POST", rp, `{"version": "v1.0.0", "tag": "x"}`), http.StatusConflict)
+	want(t, call(t, h, "POST", rp, `{"version": "v1.1.0", "tag": "v1.1.0"}`), http.StatusConflict)
+	// The board's last column but Closed is Released.
+	cols := want(t, call(t, h, "GET", "/v1/workspaces/staged/board", ""), http.StatusOK)["columns"].([]any)
+	if len(cols) < 2 || cols[len(cols)-2].(map[string]any)["status"] != "released" {
+		t.Fatalf("columns %v", cols)
+	}
+}
+
+func TestMergeBranchOverHTTPMovesEveryStoryOnIt(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	for _, title := range []string{"A", "B"} {
+		want(t, call(t, h, "POST", p, `{"title": "`+title+`"}`), http.StatusCreated)
+	}
+	for _, id := range []string{"S-1", "S-2"} {
+		for _, to := range []string{"in_progress", "in_review"} {
+			want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "`+to+`"}`), http.StatusOK)
+		}
+		want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+	}
+	m := "/v1/workspaces/staged/branches/"
+	want(t, call(t, h, "POST", m+"main/merged", `{"commit": "x9"}`), http.StatusConflict)
+	want(t, call(t, h, "POST", m+"nope/merged", `{"commit": "x9"}`), http.StatusNotFound)
+	want(t, call(t, h, "POST", m+"dev/merged", `{}`), http.StatusBadRequest)
+	got := want(t, call(t, h, "POST", m+"dev/merged", `{"commit": "x9"}`), http.StatusOK)["stories"].([]any)
+	if len(got) != 2 || got[0].(map[string]any)["into"] != "main" {
+		t.Fatalf("moved %v", got)
+	}
+	again := want(t, call(t, h, "POST", m+"dev/merged", `{"commit": "y1"}`), http.StatusOK)["stories"].([]any)
+	if len(again) != 0 {
+		t.Fatalf("moved again %v", again)
+	}
+}
+
+func TestRenameBranchOverHTTPKeepsStoriesWhereTheyAre(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	want(t, call(t, h, "POST", p, `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"in_progress", "in_review"} {
+		want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+	m := "/v1/workspaces/staged/branches/"
+	got := want(t, call(t, h, "PATCH", m+"dev", `{"name": "develop"}`), http.StatusOK)
+	if got["name"] != "develop" || got["into"] != "main" {
+		t.Fatalf("answered %v", got)
+	}
+	s := want(t, call(t, h, "GET", p+"/S-1", ""), http.StatusOK)
+	if s["status"] != "merged" || s["into"] != "develop" {
+		t.Fatalf("story %v", s)
+	}
+	want(t, call(t, h, "PATCH", m+"develop", `{"name": "main"}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", m+"develop", `{"name": "a b"}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", m+"develop", `{"name": ""}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", m+"nope", `{"name": "x"}`), http.StatusNotFound)
+	want(t, call(t, h, "PATCH", m+"develop", `{}`), http.StatusOK)
+}
+
+func TestAddBranchAndRepointOverHTTPKeepStoriesWhereTheyAre(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	want(t, call(t, h, "POST", p, `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"in_progress", "in_review"} {
+		want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+	b := "/v1/workspaces/staged/branches"
+	got := want(t, call(t, h, "POST", b, `{"name": "staging", "into": "main", "alias": "Pre-prod"}`), http.StatusCreated)
+	if got["name"] != "staging" || got["into"] != "main" || got["alias"] != "Pre-prod" {
+		t.Fatalf("answered %v", got)
+	}
+	want(t, call(t, h, "POST", b, `{"name": "staging", "into": "main"}`), http.StatusConflict)
+	want(t, call(t, h, "POST", b, `{"name": "other"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", b, `{"name": "a b", "into": "main"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", b, `{"name": "x", "into": "nope"}`), http.StatusNotFound)
+	want(t, call(t, h, "POST", "/v1/workspaces/none/branches", `{"name": "x", "into": "main"}`), http.StatusNotFound)
+
+	re := want(t, call(t, h, "PATCH", b+"/dev", `{"into": "staging"}`), http.StatusOK)
+	if re["into"] != "staging" {
+		t.Fatalf("answered %v", re)
+	}
+	s := want(t, call(t, h, "GET", p+"/S-1", ""), http.StatusOK)
+	if s["status"] != "merged" || s["into"] != "dev" {
+		t.Fatalf("story %v", s)
+	}
+	want(t, call(t, h, "PATCH", b+"/staging", `{"into": "dev"}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", b+"/dev", `{"into": "dev"}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", b+"/main", `{"into": "dev"}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", b+"/dev", `{"into": ""}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", b+"/dev", `{"into": "nope"}`), http.StatusNotFound)
+	moved := want(t, call(t, h, "POST", b+"/dev/merged", `{"commit": "x9"}`), http.StatusOK)["stories"].([]any)
+	if len(moved) != 1 || moved[0].(map[string]any)["into"] != "staging" {
+		t.Fatalf("moved %v", moved)
+	}
+}
+
+func TestRemoveBranchOverHTTP(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	m := "/v1/workspaces/staged/branches"
+	want(t, call(t, h, "POST", m, `{"name": "staging", "into": "main"}`), http.StatusCreated)
+	want(t, call(t, h, "DELETE", m+"/main", ""), http.StatusConflict)
+	want(t, call(t, h, "DELETE", m+"/nope", ""), http.StatusNotFound)
+	want(t, call(t, h, "DELETE", "/v1/workspaces/nope/branches/dev", ""), http.StatusNotFound)
+	want(t, call(t, h, "DELETE", m+"/staging", ""), http.StatusNoContent)
+	want(t, call(t, h, "DELETE", m+"/staging", ""), http.StatusNotFound)
+	// dev is now the only starting branch.
+	want(t, call(t, h, "DELETE", m+"/dev", ""), http.StatusConflict)
+}
+
+func TestReleasesAreListedAndReadOverHTTP(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	rp := "/v1/workspaces/staged/releases"
+	if l := want(t, call(t, h, "GET", rp, ""), http.StatusOK); l["releases"] == nil || len(l["releases"].([]any)) != 0 {
+		t.Fatalf("no releases yet %v", l)
+	}
+	for i, title := range []string{"A", "B"} {
+		id := fmt.Sprintf("S-%d", i+1)
+		want(t, call(t, h, "POST", p, `{"title": "`+title+`"}`), http.StatusCreated)
+		for _, to := range []string{"in_progress", "in_review"} {
+			want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "`+to+`"}`), http.StatusOK)
+		}
+		want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+		want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "merged", "into": "main", "commit": "c2"}`), http.StatusOK)
+	}
+	st := want(t, call(t, h, "GET", "/v1/workspaces/staged/status", ""), http.StatusOK)
+	if un := st["unreleased"].([]any); len(un) != 2 || un[0].(map[string]any)["title"] != "A" {
+		t.Fatalf("status %v", st)
+	}
+	want(t, call(t, h, "POST", rp, `{"version": "v1", "tag": "v1", "notes": "First"}`), http.StatusCreated)
+	if st := want(t, call(t, h, "GET", "/v1/workspaces/staged/status", ""), http.StatusOK); len(st["unreleased"].([]any)) != 0 {
+		t.Fatalf("status after the cut %v", st)
+	}
+	l := want(t, call(t, h, "GET", rp, ""), http.StatusOK)["releases"].([]any)
+	if len(l) != 1 || l[0].(map[string]any)["id"] != "R-1" || l[0].(map[string]any)["notes"] != "First" {
+		t.Fatalf("list %v", l)
+	}
+	r := want(t, call(t, h, "GET", rp+"/R-1", ""), http.StatusOK)
+	ss := r["stories"].([]any)
+	if r["version"] != "v1" || len(ss) != 2 || ss[0].(map[string]any)["title"] != "A" || ss[1].(map[string]any)["id"] != "S-2" {
+		t.Fatalf("release %v", r)
+	}
+	want(t, call(t, h, "GET", rp+"/R-9", ""), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/nope/releases", ""), http.StatusNotFound)
 }

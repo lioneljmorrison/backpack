@@ -52,7 +52,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // what the person has open and where they have scrolled. It says whether
   // the page had a main to swap in. keepError holds on to a refusal the
   // person hasn't read, which a background refresh's page won't have.
-  function swap(html, { keepError }) {
+  // dropped names a story the person dropped, which board.js lands without
+  // a slide.
+  function swap(html, { keepError, dropped }) {
     const fresh = new DOMParser().parseFromString(html, "text/html").querySelector("main");
     if (!fresh) return false;
     const error = keepError ? main.querySelector(":scope > .error") : null;
@@ -61,7 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const y = window.scrollY;
     const boardX = main.querySelector(".board")?.scrollLeft;
     // board.js notes where the cards are before they are swapped out.
-    document.dispatchEvent(new Event("backpack:refreshing"));
+    document.dispatchEvent(new CustomEvent("backpack:refreshing", { detail: { dropped } }));
     main.replaceChildren(...fresh.childNodes);
     if (error && !main.querySelector(":scope > .error")) main.prepend(error);
     for (const d of main.querySelectorAll("details")) d.open = open.has(d.className);
@@ -95,7 +97,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // slide instead of the page reloading. Left alone, the sender falls back
   // to a plain form post: that is what a dirty page does, so nothing typed
   // is lost to a swap.
-  async function send({ action, body }) {
+  async function send({ action, body, dropped }) {
     sending = true;
     sent++;
     try {
@@ -107,7 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
         location.assign(resp.url);
         return;
       }
-      if (!swap(await resp.text(), { keepError: false })) location.assign(resp.url);
+      if (!swap(await resp.text(), { keepError: false, dropped })) location.assign(resp.url);
     } catch {
       // Not known whether the move happened, so it is never sent again.
       const p = document.createElement("p");

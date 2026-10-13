@@ -114,8 +114,13 @@ func (s *site) setStatus(w http.ResponseWriter, r *http.Request) {
 		Branch:     strings.TrimSpace(r.PostFormValue("branch")),
 		PRURL:      strings.TrimSpace(r.PostFormValue("pr_url")),
 		Commit:     strings.TrimSpace(r.PostFormValue("commit")),
+		Into:       strings.TrimSpace(r.PostFormValue("into")),
 		Reason:     strings.TrimSpace(r.PostFormValue("reason")),
 		Workaround: strings.TrimSpace(r.PostFormValue("workaround")),
+	}
+	// A move from a story's page names a merge as "merged:branch".
+	if m := board.ParseMove(c.To); m.Into != "" {
+		c.To, c.Into = m.To, m.Into
 	}
 	ws, id := r.PathValue("ws"), r.PathValue("id")
 	// A drop on the board comes back to the board. Only this one fixed value
@@ -130,7 +135,7 @@ func (s *site) setStatus(w http.ResponseWriter, r *http.Request) {
 	at := board.Position{Before: r.PostFormValue("before"), After: r.PostFormValue("after")}
 	if c.To == board.Backlog && (at.Before != "" || at.After != "") {
 		st, err := s.board.Story(ws, id)
-		if err == nil && slices.Contains(board.Moves(st, false), board.Backlog) {
+		if err == nil && slices.ContainsFunc(board.Moves(st, nil), func(m board.Move) bool { return m.To == board.Backlog }) {
 			_, err = s.board.MoveStory(ws, actor(r), id, at)
 		}
 		if err != nil {

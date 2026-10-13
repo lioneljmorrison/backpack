@@ -97,7 +97,7 @@ paths:
                 has_release_stage:
                   type: boolean
                   default: false
-                  description: Released sits between Merged and Deployed. Set once, at creation.
+                  description: Seeds the workspace's branches, once, at creation. True gives dev merging into main, and main; false gives main alone.
       responses:
         "201":
           description: Created
@@ -162,7 +162,10 @@ paths:
       - $ref: "#/components/parameters/Workspace"
     get:
       summary: Every story by column, each column in delivery order
-      description: Released appears only for a workspace with a release stage.
+      description: >-
+        Merged has one column per branch, in merge order, each naming its
+        branch; a story is in the column of the furthest branch it reached.
+        Released, the last step, follows the Merged columns; Closed is last.
       responses:
         "200":
           description: The columns, in board order
@@ -179,9 +182,242 @@ paths:
                       required: [status, stories]
                       properties:
                         status: { $ref: "#/components/schemas/Status" }
+                        branch: { type: string, description: "On a merged column: the branch it is for" }
                         stories:
                           type: array
                           items: { $ref: "#/components/schemas/Story" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/branches:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The workspace's branches in merge order
+      description: Each branch comes before the one it merges into; the release branch, which merges nowhere, is last.
+      responses:
+        "200":
+          description: The branches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [branches]
+                properties:
+                  branches:
+                    type: array
+                    items: { $ref: "#/components/schemas/Branch" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add a branch
+      description: >-
+        Adds a branch that merges into an existing one, such as staging into
+        main. No story moves, because stories name their branch. `into` is
+        required: a workspace has one release branch, the one that merges
+        nowhere, and it is already there. A name that is empty, has whitespace
+        or is over 100 characters is refused (400), as is one already in use
+        (409) and an `into` that names no branch (404). While several branches
+        nothing merges into exist (dev and staging, both into main), a story in
+        review is merged into one by naming it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, into]
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 100, description: The new branch's name, plain text with no whitespace }
+                into: { type: string, description: The existing branch it merges into }
+                alias: { type: string, maxLength: 100, description: The web column heading's name for the branch, plain text }
+      responses:
+        "201":
+          description: The new branch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branch" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/branches/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: name
+        in: path
+        required: true
+        description: The branch, by its current name
+        schema: { type: string }
+    patch:
+      summary: Change a branch
+      description: >-
+        Fields not given are left as they are. A new name replaces the old one
+        everywhere the board refers to it: the branches that merge into this
+        one and the stories that reached it. Every story stays in its column,
+        and past log entries keep the old name. A name that is empty, has
+        whitespace or is over 100 characters is refused, as is one already in
+        use. Giving the branch's own name changes nothing. An alias is the name the
+        web board's column heading shows for the branch ("Merged (Production)");
+        the API, tools and logs keep using the name. An empty alias clears it.
+        `into` changes the branch it merges into, with no story moving; a
+        story merged into this branch goes on to the new one at its next
+        merge. It is refused with 409 for the branch itself, a branch that
+        leads back to this one, the release branch (which merges nowhere) and
+        an empty `into` on any other branch (a second release branch), and
+        with 404 when it names no branch. Merging into where it already merges
+        changes nothing. All the fields given are applied together or not at
+        all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 100, description: The new name, plain text with no whitespace }
+                alias: { type: string, maxLength: 100, description: "The web column heading's name for the branch, plain text; an empty string clears it" }
+                into: { type: string, description: The existing branch it merges into from now on }
+      responses:
+        "200":
+          description: The branch as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branch" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      summary: Remove a branch
+      description: >-
+        Removes a branch only when nothing refers to it: no story is merged
+        into it (whatever its status) and no branch merges into it. It is
+        refused with 409, the reason naming the stories and branches still on
+        it, and for the release branch and for the first branch (the only
+        branch nothing merges into). With several branches nothing merges into,
+        an empty one can be removed. Past log entries keep the removed name.
+        An unknown branch is 404.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/branches/{name}/merged:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: name
+        in: path
+        required: true
+        description: The branch that was merged, such as dev
+        schema: { type: string }
+    post:
+      summary: Record a branch merged into the next, moving every story on it
+      description: >-
+        Moves every story merged into the branch to the branch it merges into,
+        as one change, each with a status entry in its log naming the merge
+        commit. Stories still in progress or in review stay put. A branch with
+        nothing merged into it answers with an empty list. The release branch
+        merges nowhere, so it is refused.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commit]
+              additionalProperties: false
+              properties:
+                commit: { type: string, description: The merge commit }
+      responses:
+        "200":
+          description: The stories that moved, as they are now
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stories]
+                properties:
+                  stories:
+                    type: array
+                    items: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/releases:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The workspace's releases, newest first
+      description: >-
+        Newest first by number (R-10 before R-9). Each release lists the ids
+        of its stories in delivery order; read one release for them in full.
+      responses:
+        "200":
+          description: The releases; an empty list when none has been cut
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [releases]
+                properties:
+                  releases:
+                    type: array
+                    items: { $ref: "#/components/schemas/Release" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Cut a release, releasing every story merged into the release branch
+      description: >-
+        Records an official release (R-n) with a version and the git tag that
+        marks it. In one change, every story merged into the release branch
+        that is not in a release yet becomes Released, is linked to the new
+        release, and gets a status entry in its log from merged to released
+        that names the release (and the release commit, when given). Stories
+        merged into other branches, and those in progress or in review, stay
+        put. Backpack does not talk to GitHub; the caller records the tag. A
+        version already released is a conflict, and so is a cut with nothing
+        to release.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, tag]
+              additionalProperties: false
+              properties:
+                version: { type: string, example: v1.0.0 }
+                tag: { type: string, description: The git tag that marks the release, example: v1.0.0 }
+                commit: { type: string, description: The commit the tag points at }
+                notes: { type: string }
+      responses:
+        "201":
+          description: The release, with the ids of its stories in delivery order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Release" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/releases/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: R-1 }
+    get:
+      summary: One release with its stories, as a changelog
+      responses:
+        "200":
+          description: The release; stories are the full stories, in delivery order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReleaseDetail" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/phases:
@@ -434,10 +670,19 @@ paths:
       summary: Move a story to another column
       description: >-
         Forward one column, or back one before Merged: Backlog, In progress,
-        In review, Merged, Released (only with a release stage), Deployed.
+        In review, Merged. Merging records the branch reached (`into`;
+        none means the branch no other merges into; when several are like that, such
+        as dev and staging both into main, a merge from review must name one, and
+        is refused with the choices if it does not) and a story
+        moves on only to the branch its current one merges into, one step at a
+        time, as a merged-to-merged move with that branch and its merge commit.
+        Released is not set here: `released` and the old `deployed` are
+        refused (400) with a message naming the release action, `POST
+        /v1/workspaces/{ws}/releases`, which releases the stories merged into
+        the release branch.
         From Proposed, Backlog, In progress or In review a story can be put on hold,
         and resumes in the column it left (a held proposal resumes to Proposed, to be approved as usual); from those and On hold it can be
-        closed. Deployed and Closed are final. Starting a blocked story needs
+        closed. Released and Closed are final. Starting a blocked story needs
         a workaround, which is logged as a decision; a blocked story is never
         merged. Closing is refused while any story depends on this one. Every
         change writes a status entry in the story's log.
@@ -455,6 +700,7 @@ paths:
                 workaround: { type: string, description: "Only when starting a blocked story", example: build against mock data }
                 pr_url: { type: string, description: "Only when opening review" }
                 commit: { type: string, description: "Only when merging" }
+                into: { type: string, description: "Only when merging: the branch merged into; none means the only branch nothing merges into; with several, name one" }
                 reason: { type: string, description: "Required when holding or closing, and only then" }
       responses:
         "200":
@@ -873,6 +1119,46 @@ components:
         has_release_stage: { type: boolean }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
+    Branch:
+      type: object
+      required: [name, release, created_by, created_at]
+      properties:
+        name: { type: string }
+        into: { type: string, description: The branch this one merges into; absent on the release branch. }
+        alias: { type: string, description: "Display name only: the web board's column heading shows it; everything else uses the name. Absent when none is set." }
+        release: { type: boolean, description: True for the branch that merges nowhere. }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    Release:
+      type: object
+      required: [id, version, tag, created_by, created_at, stories]
+      properties:
+        id: { type: string, example: R-1 }
+        version: { type: string, example: v1.0.0 }
+        tag: { type: string, example: v1.0.0 }
+        commit: { type: string }
+        notes: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        stories:
+          type: array
+          items: { type: string, example: S-12 }
+          description: The stories it released, in delivery order
+    ReleaseDetail:
+      type: object
+      required: [id, version, tag, created_by, created_at, stories]
+      properties:
+        id: { type: string, example: R-1 }
+        version: { type: string, example: v1.0.0 }
+        tag: { type: string, example: v1.0.0 }
+        commit: { type: string }
+        notes: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        stories:
+          type: array
+          description: The stories it released, in full, in delivery order
+          items: { $ref: "#/components/schemas/Story" }
     Phase:
       type: object
       required: [number, title, description, goals, stories_total, stories_complete, complete, goals_met_early, created_by, created_at]
@@ -884,7 +1170,7 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Goal" }
         stories_total: { type: integer, description: "Its stories, leaving out closed ones" }
-        stories_complete: { type: integer, description: "Its stories that are merged, released or deployed" }
+        stories_complete: { type: integer, description: "Its stories that are merged or released" }
         complete: { type: boolean, description: "Every story left is complete; with nothing left in it, every goal is met" }
         goals_met_early: { type: boolean, description: "Every goal is met but some stories are still open" }
         created_by: { type: string }
@@ -933,13 +1219,25 @@ components:
         activity: { $ref: "#/components/schemas/Activity" }
         waiting_on: { type: string }
         branch: { type: string }
+        into: { type: string, description: "A merged story: the furthest branch it reached" }
         pr_url: { type: string }
         workaround: { type: string, description: "How it was started while blocked" }
+        release:
+          type: object
+          description: >-
+            The release a released story shipped in. Absent before release, and
+            for a story released before releases were recorded.
+          required: [id, version]
+          properties:
+            id: { type: string, example: R-1 }
+            version: { type: string, example: v1.0.0 }
     Status:
       type: string
-      enum: [proposed, backlog, in_progress, in_review, merged, released, deployed, on_hold, closed]
+      enum: [proposed, backlog, in_progress, in_review, merged, released, on_hold, closed]
       description: >-
-        Merged, released and deployed are complete. A proposed story waits for
+        Merged (into any branch) and released are complete. Released is reached
+        only by cutting a release, never by a status change; the old `deployed`
+        status became released. A proposed story waits for
         a person to approve it into the backlog, or to decline it by closing it.
     Activity:
       type: string
@@ -958,6 +1256,7 @@ components:
         commit: { type: string }
         pr_url: { type: string }
         branch: { type: string }
+        into: { type: string, description: "A merge: the branch it reached" }
         from: { $ref: "#/components/schemas/Status" }
         to: { $ref: "#/components/schemas/Status" }
         corrects: { type: string, description: "The entry this one corrects" }
@@ -967,7 +1266,7 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, proposed, in_progress, in_review, on_hold, next]
+      required: [phase, proposed, in_progress, in_review, on_hold, next, unreleased]
       properties:
         phase:
           description: The first phase that is not complete; null when there is none
@@ -990,6 +1289,10 @@ components:
         next:
           type: array
           description: The top three of the backlog, blocked stories included
+          items: { $ref: "#/components/schemas/Story" }
+        unreleased:
+          type: array
+          description: Merged into the release branch and not yet in a release, in delivery order
           items: { $ref: "#/components/schemas/Story" }
     Idea:
       type: object

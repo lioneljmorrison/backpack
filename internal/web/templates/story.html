@@ -6,13 +6,14 @@
 <p class="muted"><a href="/w/{{$ws}}">← Board</a></p>
 <h1><span class="id">{{.ID}}</span> {{.Title}}</h1>
 <div class="tags">
-  <span class="tag status">{{label .Status}}</span>
+  <span class="tag status">{{storyLabel .}}</span>
   {{if .Phase}}<a class="tag" href="/w/{{$ws}}/phases#phase-{{.Phase}}">Phase {{.Phase}}</a>{{end}}
   {{if .Activity}}<span class="tag activity">{{label .Activity}}{{with .WaitingOn}}: {{.}}{{end}}</span>{{end}}
   {{if .Blocked}}<span class="tag bad">Blocked</span>{{end}}
   {{with .HoldReason}}<span class="tag warn">On hold: {{.}}</span>{{end}}
   {{with .Branch}}<span class="tag"><code>{{.}}</code></span>{{end}}
   {{with .PRURL}}<a class="tag" href="{{.}}">Pull request</a>{{end}}
+  {{with .Release}}<a class="tag" href="/w/{{$ws}}/releases/{{.ID}}">Release {{.Version}}</a>{{end}}
 </div>
 <div class="detail">
   {{with .Description}}<h2>Description</h2><p class="text">{{.}}</p>{{end}}
@@ -66,7 +67,7 @@
   <li id="{{.ID}}" class="entry {{.Kind}}{{if .CorrectedBy}} corrected{{end}}">
     <div class="meta"><span class="id">{{.ID}}</span> {{label .Kind}} · {{.Actor}} · <time datetime="{{.At}}">{{when .At}}</time></div>
     {{with .Corrects}}<div><a href="#{{.}}">Corrects {{.}}</a></div>{{end}}
-    {{if .From}}<div>{{label .From}} → {{label .To}}</div>{{end}}
+    {{if .From}}<div>{{label .From}} → {{if .Into}}{{label (print .To ":" .Into)}}{{else}}{{label .To}}{{end}}</div>{{end}}
     {{with .Text}}<p class="text">{{.}}</p>{{end}}
     {{with .Reason}}<p class="text muted">Because {{.}}</p>{{end}}
     {{with .Commit}}<div><code>{{.}}</code></div>{{end}}

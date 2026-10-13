@@ -20,6 +20,7 @@
   <div><div class="muted">In progress</div><strong>{{len .Where.InProgress}}</strong></div>
   <div><div class="muted">In review</div><strong>{{len .Where.InReview}}</strong></div>
   <div><div class="muted">Waiting for approval</div><strong>{{len .Where.Proposed}}</strong></div>
+  <div><div class="muted">Waiting for release</div><a href="/w/{{$ws}}/releases"><strong>{{len .Where.Unreleased}}</strong></a></div>
 </section>
 
 {{with .Where.Proposed}}
@@ -49,8 +50,8 @@
     {{else}}<p class="empty">Nothing here</p>{{end}}
   </section>
   {{range .Columns}}
-  <section class="column" aria-label="{{label .Status}}" data-status="{{.Status}}">
-    <h2>{{label .Status}} <span class="count">{{len .Cards}}</span></h2>
+  <section class="column" aria-label="{{.Title}}" data-status="{{.Status}}"{{with .Into}} data-into="{{.}}"{{end}}>
+    <h2>{{.Title}} <span class="count">{{len .Cards}}</span></h2>
     {{range .Cards}}{{template "card" .}}{{else}}<p class="empty">Nothing here</p>{{end}}
   </section>
   {{end}}

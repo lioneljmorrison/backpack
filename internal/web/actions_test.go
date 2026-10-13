@@ -322,3 +322,67 @@ func TestStartingABlockedStoryByDropNeedsAWorkaround(t *testing.T) {
 		t.Fatal("a blocked story with a workaround did not start")
 	}
 }
+
+// A drop on a merged column sends the branch as "into"; the move form on a
+// story's page sends "merged:branch". Either records a merge into that branch,
+// one step at a time.
+func TestAMergeFromTheBoardOrAStoryPageRecordsTheBranch(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}))
+	s := must[board.Story](t)(b.AddStory("staged", "tester", board.NewStory{Title: "Work"}))
+	path := "/w/staged/stories/" + s.ID + "/status"
+	into := func() string { return must[board.Story](t)(b.Story("staged", s.ID)).Into }
+
+	act(t, h, path, url.Values{"to": {"in_progress"}, "back": {"board"}}, "/w/staged")
+	act(t, h, path, url.Values{"to": {"in_review"}, "back": {"board"}}, "/w/staged")
+	// Straight to main from review is refused and shown on the board.
+	if page := act(t, h, path, url.Values{"to": {"merged"}, "into": {"main"}, "back": {"board"}}, "/w/staged"); !strings.Contains(page, `class="error"`) || into() != "" {
+		t.Fatalf("a merge into main from review was not refused (into %q)", into())
+	}
+	act(t, h, path, url.Values{"to": {"merged"}, "into": {"dev"}, "commit": {"abc1234"}, "back": {"board"}}, "/w/staged")
+	if into() != "dev" {
+		t.Fatalf("into %q, want dev", into())
+	}
+	page := get(h, "/w/staged/stories/"+s.ID, "bp_good").Body.String()
+	if !strings.Contains(page, `value="merged:main"`) || !strings.Contains(page, "Merged (dev)") {
+		t.Fatal("the story page does not offer the merge into main, or does not say where it is")
+	}
+	act(t, h, path, url.Values{"to": {"merged:main"}}, "/w/staged/stories/"+s.ID)
+	if into() != "main" {
+		t.Fatalf("into %q, want main", into())
+	}
+	page = get(h, "/w/staged/stories/"+s.ID, "bp_good").Body.String()
+	if !strings.Contains(page, "Merged (main)") || strings.Contains(page, `value="deployed"`) || strings.Contains(page, `value="released"`) {
+		t.Fatal("the story page does not say Merged (main), or offers a move into Released (only cut_release does that)")
+	}
+}
+
+// With dev and staging both merging into main, a story in review can be
+// merged into either: its card is allowed on both columns and its page offers
+// each, and a merge that names neither is refused.
+func TestAStoryInReviewCanBeMergedIntoAnyStartingBranch(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}))
+	must[board.Branch](t)(b.AddBranch("staged", "tester", board.Branch{Name: "staging", Into: "main"}))
+	s := must[board.Story](t)(b.AddStory("staged", "tester", board.NewStory{Title: "Work"}))
+	path := "/w/staged/stories/" + s.ID + "/status"
+	act(t, h, path, url.Values{"to": {"in_progress"}, "back": {"board"}}, "/w/staged")
+	act(t, h, path, url.Values{"to": {"in_review"}, "back": {"board"}}, "/w/staged")
+
+	body := get(h, "/w/staged", "bp_good").Body.String()
+	if !strings.Contains(body, `data-moves="on_hold in_progress merged:dev merged:staging closed"`) ||
+		!strings.Contains(body, `data-into="staging"`) {
+		t.Fatalf("the board does not offer both merges: %s", body)
+	}
+	page := get(h, "/w/staged/stories/"+s.ID, "bp_good").Body.String()
+	if !strings.Contains(page, `value="merged:dev"`) || !strings.Contains(page, `value="merged:staging"`) {
+		t.Fatal("the story page does not offer a merge into each starting branch")
+	}
+	if p := act(t, h, path, url.Values{"to": {"merged"}, "back": {"board"}}, "/w/staged"); !strings.Contains(p, "dev or staging") {
+		t.Fatal("a merge naming no branch was not refused with the choices")
+	}
+	act(t, h, path, url.Values{"to": {"merged:staging"}}, "/w/staged/stories/"+s.ID)
+	if into := must[board.Story](t)(b.Story("staged", s.ID)).Into; into != "staging" {
+		t.Fatalf("into %q, want staging", into)
+	}
+}

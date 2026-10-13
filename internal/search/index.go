@@ -38,7 +38,9 @@ type Result struct {
 	Kind  string `json:"kind"`
 	ID    string `json:"id"`
 	Title string `json:"title"`
-	// State is a story's status or an idea's state; a phase has none.
+	// State is a story's status or an idea's state; a phase has none. A merged
+	// story's reads "merged:main", with the branch it reached; a released
+	// story's is plain "released".
 	State string `json:"state,omitempty"`
 }
 
@@ -107,6 +109,8 @@ func (x *Index) Sync(ctx context.Context, c board.Change) error {
 	switch c.Kind {
 	case board.KindWorkspace:
 		return x.Rebuild(ctx, c.Workspace)
+	case board.KindBranch:
+		return nil // branches are not searched; the stories that moved have their own notices
 	case board.KindStory:
 		s, err := x.b.Story(c.Workspace, c.ID)
 		if err != nil {
@@ -264,8 +268,13 @@ func storyDoc(s board.Story, entries []board.LogEntry) doc {
 	for _, e := range entries {
 		detail = append(detail, e.Text, e.Reason)
 	}
+	state := board.Move{To: s.Status}
+	if s.Status == board.Merged {
+		state.Into = s.Into // only a merged story is in a branch's column
+	}
 	return doc{ID: s.ID, Kind: board.KindStory, Ref: s.ID, Title: s.Title,
-		Summary: join(s.Description, s.Goal), Detail: join(detail...), State: s.Status}
+		Summary: join(s.Description, s.Goal), Detail: join(detail...),
+		State: state.String()}
 }
 
 func ideaDoc(i board.Idea) doc {

@@ -28,6 +28,11 @@ type storyIn struct {
 
 // position places a story directly before or after another; with neither,
 // at the bottom of the backlog.
+type releaseIn struct {
+	in
+	ID string `json:"id" jsonschema:"the release's id, such as R-2"`
+}
+
 type position struct {
 	Before string `json:"before,omitempty" jsonschema:"place directly before this story"`
 	After  string `json:"after,omitempty" jsonschema:"place directly after this story"`
@@ -61,12 +66,47 @@ type moveStoryIn struct {
 	position
 }
 
+type mergeBranchIn struct {
+	in
+	Branch string `json:"branch" jsonschema:"the branch that was merged, such as dev; it must merge into another branch"`
+	Commit string `json:"commit" jsonschema:"the merge commit"`
+}
+
+type cutReleaseIn struct {
+	in
+	Version string `json:"version" jsonschema:"the release's version, such as v1.0.0; required, and not one already released"`
+	Tag     string `json:"tag" jsonschema:"the git tag that marks the release; required"`
+	Commit  string `json:"commit,omitempty" jsonschema:"the commit the tag points at"`
+	Notes   string `json:"notes,omitempty" jsonschema:"release notes"`
+}
+
+type addBranchIn struct {
+	in
+	Name  string `json:"name" jsonschema:"the new branch's name: plain text, no whitespace, at most 100 characters, not already a branch's"`
+	Into  string `json:"into" jsonschema:"the existing branch it merges into; required, because a workspace has one release branch and it is already there"`
+	Alias string `json:"alias,omitempty" jsonschema:"the name the web board's column heading shows instead of the branch name: plain text, at most 100 characters"`
+}
+
+type removeBranchIn struct {
+	in
+	Branch string `json:"branch" jsonschema:"the branch to remove, by name"`
+}
+
+type updateBranchIn struct {
+	in
+	Branch string  `json:"branch" jsonschema:"the branch to change, by its current name"`
+	Name   *string `json:"name,omitempty" jsonschema:"the new name: plain text, no whitespace, at most 100 characters, not already a branch's"`
+	Alias  *string `json:"alias,omitempty" jsonschema:"the name the web board's column heading shows instead of the branch name (nothing else uses it): plain text, at most 100 characters; an empty string clears it"`
+	Into   *string `json:"into,omitempty" jsonschema:"the existing branch it merges into from now on; not itself or one that leads back to it, and not given for the release branch"`
+}
+
 type setStatusIn struct {
 	storyIn
-	To         string `json:"to" jsonschema:"proposed (only to resume a held proposal), backlog, in_progress, in_review, merged, released, deployed, on_hold or closed"`
+	To         string `json:"to" jsonschema:"proposed (only to resume a held proposal), backlog, in_progress, in_review, merged, on_hold or closed (released is reached only by cut_release)"`
 	Branch     string `json:"branch,omitempty" jsonschema:"only when starting: the task branch"`
 	PRURL      string `json:"pr_url,omitempty" jsonschema:"only when opening review: the pull request's link"`
 	Commit     string `json:"commit,omitempty" jsonschema:"only when merging: the merge commit"`
+	Into       string `json:"into,omitempty" jsonschema:"only when merging: the branch merged into; with none, the only branch nothing merges into (such as dev); with several, name it. A story moves on to the branch its current one merges into, one step at a time"`
 	Reason     string `json:"reason,omitempty" jsonschema:"required when putting on hold or closing, and only then"`
 	Workaround string `json:"workaround,omitempty" jsonschema:"only when starting a blocked story: how it goes ahead anyway"`
 }
@@ -154,16 +194,24 @@ type dropIdeaIn struct {
 func addTools(s *mcp.Server, t tools) {
 	steps := map[string]step{}
 	tool(s, "list_workspaces", "Every workspace, by slug, with its name and repository. Use it to find a workspace's slug when the project's .backpack.json isn't at hand.", t.listWorkspaces)
+	tool(s, "list_branches", "A workspace's branches in merge order, each with the branch it merges into. The release branch merges nowhere and is marked release.", t.listBranches)
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
-	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, and the next three in the backlog.", t.whereAreWe)
+	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, the next three in the backlog, and the stories merged into the release branch that are waiting for a release (unreleased).", t.whereAreWe)
 	tool(s, "get_story", "One story, with its status, what blocks it and what it blocks.", t.getStory)
 	write(s, steps, "add_story", "Propose a story: it goes in as proposed, directly before or after another story or at the bottom when neither is given, with the reasoning for that spot logged as a decision. It waits until a person approves it by setting its status to backlog. It must rank below everything it will depend on.", t.addStory)
 	write(s, steps, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing.", t.updateStory)
 	write(s, steps, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it.", t.moveStory)
-	write(s, steps, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog, declined by closing it, or parked with on_hold. Merged, released and deployed are complete. on_hold resumes to the column it left (a held proposal resumes to proposed); closed is final. Every change is logged.", t.setStatus)
+	write(s, steps, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog, declined by closing it, or parked with on_hold. Merging records the branch reached (into; none means the only branch nothing merges into, and with several the merge must name one) and moves on one branch at a time, so merged into the release branch is a second merge. Released is not set here: cut_release releases the stories merged into the release branch. Merged and released are complete. on_hold resumes to the column it left (a held proposal resumes to proposed); closed is final. Every change is logged.", t.setStatus)
+	write(s, steps, "merge_branch", "Record that a branch was merged into the one it merges into, such as dev into main, at the merge commit. Every story merged into that branch moves to the next one at once, each logged with the commit; stories still in progress or in review stay put. Answers with the stories it moved, none when the branch holds nothing. The release branch merges nowhere, so it is refused.", t.mergeBranch)
+	write(s, steps, "cut_release", "Record an official release: a version and the git tag that marks it, with the commit and notes if you have them. Every story merged into the release branch that is not in a release yet becomes Released, is linked to the new release (R-n) and gets a log entry naming it; stories merged into other branches, in review or in progress stay put. Answers with the release and the ids of its stories. A version already released is refused, and so is a cut with nothing to release. Backpack does not talk to GitHub: create the tag yourself and record it here.", t.cutRelease)
+	tool(s, "list_releases", "Every release, newest first, each with its version, tag, commit, notes, who cut it and when, and the ids of its stories in delivery order. get_release reads one with its stories in full.", t.listReleases)
+	tool(s, "get_release", "One release by id (R-n): its version, tag, commit, notes, who cut it and when, and its stories in delivery order with title, goal and plan, as a changelog. An unknown id is refused.", t.getRelease)
+	write(s, steps, "add_branch", "Add a branch that merges into an existing one, such as staging into main. No story moves: stories name their branch. A workspace has one release branch, so into is required. A name already in use, or one that is empty, has whitespace or is over 100 characters, is refused, as is an unknown branch to merge into. Several branches nothing merges into (dev and staging, both into main) are all places a story from review can be merged first; a merge then has to name which. Answers with the branch.", t.addBranch)
+	write(s, steps, "update_branch", "Change a branch; fields not given are left as they are. Giving into changes the branch it merges into, such as dev into staging once staging is added: no story moves, and merges from the branch go to the new one. It is refused for the branch itself, one that leads back to it, an unknown branch, the release branch (it merges nowhere) and an empty into on any other branch (that would make a second release branch). Giving a new name renames it everywhere the board refers to it: the branches that merge into it and the stories that reached it. No story moves; past log entries keep the old name. A name already in use, or one that is empty, has whitespace or is over 100 characters, is refused. Giving an alias sets the name the web board's column heading shows for the branch (an empty one clears it); the API, tools and logs keep using the branch name. Answers with the branch.", t.updateBranch)
 	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
 	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
 	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
+	write(s, steps, "remove_branch", "Remove a branch, only when nothing refers to it: no story is merged into it (whatever its status) and no branch merges into it. The refusal names the stories and branches that still do. The release branch is never removed, nor the first branch (the only branch nothing merges into); with several branches nothing merges into, an empty one can go. An unknown branch is refused. Past log entries keep the removed name.", t.removeBranch)
 	write(s, steps, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
 	tool(s, "list_phases", "Every phase in order, with its goals, how many stories are complete, whether it is complete, and whether its goals were all met while stories are still open.", t.listPhases)
 	write(s, steps, "add_phase", "Add a phase, numbered after the last one.", t.addPhase)
@@ -194,6 +242,11 @@ func actor(ctx context.Context) string {
 func (t tools) listWorkspaces(_ context.Context, _ struct{}) (any, error) {
 	ws, err := t.b.Workspaces()
 	return map[string]any{"workspaces": ws}, err
+}
+
+func (t tools) listBranches(_ context.Context, a in) (any, error) {
+	bs, err := t.b.Branches(a.Workspace)
+	return map[string]any{"branches": bs}, err
 }
 
 func (t tools) whatsNext(_ context.Context, a in) (any, error) {
@@ -227,7 +280,38 @@ func (t tools) moveStory(ctx context.Context, a moveStoryIn) (any, error) {
 
 func (t tools) setStatus(ctx context.Context, a setStatusIn) (any, error) {
 	return t.b.SetStatus(a.Workspace, actor(ctx), a.ID, board.StatusChange{To: a.To, Branch: a.Branch,
-		PRURL: a.PRURL, Commit: a.Commit, Reason: a.Reason, Workaround: a.Workaround})
+		PRURL: a.PRURL, Commit: a.Commit, Into: a.Into, Reason: a.Reason, Workaround: a.Workaround})
+}
+
+func (t tools) mergeBranch(ctx context.Context, a mergeBranchIn) (any, error) {
+	moved, err := t.b.MergeBranch(a.Workspace, actor(ctx), a.Branch, a.Commit)
+	return map[string]any{"stories": moved}, err
+}
+
+func (t tools) cutRelease(ctx context.Context, a cutReleaseIn) (any, error) {
+	return t.b.CutRelease(a.Workspace, actor(ctx), board.NewRelease{Version: a.Version, Tag: a.Tag, Commit: a.Commit, Notes: a.Notes})
+}
+
+func (t tools) listReleases(_ context.Context, a in) (any, error) {
+	rs, err := t.b.ListReleases(a.Workspace)
+	return map[string]any{"releases": rs}, err
+}
+
+func (t tools) getRelease(_ context.Context, a releaseIn) (any, error) {
+	return t.b.GetRelease(a.Workspace, a.ID)
+}
+
+func (t tools) addBranch(ctx context.Context, a addBranchIn) (any, error) {
+	return t.b.AddBranch(a.Workspace, actor(ctx), board.Branch{Name: a.Name, Into: a.Into, Alias: a.Alias})
+}
+
+func (t tools) removeBranch(ctx context.Context, a removeBranchIn) (any, error) {
+	err := t.b.RemoveBranch(a.Workspace, actor(ctx), a.Branch)
+	return map[string]any{"removed": true}, err
+}
+
+func (t tools) updateBranch(ctx context.Context, a updateBranchIn) (any, error) {
+	return t.b.UpdateBranch(a.Workspace, actor(ctx), a.Branch, board.BranchPatch{Name: a.Name, Alias: a.Alias, Into: a.Into})
 }
 
 func (t tools) log(ctx context.Context, a logIn) (any, error) {

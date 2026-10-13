@@ -105,5 +105,5 @@ func TestAStoryCreatedBeforeLogsExistedCanStillBeLogged(t *testing.T) {
 	if e := addEntry(t, b, "S-1", board.NewLogEntry{Kind: "note", Text: "x"}); e.ID != "L-1" {
 		t.Fatalf("entry %+v", e)
 	}
-	walk(t, b, "S-1", "in_progress", "in_review", "merged", "deployed")
+	walk(t, b, "S-1", "in_progress", "in_review", "merged")
 }

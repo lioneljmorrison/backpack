@@ -23,3 +23,19 @@ func TestListWorkspacesShowsEveryWorkspace(t *testing.T) {
 		t.Fatalf("second %v", d)
 	}
 }
+
+func TestListBranchesAnswersWithTheSameJSONAsTheAPI(t *testing.T) {
+	b, cs := connect(t)
+	if _, err := b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}); err != nil {
+		t.Fatal(err)
+	}
+	got := use(t, cs, "list_branches", map[string]any{"workspace": "staged"})["branches"].([]any)
+	if len(got) != 2 {
+		t.Fatalf("branches %v", got)
+	}
+	dev, main := got[0].(map[string]any), got[1].(map[string]any)
+	if dev["name"] != "dev" || dev["into"] != "main" || main["name"] != "main" || main["release"] != true {
+		t.Fatalf("branches %v", got)
+	}
+	refused(t, cs, "list_branches", map[string]any{"workspace": "nope"})
+}

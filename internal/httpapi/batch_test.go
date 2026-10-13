@@ -98,3 +98,41 @@ func TestABatchRefusesUnknownFields(t *testing.T) {
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/batch",
 		`{"requests": [{"method": "POST", "path": "stories", "colour": "red"}]}`), http.StatusBadRequest)
 }
+
+func TestABatchCanCutARelease(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "demo", "name": "Demo"}`), http.StatusCreated)
+	p := "/v1/workspaces/demo/stories"
+	want(t, call(t, h, "POST", p, `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"in_progress", "in_review", "merged"} {
+		want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	got := want(t, call(t, h, "POST", "/v1/workspaces/demo/batch", `{"requests": [
+		{"method": "POST", "path": "releases", "body": {"version": "v1", "tag": "v1"}},
+		{"method": "POST", "path": "releases", "body": {"version": "v2", "tag": "v2"}}]}`), http.StatusOK)
+	rs, _ := got["results"].([]any)
+	first, _ := rs[0].(map[string]any)
+	second, _ := rs[1].(map[string]any)
+	if status(first) != http.StatusCreated || body(first)["id"] != "R-1" || status(second) != http.StatusConflict {
+		t.Fatalf("results %v", rs)
+	}
+}
+
+func TestABatchCanRecordABranchMerge(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	want(t, call(t, h, "POST", p, `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"in_progress", "in_review", "merged"} {
+		want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	got := want(t, call(t, h, "POST", "/v1/workspaces/staged/batch", `{"requests": [
+		{"method": "POST", "path": "branches/dev/merged", "body": {"commit": "x9"}},
+		{"method": "POST", "path": "branches/main/merged", "body": {"commit": "x9"}}]}`), http.StatusOK)
+	rs, _ := got["results"].([]any)
+	first, _ := rs[0].(map[string]any)
+	second, _ := rs[1].(map[string]any)
+	if status(first) != http.StatusOK || len(body(first)["stories"].([]any)) != 1 || status(second) != http.StatusConflict {
+		t.Fatalf("results %v", rs)
+	}
+}

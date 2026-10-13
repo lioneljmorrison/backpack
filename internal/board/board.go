@@ -29,6 +29,34 @@ var migrations = []string{
 			ELSE i.notes + '\n\n' + i.reasoning END,
 		i.state = CASE i.state WHEN 'proposed' THEN 'open' ELSE i.state END,
 		i.notes = NULL, i.reasoning = NULL, i.approved_by = NULL, i.approved_at = NULL`,
+	// Branches replace the release-stage flag: a flag set gives dev merging
+	// into main, otherwise main alone. MERGE makes a repeat harmless. A graph
+	// with no Workspace node yet is seeded by CreateWorkspace instead.
+	`MATCH (w:Workspace)
+		WITH w, coalesce(w.has_release_stage, false) AS release
+		MERGE (m:Branch {name: 'main'})
+			ON CREATE SET m.created_by = 'migration', m.created_at = toString(localdatetime()) + 'Z'
+		FOREACH (_ IN CASE WHEN release THEN [1] ELSE [] END |
+			MERGE (d:Branch {name: 'dev'})
+				ON CREATE SET d.into = 'main', d.created_by = 'migration', d.created_at = toString(localdatetime()) + 'Z')
+		SET w.has_release_stage = NULL`,
+	// Every complete story names the branch it reached: merged is in the first
+	// branch (the one no branch merges into), released was a merge into the
+	// release branch (the one that merges nowhere) and becomes merged there,
+	// deployed stays deployed in the release branch (until the next migration). A story that already
+	// has a branch is left alone, so a repeat changes nothing.
+	`MATCH (b:Branch)
+		WITH collect(b.name) AS names, collect(b.into) AS intos,
+			collect(CASE WHEN b.into IS NULL THEN b.name END) AS releases
+		WITH [x IN names WHERE NOT x IN intos][0] AS first, releases[0] AS release
+		MATCH (s:Story) WHERE s.status IN ['merged', 'released', 'deployed'] AND s.into IS NULL
+		WITH s, s.status AS old, first, release
+		SET s.into = CASE old WHEN 'merged' THEN first ELSE release END,
+			s.status = CASE old WHEN 'released' THEN 'merged' ELSE old END`,
+	// Released replaces deployed as the last step: a deployed story reads as
+	// released, still in the branch it reached, with no release record. A
+	// repeat finds no deployed story.
+	"MATCH (s:Story {status: 'deployed'}) SET s.status = 'released'",
 }
 
 // Kind says why the board refused a request.

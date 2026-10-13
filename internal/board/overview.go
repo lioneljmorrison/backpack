@@ -40,6 +40,9 @@ type Where struct {
 	OnHold     []Story `json:"on_hold"`
 	// Next is the top of the backlog, blocked stories included.
 	Next []Story `json:"next"`
+	// Unreleased is what is merged into the release branch and not yet in a
+	// release, in delivery order.
+	Unreleased []Story `json:"unreleased"`
 }
 
 // Where reads the current phase, the work under way and what comes next.
@@ -56,7 +59,18 @@ func (b *Board) Where(ws string) (Where, error) {
 	if err != nil {
 		return Where{}, err
 	}
-	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}}
+	bs, err := branches(g)
+	if err != nil {
+		return Where{}, err
+	}
+	release := ""
+	for _, br := range bs {
+		if br.Release {
+			release = br.Name
+			break
+		}
+	}
+	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, Unreleased: []Story{}}
 	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete }); i >= 0 {
 		w.Phase = &ps[i]
 	}
@@ -70,6 +84,10 @@ func (b *Board) Where(ws string) (Where, error) {
 			w.InReview = append(w.InReview, s)
 		case OnHold:
 			w.OnHold = append(w.OnHold, s)
+		case Merged:
+			if release != "" && s.Into == release {
+				w.Unreleased = append(w.Unreleased, s)
+			}
 		case Backlog:
 			if len(w.Next) < upcoming {
 				w.Next = append(w.Next, s)
@@ -81,7 +99,7 @@ func (b *Board) Where(ws string) (Where, error) {
 
 // Text is "where are we" as a few lines for a session hook.
 func (w Where) Text() string {
-	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next) == 0 {
+	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next)+len(w.Unreleased) == 0 {
 		return "Nothing in progress, in review or in the backlog.\n"
 	}
 	var b strings.Builder
@@ -129,25 +147,28 @@ func (w Where) Text() string {
 	section("On hold", w.OnHold, func(s Story) []string {
 		return []string{fmt.Sprintf("%s (was in %s)", s.HoldReason, label(s.HeldFrom))}
 	})
+	section("Merged, waiting for a release", w.Unreleased, none)
 	section("Next", w.Next, none)
 	section("Waiting for approval", w.Proposed, none)
 	return b.String()
 }
 
-// Column is one column of the board, its stories in delivery order.
+// Column is one column of the board, its stories in delivery order. A merged
+// column names its branch.
 type Column struct {
 	Status  string  `json:"status"`
+	Branch  string  `json:"branch,omitempty"`
 	Stories []Story `json:"stories"`
 }
 
-// Board reads every story grouped by column. Released appears only when the
-// workspace has a release stage.
+// Board reads every story grouped by column. Merged has one column per
+// branch, in merge order, holding the stories whose furthest branch it is.
 func (b *Board) Board(ws string) ([]Column, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
 		return nil, err
 	}
-	release, err := hasReleaseStage(g)
+	bs, err := branches(g)
 	if err != nil {
 		return nil, err
 	}
@@ -157,22 +178,30 @@ func (b *Board) Board(ws string) ([]Column, error) {
 	}
 	in := map[string][]Story{}
 	for _, s := range ss {
-		in[s.Status] = append(in[s.Status], s)
+		k := s.Status
+		if k == Merged {
+			k += ":" + s.Into
+		}
+		in[k] = append(in[k], s)
 	}
 	cols := []Column{}
 	for _, status := range statuses {
-		if status == Released && !release {
+		if status != Merged {
+			cols = append(cols, Column{Status: status, Stories: append([]Story{}, in[status]...)})
 			continue
 		}
-		cols = append(cols, Column{Status: status, Stories: append([]Story{}, in[status]...)})
+		for _, br := range bs {
+			cols = append(cols, Column{Status: status, Branch: br.Name, Stories: append([]Story{}, in[status+":"+br.Name]...)})
+		}
 	}
 	return cols, nil
 }
 
+// hasReleaseStage is true when some branch merges into another.
 func hasReleaseStage(g *falkordb.Graph) (bool, error) {
-	res, err := g.ROQuery("MATCH (w:Workspace) RETURN coalesce(w.has_release_stage, false) AS release", nil, nil)
+	res, err := g.ROQuery("MATCH (b:Branch) WHERE b.into IS NOT NULL RETURN count(b) > 0 AS release", nil, nil)
 	if err != nil {
-		return false, fmt.Errorf("read release stage: %w", err)
+		return false, fmt.Errorf("read branches: %w", err)
 	}
 	return res.Next() && flag(res.Record(), "release"), nil
 }

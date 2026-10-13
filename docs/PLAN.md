@@ -1,8 +1,8 @@
 # Backpack — Plan
 
 **Status:** Approved 2026-10-10. Slices 1–6 merged; slice 7 (search) in review.
-**Last updated:** 2026-10-11
-**Integration branch:** `dev` (released to `main`)
+**Last updated:** 2026-10-13
+**Integration branch:** `dev` (merged into `main`, the release branch)
 
 **Backpack now tracks itself** in its own workspace, `backpack`, at
 `https://backpack.eldernerds.us`. This file is the design record: how the board
@@ -91,11 +91,15 @@ its log. Approving moves it to Backlog; declining closes it with a reason.
 | Backlog | Ranked, not started | |
 | In progress | Being worked on | task branch |
 | In review | Pull request open | PR into `dev` |
-| Merged | In the integration branch — **complete** | merged to `dev` |
-| Released | In the release branch | `dev` → `main` merged |
-| Deployed | Running in production | |
+| Merged (*branch*) | In that branch — **complete**. One column per branch, in merge order, each named by its branch (for example Merged (dev), Merged (main)) | merged to `dev`, then `dev` merged to `main` |
+| Released | In an official release (R-n) — the last step | a release cut from `main` |
 
-A workspace that releases straight from `main` skips **Released**.
+The Merged columns come from the workspace's branches, not from a switch (see
+"Branches and releases", 2026-10-13). A workspace with one branch has one
+Merged column. Before 2026-10-13 the board had a fixed Released column that
+meant "merged into `main`", skipped by workspaces without a release stage, and
+Deployed as the last step. Both are replaced: Released now means an official
+release, and Deployed is gone.
 
 **What an in-progress story is doing:** Planning, Building, Testing, or Waiting
 on agents. "Blocked" is never set by hand; it is calculated from dependencies.
@@ -124,12 +128,15 @@ as by keyword, for example "do we already have a story about this?"
 **Live updates.** The board page and a story's page update on their own when
 the board changes, whoever changed it, so a person watching sees an agent's
 move within a moment. Every board change sends a notice naming only what
-changed. A hub inside Backpack passes it to each page watching that
+changed; a change to the branches (added, renamed, aliased, re-pointed or
+removed) sends a branch notice, which the board and a story's page redraw
+on and search ignores. A hub inside Backpack passes it to each page watching that
 workspace, and the page fetches itself again. Nothing is sent through an
 outside service: Backpack is one process, and board content stays on the
 host. A page never replaces something a person is typing or choosing; it
 says the page has changed instead. It also waits for a drag to finish. On
-the board, a card that moves slides to its new place, a new card fades in and
+the board, a card that moves slides to its new place (except one the person
+just dropped, which appears where they put it), a new card fades in and
 a card that leaves fades out, all over the same half second; with reduced
 motion asked for, the board redraws without animation. A person's own moves
 on the board (a drop, the move prompt, a card's arrows) redraw in place too:
@@ -213,16 +220,20 @@ Each slice is its own branch and pull request into `dev`.
 - Stories are numbered `S-1`, `S-2` … and goals `G-1` … within each
   workspace. A phase is referred to by its number.
 - A workspace has a slug, a name and optionally its repository. Whether it
-  has a Released stage arrives with slice 3.
+  has a Released stage arrives with slice 3. (Replaced by branches on
+  2026-10-13; see "Branches and releases".)
 
-4. **How a story reaches Merged, Released and Deployed** (2026-10-10). The
-   agent records it when it happens: the merge, with its commit, or the
-   release. Doing so is part of every project's delivery rules. No webhook.
+4. **How a story reaches Merged and beyond** (2026-10-10). The agent records
+   it when it happens: the merge, with its commit, or the release. Doing so is
+   part of every project's delivery rules. No webhook. (Written for the
+   original Merged, Released and Deployed columns; the columns changed on
+   2026-10-13, the rule did not.)
 
 **Slice 3 details** (settled 2026-10-10):
 - **Status flow.** A story moves forward one column, or back one before
   Merged (In review → In progress, In progress → Backlog). Nothing moves back
-  from Merged on. Merged, Released and Deployed all count as **complete**.
+  from Merged on. Merged and everything after it count as **complete**.
+  (Originally Merged, Released and Deployed; see 2026-10-13.)
 - **On hold.** A story in Proposed, Backlog, In progress or In review can be put on
   hold with a reason (for example, needs more info). Resuming returns it to
   the column it left. "Blocked" stays reserved for dependencies.
@@ -233,9 +244,10 @@ Each slice is its own branch and pull request into `dev`.
 - **Blocked work.** Starting a blocked story is refused unless a workaround is
   given (for example, building against mock data). The workaround is kept on
   the story and logged as a decision. A blocked story can never be Merged.
-- **Release stage.** Set when a workspace is created; the default is none,
-  and Merged then goes straight to Deployed. The workspace's branch names are
-  dropped until something reads them.
+- **Release stage** (history, replaced 2026-10-13 by branches). It was set
+  when a workspace was created; the default was none, and Merged then went
+  straight to Deployed. The workspace's branch names were dropped until
+  something read them.
 - **Activity** (Planning, Building, Testing, Waiting on agents, with what it
   is waiting on) exists only while a story is in progress. It starts as
   Planning and is cleared on leaving In progress.
@@ -346,6 +358,92 @@ Each slice is its own branch and pull request into `dev`.
   without approving or declining it. This is the only way a story returns to
   Proposed.
 
+**Branches and releases** (settled 2026-10-13, I-2; phases 2 and 3):
+
+*What was wrong.* The board had a fixed "has a release stage" switch, set once
+when a workspace was created. Its Released column only meant "merged into
+`main`", which reads like a GitHub release (a tagged version) and isn't one.
+Deployed was the last step, though nothing is deployed without a release. The
+switch couldn't describe how a project really branches.
+
+*Why it happened.* Statuses were a fixed list and the project's branches were
+not part of the board.
+
+*What was decided.*
+- **Branches.** A workspace has branches. Each names the branch it merges
+  into, and exactly one, the **release branch** (normally `main`), merges
+  nowhere. The branch stories are merged into first is the **first branch**
+  (normally `dev`); with one branch, it is the release branch. (Added
+  2026-10-13, S-28: a workspace can have more than one **starting branch**, one
+  nothing merges into, for example right after `staging` is added into `main`
+  while `dev` still merges into `main`. With exactly one, it is the first
+  branch and nothing changes. With several, a merge from review that names no
+  branch is refused, listing the ones it can go into ("name the branch: dev or
+  staging"); one naming any starting branch is accepted; and an in-review story
+  is offered one merge per starting branch, so the board lets its card drop on
+  any of those columns and its page offers each.) A branch can't
+  merge into itself or into anything that leads back to it. Existing
+  workspaces carry over: no release stage becomes one branch (`main`), a
+  release stage becomes two (`dev` merging into `main`).
+- **Where a merged story is.** A story that has been merged stores the name of
+  the furthest branch it reached, as `into`. (`branch` already means the task
+  branch the story is built on.) It is a name, not a step number, so adding a
+  branch never moves a story. Each step's merge commit is logged on the story.
+- **Columns.** One Merged column per branch, in merge order, named by branch:
+  Merged (dev), Merged (main). No column says Released for a merge. Merged
+  into any branch is **complete**.
+- **Recording a merge.** The agent names the branch the story was merged into;
+  with none named it means the first branch, which is what "merged" meant
+  before (with several starting branches, see above, a branch must be named). A merge moves **one step at a time**: a story goes only to the branch
+  its current one merges into, so a merge into `main` straight from In review
+  is refused. Dragging a card between Merged columns records a merge into that
+  branch.
+- **Branch merged.** One action, given a branch and the merge commit, moves
+  every story merged into that branch to the branch it merges into, as one
+  query, with the commit logged on each. Stories still in progress or in
+  review stay put. Merging the release branch is refused. Cutting a release
+  candidate changes nothing on the board.
+- **Changing branches later.** A branch can be renamed (every reference
+  follows, stories stay in their columns, past log entries keep the old name
+  because logs are never edited), given a display **alias** (only the web
+  column heading changes; tools, the API, logs and refusals use the real
+  name), added (nothing moves; it must merge into an existing branch, so there is
+  only ever one release branch), re-pointed to merge elsewhere (nothing
+  moves; refused into itself, into anything that leads back to it, for the
+  release branch, or to clear it on any other), and removed only when nothing refers to it: no story merged into it
+  (whatever its status) and no branch merging into it. The release branch is
+  never removed, nor the first branch. (Settled 2026-10-13, S-29: "the first
+  branch" means a starting branch that is the only one; with several starting
+  branches an empty one can be removed.) A refusal names the stories and
+  branches still on it, and past log entries keep the removed name. An
+  abandoned branch's stories are put on hold or closed first.
+- **Setup.** When an agent first connects a repository it works out the
+  branching (default, integration and protected branches, how pull requests
+  flow), proposes it in conversation, and a person approves or adjusts it.
+  Then the agent applies it with Backpack's tools. Nothing pending is stored
+  in Backpack. Later changes an agent suggests work the same way.
+- **Releases (R-n).** Cutting a release is its own action, because merging
+  into the release branch doesn't make one. It records a version, git tag,
+  commit, date and notes, and in one query takes every story merged into the
+  release branch that isn't in a release yet, marks it **Released**, links it
+  to the release and logs it. **Released replaces Deployed** as the final
+  step: there is no deployment without a release. Existing deployed stories
+  read as released, with no release record. Backpack doesn't talk to GitHub;
+  the agent records the tag as it records commits.
+- **Old statuses.** Setting `released` (the old "merged into main") or
+  `deployed` is refused, with a message naming the new form: record a merge
+  into the release branch, or cut a release.
+- **Later idea: sub-boards.** A long-lived branch for a revision (V2) could be
+  a sub-board of the same workspace, with its own ranked backlog and
+  `whats_next` per board, and closing it would move its stories to the parent
+  branch's column at the merge commit. Not designed or scheduled; for now one
+  workspace has one backlog.
+- **Order of delivery.** Phase 2 (Branches) brought branches, `into` and the
+  branch tools; phase 3 (Releases) added `cut_release` (2026-10-13, S-31),
+  which removed Deployed, and `list_releases`, `get_release`, the release pages and
+  `unreleased` in "where are we" (2026-10-13, S-32) read them. A story showing
+  its release comes after.
+
 Questions about remaining work are logged on their stories in Backpack.
 
 ---
@@ -379,12 +477,14 @@ the data volume. Backup copies the RDB file off the host.
 
 | Node | Key properties |
 |---|---|
-| `Workspace` | `slug`, `next_story`, `next_goal`, `next_log`, `next_idea` (counters for `S-n`, `G-n`, `L-n` and `I-n` IDs), `has_release_stage` |
+| `Workspace` | `slug`, `next_story`, `next_goal`, `next_log`, `next_idea` (counters for `S-n`, `G-n`, `L-n` and `I-n` IDs), and `next_release` (the `R-n` counter) once releases exist. `has_release_stage` is history: replaced by `Branch` nodes |
+| `Branch` | `name`, `into` (the name of the branch it merges into, a property rather than an edge; none for the release branch), `alias` (display only), `created_by`, `created_at` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
-| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround` |
+| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) |
+| `Release` | `id` (`R-n`), `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` |
 | `Idea` | `id` (`I-n`), `title`, `context`, `rank`, `state` (`open`/`closed`), `drop_reason`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
-| `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `from`, `to` |
+| `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `from`, `to` |
 
 | Edge | Meaning |
 |---|---|
@@ -394,11 +494,15 @@ the data volume. Backup copies the RDB file off the host.
 | `(Story)-[:LOGGED]->(LogEntry)` | |
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
+| `(Story)-[:IN_RELEASE]->(Release)` | |
 
 A separate `backpack` graph holds actors with hashed tokens and the workspace
 registry: `WorkspaceEntry {slug, name, repo_url, has_release_stage,
-created_by, created_at}`. `has_release_stage` is also kept on the workspace
-graph's `Workspace` node, so the status query can read it.
+created_by, created_at}`. Until 2026-10-13 `has_release_stage` was also kept
+on the workspace graph's `Workspace` node, so the status query could read it.
+Branches replace it: the status query reads `Branch` nodes, and a new
+workspace's branches are seeded from the creation setting (one branch, or
+`dev` into `main`).
 
 - **Rank** is a fractional string key over `0-9A-Za-z` (ASCII order, so Go
   and FalkorDB compare keys alike). Between two neighbours there is always a
@@ -430,8 +534,19 @@ graph's `Workspace` node, so the status query can read it.
   log entry in the same query, plus a `decision` entry when a blocked story is
   started with a workaround.
 - **Statuses:** `proposed`, `backlog`, `in_progress`, `in_review`, `merged`,
-  `released`, `deployed`, `on_hold`, `closed`. Complete is `merged`, `released` or
-  `deployed`; `blocked` is computed on read.
+  `released`, `on_hold`, `closed`. A merged story's `into` says which branch
+  column it is in. Complete is `merged` or `released`; `blocked` is computed
+  on read. `released` means an official release (R-n). The old meaning of
+  `released` (merged into `main`) and the old `deployed` status are refused
+  with a message naming the new form. Migrations turn old released stories
+  into merged into the release branch, and old deployed stories into released.
+  Two migrations did it: old released stories became merged into the release
+  branch, and old deployed stories got `into` the release branch (migration 8),
+  then became released (migration 9, which makes no release record). Released
+  is reached only by `cut_release` (2026-10-13, S-31): `set_status` to
+  `released` or `deployed` is refused naming it, and a released story keeps its
+  `into`. A merge to the next branch is a `merged` to
+  `merged` change that names it (`into`) and carries its own commit.
 - **Empty lists:** `all(…)` over an empty list is true, so phase completion
   and the goals flag guard against no stories and no goals.
 
@@ -443,6 +558,7 @@ GET  /v1/workspaces                                  POST
 GET  /v1/workspaces/{ws}/next                        what's next
 GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook)
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
+GET  /v1/workspaces/{ws}/releases                    POST (cut); GET /releases/{id}
 GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{id}
 POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met)
 GET  /v1/workspaces/{ws}/stories                     POST (with position)
@@ -474,7 +590,8 @@ true or false). Every tool takes `workspace`. Since slice 6, `add_story`
 proposes: the story goes in as `proposed`, with a required `reasoning`.
 Ideas add `add_idea` (open at once, with optional `context`),
 `list_ideas`, `get_idea`, `update_idea`, `move_idea`,
-`refine_idea` and `drop_idea`. Search adds `search`. `list_workspaces` is the
+`refine_idea` and `drop_idea`. Search adds `search`. `cut_release` (2026-10-13, S-31) takes a `version` and a `tag` (both required, plain text) and an optional `commit` and `notes`, answers with the release (`id`, `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` and `stories`, the ids it released in delivery order), and is the same action as `POST /v1/workspaces/{ws}/releases` (201); a version already released or nothing to release is a 409, a missing version or tag or odd text a 400, and it runs inside `batch`. It is one query: it makes the Release (R-n, from the workspace's `next_release` counter), marks each story merged into the release branch Released, links it with `IN_RELEASE`, and logs a status entry (merged to released, naming the release, with the commit when given) from one block of log ids. `list_releases` and `get_release` (2026-10-13, S-32) read releases: `GET /v1/workspaces/{ws}/releases` answers `{releases}` newest first (by number, so R-10 before R-9), each as `cut_release` answers, with the ids of its stories; `GET /v1/workspaces/{ws}/releases/{id}` (tool `get_release`, with `id`) answers the release with `stories` as full stories in delivery order, and an unknown id is a 404. "Where are we" (`where_are_we`, `GET .../status`, and its text) gains `unreleased`: the stories merged into the release branch that are not in a release yet, in delivery order (an empty list when none). The web has `/w/{ws}/releases` (the list, in the navigation, newest first) and `/w/{ws}/releases/{id}` (version, tag, commit, date, notes and its stories as links), and the board's where-are-we area counts the stories waiting for a release. A story read (`get_story`, `GET .../stories/{id}`, the lists and the board, all from the one story read) carries `release` (`id` and `version`) when the story shipped in a release, and omits it otherwise, including for stories released before releases were recorded; the web story page links it to the release page (2026-10-13, S-33). `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `merge_branch` (2026-10-13, S-25) takes a branch and its merge commit and answers
+`{"stories": [...]}`, the stories it moved; it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `add_branch` (2026-10-13, S-28) takes a `name`, the branch it merges `into` (required) and an optional `alias`, answers with the branch, and is the same action as `POST /v1/workspaces/{ws}/branches` (201); an unknown `into` is a 404, a taken name a 409, a missing `into` or a bad name a 400, and it runs inside `batch`. `update_branch` (2026-10-13, S-26, S-27, S-28) takes a branch and an optional new `name`, `alias` and `into`, answers with the branch, and is the same action as `PATCH /v1/workspaces/{ws}/branches/{name}`; `into` re-points where the branch merges (nothing moves; one query, with the cycle check a bounded walk of the branches' `into` names, since `into` is a property and not an edge), and is refused for the branch itself or one leading back to it, an unknown branch, the release branch, or empty on any other branch (409, or 404 for an unknown one); fields not given are left alone, a name already in use or with whitespace or over 100 characters is refused, and renaming to the branch's own name changes nothing. An `alias` (plain text, at most 100 characters; empty clears it) replaces only the branch name inside its web column heading, "Merged (Production)"; the story page, API, tools and logs keep the name. `remove_branch` (2026-10-13, S-29) takes a branch, answers `{"removed": true}`, and is the same action as `DELETE /v1/workspaces/{ws}/branches/{name}` (204, as removing a dependency); it is one query and runs inside `batch`. It is refused with 409 for the release branch, the only starting branch, and a branch that still has stories merged into it or branches merging into it (the reason names them), and with 404 for an unknown branch. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.
 

@@ -20,6 +20,14 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	a := boardAPI{b}
 	mux.HandleFunc("GET /v1/workspaces", a.listWorkspaces)
 	mux.HandleFunc("POST /v1/workspaces", a.createWorkspace)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/branches", a.listBranches)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/branches", a.addBranch)
+	mux.HandleFunc("PATCH /v1/workspaces/{ws}/branches/{name}", a.updateBranch)
+	mux.HandleFunc("DELETE /v1/workspaces/{ws}/branches/{name}", a.removeBranch)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/branches/{name}/merged", a.mergeBranch)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/releases", a.listReleases)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/releases/{id}", a.getRelease)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/releases", a.cutRelease)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/status", a.where)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/board", a.board)
@@ -67,6 +75,71 @@ func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL,
 		HasReleaseStage: in.HasReleaseStage})
 	respond(w, http.StatusCreated, ws, err)
+}
+
+func (a boardAPI) listBranches(w http.ResponseWriter, r *http.Request) {
+	bs, err := a.b.Branches(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"branches": bs}, err)
+}
+
+func (a boardAPI) addBranch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name  string `json:"name"`
+		Into  string `json:"into"`
+		Alias string `json:"alias"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	br, err := a.b.AddBranch(r.PathValue("ws"), actor(r), board.Branch{Name: in.Name, Into: in.Into, Alias: in.Alias})
+	respond(w, http.StatusCreated, br, err)
+}
+
+func (a boardAPI) updateBranch(w http.ResponseWriter, r *http.Request) {
+	var patch board.BranchPatch
+	if !decodeBody(w, r, &patch) {
+		return
+	}
+	br, err := a.b.UpdateBranch(r.PathValue("ws"), actor(r), r.PathValue("name"), patch)
+	respond(w, http.StatusOK, br, err)
+}
+
+func (a boardAPI) removeBranch(w http.ResponseWriter, r *http.Request) {
+	if err := a.b.RemoveBranch(r.PathValue("ws"), actor(r), r.PathValue("name")); err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a boardAPI) mergeBranch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Commit string `json:"commit"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	moved, err := a.b.MergeBranch(r.PathValue("ws"), actor(r), r.PathValue("name"), in.Commit)
+	respond(w, http.StatusOK, map[string]any{"stories": moved}, err)
+}
+
+func (a boardAPI) cutRelease(w http.ResponseWriter, r *http.Request) {
+	var in board.NewRelease
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	rel, err := a.b.CutRelease(r.PathValue("ws"), actor(r), in)
+	respond(w, http.StatusCreated, rel, err)
+}
+
+func (a boardAPI) listReleases(w http.ResponseWriter, r *http.Request) {
+	rs, err := a.b.ListReleases(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"releases": rs}, err)
+}
+
+func (a boardAPI) getRelease(w http.ResponseWriter, r *http.Request) {
+	rel, err := a.b.GetRelease(r.PathValue("ws"), r.PathValue("id"))
+	respond(w, http.StatusOK, rel, err)
 }
 
 func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {

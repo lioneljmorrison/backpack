@@ -12,7 +12,8 @@ type Workspace struct {
 	Slug    string `json:"slug"`
 	Name    string `json:"name"`
 	RepoURL string `json:"repo_url,omitempty"`
-	// HasReleaseStage puts Released between Merged and Deployed.
+	// HasReleaseStage is true when a branch merges into another. It is given
+	// when creating, to seed the branches; afterwards the branches are the truth.
 	HasReleaseStage bool   `json:"has_release_stage"`
 	CreatedBy       string `json:"created_by"`
 	CreatedAt       string `json:"created_at"`
@@ -43,21 +44,28 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (_ Workspace, err err
 	if err := falkor.Migrate(g, migrations); err != nil {
 		return Workspace{}, err
 	}
-	// A graph that already exists keeps its release stage, and the registry
-	// records the one the graph has, which is the one status changes read.
-	res, err := g.Query(`MERGE (w:Workspace {slug: $slug})
-		ON CREATE SET w.next_story = 1, w.next_goal = 1, w.next_log = 1, w.has_release_stage = $release
-		RETURN coalesce(w.has_release_stage, false) AS release`,
-		map[string]any{"slug": w.Slug, "release": w.HasReleaseStage}, nil)
-	if err != nil {
+	// A graph that already exists keeps its branches, and the registry
+	// records the release stage they give, which is the one status changes
+	// read. A new graph is seeded: main alone, or dev merging into main.
+	at := now()
+	if _, err := g.Query(`MERGE (w:Workspace {slug: $slug})
+		ON CREATE SET w.next_story = 1, w.next_goal = 1, w.next_log = 1
+		WITH w
+		OPTIONAL MATCH (b:Branch)
+		WITH w, count(b) AS have
+		FOREACH (_ IN CASE WHEN have = 0 THEN [1] ELSE [] END |
+			CREATE (:Branch {name: 'main', created_by: $actor, created_at: $at}))
+		FOREACH (_ IN CASE WHEN have = 0 AND $release THEN [1] ELSE [] END |
+			CREATE (:Branch {name: 'dev', into: 'main', created_by: $actor, created_at: $at}))`,
+		map[string]any{"slug": w.Slug, "release": w.HasReleaseStage, "actor": actor, "at": at}, nil); err != nil {
 		return Workspace{}, fmt.Errorf("create workspace graph: %w", err)
 	}
-	if res.Next() {
-		w.HasReleaseStage = flag(res.Record(), "release")
+	if w.HasReleaseStage, err = hasReleaseStage(g); err != nil {
+		return Workspace{}, err
 	}
 
-	w.CreatedBy, w.CreatedAt = actor, now()
-	res, err = b.system.Query(`
+	w.CreatedBy, w.CreatedAt = actor, at
+	res, err := b.system.Query(`
 		OPTIONAL MATCH (taken:WorkspaceEntry {slug: $slug})
 		WITH taken
 		FOREACH (_ IN CASE WHEN taken IS NULL THEN [1] ELSE [] END |

@@ -1,0 +1,11 @@
+{{define "content"}}
+{{$ws := .WS.Slug}}
+<h1>Releases</h1>
+<div class="list">
+  {{range .Data}}
+  <a class="row" href="/w/{{$ws}}/releases/{{.ID}}"><span class="id">{{.ID}}</span> {{.Version}} <span class="muted">{{when .CreatedAt}} · {{len .Stories}} {{if eq (len .Stories) 1}}story{{else}}stories{{end}}</span></a>
+  {{else}}
+  <p class="muted">No releases yet.</p>
+  {{end}}
+</div>
+{{end}}

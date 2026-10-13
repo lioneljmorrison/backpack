@@ -49,23 +49,23 @@ func TestTheBoardShowsEachColumnWithItsStoriesInDeliveryOrder(t *testing.T) {
 	must[board.Story](t)(b.SetStatus("demo", "tester", started.ID, board.StatusChange{To: board.InProgress, Branch: "feature/x"}))
 
 	w := get(h, "/w/demo", "bp_good")
-	wantPage(t, w, "Demo", "Backlog", "In progress", "Merged", "Deployed", `href="/w/demo/stories/S-1"`)
+	wantPage(t, w, "Demo", "Backlog", "In progress", "Merged (main)", "Released", `href="/w/demo/stories/S-1"`)
 	page := w.Body.String()
-	if !before(page, `aria-label="Backlog"`, `aria-label="In progress"`) || !before(page, `aria-label="In progress"`, `aria-label="Deployed"`) {
+	if !before(page, `aria-label="Backlog"`, `aria-label="In progress"`) || !before(page, `aria-label="In progress"`, `aria-label="Released"`) {
 		t.Error("columns are not in board order")
 	}
 	if !before(page, "First in line", "Second in line") {
 		t.Error("backlog is not in delivery order")
 	}
-	if strings.Contains(page, "Released") {
-		t.Error("Released shown for a workspace without a release stage")
+	if strings.Contains(page, "Merged (dev)") {
+		t.Error("a column for a branch the workspace does not have")
 	}
 }
 
 func TestTheBoardRunsFromIdeasThroughOnHoldAndBacklogToClosed(t *testing.T) {
 	h, _ := withDemo(t)
 	page := get(h, "/w/demo", "bp_good").Body.String()
-	order := []string{"Ideas", "Proposed", "On hold", "Backlog", "In progress", "Deployed", "Closed"}
+	order := []string{"Ideas", "Proposed", "On hold", "Backlog", "In progress", "Released", "Closed"}
 	for i := 1; i < len(order); i++ {
 		if !before(page, `aria-label="`+order[i-1]+`"`, `aria-label="`+order[i]+`"`) {
 			t.Errorf("%s is not before %s", order[i-1], order[i])
@@ -218,7 +218,8 @@ func TestEachCardSaysWhichColumnsItMayBeDroppedOn(t *testing.T) {
 		set(ws, s.ID, board.StatusChange{To: board.Merged, Commit: "abc1234"})
 		return s
 	}
-	plain, staged := merged("demo"), merged("staged")
+	merged("demo")
+	staged := merged("staged")
 
 	page := get(h, "/w/demo", "bp_good").Body.String()
 	for _, c := range []struct {
@@ -227,7 +228,6 @@ func TestEachCardSaysWhichColumnsItMayBeDroppedOn(t *testing.T) {
 		{prop.ID, "proposed", "on_hold backlog closed"},
 		{back.ID, "backlog", "on_hold in_progress closed"},
 		{held.ID, "on_hold", "in_progress closed"},
-		{plain.ID, "merged", "deployed"},
 	} {
 		tag := cardTag(t, page, c.id)
 		for _, want := range []string{`draggable="true"`, `data-status="` + c.status + `"`, `data-moves="` + c.moves + `"`} {
@@ -237,17 +237,25 @@ func TestEachCardSaysWhichColumnsItMayBeDroppedOn(t *testing.T) {
 		}
 	}
 	sp := get(h, "/w/staged", "bp_good").Body.String()
-	if tag := cardTag(t, sp, staged.ID); !strings.Contains(tag, `data-moves="released"`) {
-		t.Errorf("merged card with a release stage: %s", tag)
+	if tag := cardTag(t, sp, staged.ID); !strings.Contains(tag, `data-moves="merged:main"`) {
+		t.Errorf("a card merged into dev may be dropped on Merged (main): %s", tag)
 	}
-	for _, status := range []string{"proposed", "backlog", "on_hold", "in_progress", "in_review", "merged", "deployed", "closed"} {
+	for _, want := range []string{`aria-label="Merged (dev)" data-status="merged" data-into="dev"`, `aria-label="Merged (main)" data-status="merged" data-into="main"`} {
+		if !strings.Contains(sp, want) {
+			t.Errorf("staged board lacks %s", want)
+		}
+	}
+	if !before(sp, `aria-label="Merged (dev)"`, `aria-label="Merged (main)"`) || !before(sp, `aria-label="Merged (main)"`, `aria-label="Released"`) {
+		t.Error("merged columns are not in merge order, or Released does not follow them")
+	}
+	for _, status := range []string{"proposed", "backlog", "on_hold", "in_progress", "in_review", "merged", "released", "closed"} {
 		if !strings.Contains(page, `data-status="`+status+`"`) {
 			t.Errorf("no column marked %s", status)
 		}
 	}
 }
 
-func TestDeployedClosedAndIdeaCardsAreNotDraggable(t *testing.T) {
+func TestMergedIntoTheReleaseBranchReleasedClosedAndIdeaCardsAreNotDraggable(t *testing.T) {
 	h, b := withDemo(t)
 	set := func(id string, c board.StatusChange) {
 		must[board.Story](t)(b.SetStatus("demo", "tester", id, c))
@@ -256,13 +264,22 @@ func TestDeployedClosedAndIdeaCardsAreNotDraggable(t *testing.T) {
 	set(done.ID, board.StatusChange{To: board.InProgress, Branch: "feature/d"})
 	set(done.ID, board.StatusChange{To: board.InReview, PRURL: "https://example.invalid/pr/3"})
 	set(done.ID, board.StatusChange{To: board.Merged, Commit: "abc1234"})
-	set(done.ID, board.StatusChange{To: board.Deployed})
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1", Tag: "v1"}))
 	shut := story(t, b, board.NewStory{Title: "Dropped"})
 	set(shut.ID, board.StatusChange{To: board.Closed, Reason: "no"})
 	must[board.Idea](t)(b.AddIdea("demo", "tester", board.NewIdea{Title: "Vague"}))
+	// A story merged into the release branch waits for a release, and may
+	// not be moved to Released by hand.
+	waiting := story(t, b, board.NewStory{Title: "Waiting for a release"})
+	set(waiting.ID, board.StatusChange{To: board.InProgress, Branch: "feature/w"})
+	set(waiting.ID, board.StatusChange{To: board.InReview, PRURL: "https://example.invalid/pr/4"})
+	set(waiting.ID, board.StatusChange{To: board.Merged, Commit: "abc1235"})
 
 	page := get(h, "/w/demo", "bp_good").Body.String()
-	for _, id := range []string{done.ID, shut.ID, "I-1"} {
+	if tag := cardTag(t, page, done.ID); !strings.Contains(tag, `data-status="released"`) {
+		t.Errorf("a released card is not marked released: %s", tag)
+	}
+	for _, id := range []string{done.ID, shut.ID, "I-1", waiting.ID} {
 		if tag := cardTag(t, page, id); strings.Contains(tag, "draggable") || strings.Contains(tag, "data-moves") {
 			t.Errorf("%s is draggable: %s", id, tag)
 		}
@@ -281,7 +298,7 @@ func TestEveryCardOnTheBoardCarriesItsID(t *testing.T) {
 	set(done.ID, board.StatusChange{To: board.InProgress, Branch: "feature/d"})
 	set(done.ID, board.StatusChange{To: board.InReview, PRURL: "https://example.invalid/pr/3"})
 	set(done.ID, board.StatusChange{To: board.Merged, Commit: "abc1234"})
-	set(done.ID, board.StatusChange{To: board.Deployed})
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1", Tag: "v1"}))
 	shut := story(t, b, board.NewStory{Title: "Dropped"})
 	set(shut.ID, board.StatusChange{To: board.Closed, Reason: "no"})
 	idea := must[board.Idea](t)(b.AddIdea("demo", "tester", board.NewIdea{Title: "Vague"}))
@@ -326,5 +343,170 @@ func TestABlockedCardSaysSo(t *testing.T) {
 		if tag := cardTag(t, page, id); strings.Contains(tag, "data-blocked") {
 			t.Errorf("%s is not blocked: %s", id, tag)
 		}
+	}
+}
+
+// Search answers a merged story's state as "merged:main"; a page reads it as
+// the column is named.
+func TestASearchStateWithABranchReadsAsTheColumnIsNamed(t *testing.T) {
+	for state, want := range map[string]string{"merged:main": "Merged (main)", "merged:dev": "Merged (dev)", "in_review": "In review"} {
+		if got := label(state); got != want {
+			t.Errorf("label(%q) = %q, want %q", state, got, want)
+		}
+	}
+}
+
+func TestABranchAliasRenamesOnlyItsColumnHeading(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}))
+	s := must[board.Story](t)(b.AddStory("staged", "tester", board.NewStory{Title: "Landed"}))
+	for _, c := range []board.StatusChange{
+		{To: board.InProgress, Branch: "feature/a"},
+		{To: board.InReview, PRURL: "https://example.invalid/pr/3"},
+		{To: board.Merged, Commit: "abc1234"},
+	} {
+		must[board.Story](t)(b.SetStatus("staged", "tester", s.ID, c))
+	}
+	prod := "Production"
+	must[board.Branch](t)(b.UpdateBranch("staged", "tester", "main", board.BranchPatch{Alias: &prod}))
+
+	page := get(h, "/w/staged", "bp_good").Body.String()
+	for _, want := range []string{
+		`aria-label="Merged (Production)" data-status="merged" data-into="main"`,
+		`<h2>Merged (Production) `,
+		`aria-label="Merged (dev)" data-status="merged" data-into="dev"`,
+		`data-moves="merged:main"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("board lacks %s", want)
+		}
+	}
+	if strings.Contains(page, "Merged (main)") {
+		t.Error("the heading still shows the branch name")
+	}
+	// The story page keeps the real name.
+	if sp := get(h, "/w/staged/stories/"+s.ID, "bp_good").Body.String(); strings.Contains(sp, "Production") {
+		t.Error("the story page shows the alias")
+	}
+
+	empty := ""
+	must[board.Branch](t)(b.UpdateBranch("staged", "tester", "main", board.BranchPatch{Alias: &empty}))
+	page = get(h, "/w/staged", "bp_good").Body.String()
+	if !strings.Contains(page, `aria-label="Merged (main)"`) || strings.Contains(page, "Production") {
+		t.Error("clearing the alias does not restore the heading")
+	}
+}
+
+// A story page for a released story says Released, offers no move, and reads
+// the release's log entry and an old "deployed" one.
+func TestAReleasedStoryReadsAsReleasedAndOffersNoMove(t *testing.T) {
+	h, b := withDemo(t)
+	s := story(t, b, board.NewStory{Title: "Shipped"})
+	for _, c := range []board.StatusChange{{To: board.InProgress}, {To: board.InReview}, {To: board.Merged, Commit: "abc1234"}} {
+		must[board.Story](t)(b.SetStatus("demo", "tester", s.ID, c))
+	}
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.0.0", Tag: "v1.0.0"}))
+	page := get(h, "/w/demo/stories/"+s.ID, "bp_good").Body.String()
+	for _, want := range []string{"Released", "Released in R-1 (v1.0.0)"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the story page lacks %q", want)
+		}
+	}
+	if strings.Contains(page, `name="to"`) {
+		t.Error("a released story offers a move")
+	}
+}
+
+func TestAReleasedStoryPageLinksToItsReleaseAndAnUnreleasedOneDoesNot(t *testing.T) {
+	h, b := withDemo(t)
+	one, two := shipped(t, b, "Shipped"), story(t, b, board.NewStory{Title: "Waiting"})
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.0.0", Tag: "v1.0.0"}))
+	page := get(h, "/w/demo/stories/"+one.ID, "bp_good").Body.String()
+	if !strings.Contains(page, `href="/w/demo/releases/R-1"`) || !strings.Contains(page, "v1.0.0") {
+		t.Error("the released story's page does not link to its release")
+	}
+	if page := get(h, "/w/demo/stories/"+two.ID, "bp_good").Body.String(); strings.Contains(page, "/releases/") {
+		t.Error("an unreleased story's page links to a release")
+	}
+}
+
+// Old log entries and old search states may still say "deployed".
+func TestAnOldDeployedEntryStillReadsSensibly(t *testing.T) {
+	if got := label("deployed"); got != "Deployed" {
+		t.Errorf("label(deployed) = %q", got)
+	}
+	if got := label("released:main"); got != "Released" {
+		t.Errorf("label(released:main) = %q, want Released without a branch", got)
+	}
+}
+
+// shipped walks a story to merged (into the release branch of a workspace
+// with one branch) and returns it.
+func shipped(t *testing.T, b *board.Board, title string) board.Story {
+	t.Helper()
+	s := story(t, b, board.NewStory{Title: title})
+	for _, c := range []board.StatusChange{{To: board.InProgress}, {To: board.InReview}, {To: board.Merged, Commit: "abc1234"}} {
+		must[board.Story](t)(b.SetStatus("demo", "tester", s.ID, c))
+	}
+	return s
+}
+
+func TestAReleasePageShowsTheVersionTagDateNotesAndItsStoriesAsAChangelog(t *testing.T) {
+	h, b := withDemo(t)
+	one, two := shipped(t, b, "Shipped one"), shipped(t, b, "Shipped <two>")
+	r := must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.2.0", Tag: "rel-1.2.0", Commit: "9f8e7d6", Notes: "The first <b>cut</b>"}))
+	page := get(h, "/w/demo/releases/"+r.ID, "bp_good")
+	if page.Code != http.StatusOK {
+		t.Fatalf("status %d", page.Code)
+	}
+	body := page.Body.String()
+	for _, want := range []string{"v1.2.0", "rel-1.2.0", "9f8e7d6", r.CreatedAt[:10], "The first &lt;b&gt;cut&lt;/b&gt;",
+		`href="/w/demo/stories/` + one.ID + `"`, "Shipped one", `href="/w/demo/stories/` + two.ID + `"`, "Shipped &lt;two&gt;"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the release page lacks %q", want)
+		}
+	}
+	if !before(body, "Shipped one", "Shipped &lt;two&gt;") {
+		t.Error("stories are not in delivery order")
+	}
+	if got := get(h, "/w/demo/releases/R-9", "bp_good"); got.Code != http.StatusNotFound {
+		t.Errorf("unknown release: status %d", got.Code)
+	}
+	if got := get(h, "/w/demo/releases/"+r.ID, ""); got.Code == http.StatusOK {
+		t.Error("a release page opens without signing in")
+	}
+}
+
+func TestTheReleasesPageListsReleasesNewestFirstAndTheNavLinksToIt(t *testing.T) {
+	h, b := withDemo(t)
+	empty := get(h, "/w/demo/releases", "bp_good")
+	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), "No releases yet") {
+		t.Fatalf("empty list: %d", empty.Code)
+	}
+	shipped(t, b, "One")
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.0.0", Tag: "v1.0.0"}))
+	shipped(t, b, "Two")
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.1.0", Tag: "v1.1.0"}))
+	body := get(h, "/w/demo/releases", "bp_good").Body.String()
+	for _, want := range []string{`href="/w/demo/releases/R-1"`, `href="/w/demo/releases/R-2"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the list lacks %q", want)
+		}
+	}
+	if !before(body, "v1.1.0", "v1.0.0") {
+		t.Error("the list is not newest first")
+	}
+	if !strings.Contains(get(h, "/w/demo", "bp_good").Body.String(), `href="/w/demo/releases"`) {
+		t.Error("the navigation does not link to the releases")
+	}
+}
+
+func TestTheBoardsWhereAreWeAreaCountsWhatWaitsForARelease(t *testing.T) {
+	h, b := withDemo(t)
+	shipped(t, b, "Waiting")
+	body := get(h, "/w/demo", "bp_good").Body.String()
+	i := strings.Index(body, "Waiting for release")
+	if i < 0 || !strings.Contains(body[i:i+200], "<strong>1</strong>") {
+		t.Fatalf("the where-are-we area does not count the unreleased story")
 	}
 }
