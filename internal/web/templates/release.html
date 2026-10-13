@@ -4,7 +4,7 @@
 <p class="muted"><a href="/w/{{$ws}}/releases">← Releases</a></p>
 <h1><span class="id">{{.ID}}</span> {{.Version}}</h1>
 <div class="tags">
-  <span class="tag">Tag <code>{{.Tag}}</code></span>
+  {{with .Tag}}<span class="tag">Tag <code>{{.}}</code></span>{{end}}
   {{with .Commit}}<span class="tag">Commit <code>{{.}}</code></span>{{end}}
   <span class="tag">{{when .CreatedAt}} by {{.CreatedBy}}</span>
 </div>

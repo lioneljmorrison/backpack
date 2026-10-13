@@ -57,6 +57,23 @@ var migrations = []string{
 	// released, still in the branch it reached, with no release record. A
 	// repeat finds no deployed story.
 	"MATCH (s:Story {status: 'deployed'}) SET s.status = 'released'",
+	// Every released story belongs to a release. Those released before
+	// releases existed go in R-0, "Before releases", with no tag, each with a
+	// log entry (a block of ids from next_log). next_release is untouched, so
+	// cutting still starts at R-1. A workspace with none gets no R-0, and a
+	// repeat finds none left over.
+	`MATCH (w:Workspace)
+		OPTIONAL MATCH (s:Story {status: 'released'}) WHERE NOT (s)-[:IN_RELEASE]->()
+		WITH w, coalesce(w.next_log, 1) AS n, s ORDER BY s.rank, s.id
+		WITH w, n, collect(s) AS ss, toString(localdatetime()) + 'Z' AS at
+		FOREACH (_ IN CASE WHEN size(ss) > 0 THEN [1] ELSE [] END |
+			SET w.next_log = n + size(ss)
+			MERGE (r:Release {id: 'R-0'})
+				ON CREATE SET r.version = 'Before releases', r.created_by = 'migration', r.created_at = at
+			FOREACH (i IN range(0, size(ss) - 1) | FOREACH (s IN [ss[i]] |
+				CREATE (s)-[:IN_RELEASE]->(r)
+				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: at, actor: 'migration', kind: 'note',
+					text: 'Released before releases were recorded; placed in R-0 (Before releases)'}))))`,
 }
 
 // Kind says why the board refused a request.

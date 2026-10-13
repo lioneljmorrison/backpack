@@ -83,6 +83,10 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, c := range cols {
+		// Released work is read on the Releases pages, not on the board.
+		if c.Status == board.Released {
+			continue
+		}
 		heading := c.Branch
 		if a, ok := aliases[heading]; ok {
 			heading = a
