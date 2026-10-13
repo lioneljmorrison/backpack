@@ -3,6 +3,8 @@ package mcpserver_test
 import (
 	"strings"
 	"testing"
+
+	"github.com/lioneljmorrison/backpack/internal/board"
 )
 
 func TestSetStatusStartsAStoryOnItsBranch(t *testing.T) {
@@ -77,5 +79,21 @@ func TestReadLogListsStatusChangesAndCorrections(t *testing.T) {
 	}
 	if by := entries[1].(map[string]any)["corrected_by"]; by == nil {
 		t.Fatalf("note %v is not marked corrected", entries[1])
+	}
+}
+
+func TestSetStatusHoldsAProposalAndResumesItToProposed(t *testing.T) {
+	b, cs := connect(t)
+	if _, err := b.AddStory("demo", "tester", board.NewStory{Title: "Maybe", Proposed: true, Reasoning: "it might help"}); err != nil {
+		t.Fatal(err)
+	}
+	refused(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "on_hold"})
+	s := use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "on_hold", "reason": "wait for the design"})
+	if s["status"] != "on_hold" || s["held_from"] != "proposed" {
+		t.Fatalf("held %v", s)
+	}
+	s = use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "proposed"})
+	if s["status"] != "proposed" {
+		t.Fatalf("resumed %v", s)
 	}
 }

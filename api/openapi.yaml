@@ -435,8 +435,8 @@ paths:
       description: >-
         Forward one column, or back one before Merged: Backlog, In progress,
         In review, Merged, Released (only with a release stage), Deployed.
-        From Backlog, In progress or In review a story can be put on hold,
-        and resumes in the column it left; from those and On hold it can be
+        From Proposed, Backlog, In progress or In review a story can be put on hold,
+        and resumes in the column it left (a held proposal resumes to Proposed, to be approved as usual); from those and On hold it can be
         closed. Deployed and Closed are final. Starting a blocked story needs
         a workaround, which is logged as a decision; a blocked story is never
         merged. Closing is refused while any story depends on this one. Every

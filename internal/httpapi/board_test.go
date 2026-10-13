@@ -14,13 +14,20 @@ import (
 // newAPI serves a real, empty board. Every request is made as "tester".
 func newAPI(t *testing.T) http.Handler {
 	t.Helper()
+	h, _ := newAPIWithBoard(t)
+	return h
+}
+
+// newAPIWithBoard is newAPI, and also the board behind it.
+func newAPIWithBoard(t *testing.T) (http.Handler, *board.Board) {
+	t.Helper()
 	db, prefix := falkortest.Prefix(t)
 	b, err := board.New(db, prefix+"system", prefix+"ws:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tester := func(string) (string, bool, error) { return "tester", true, nil }
-	return New(map[string]health.Check{}, tester, b, nil, nil)
+	return New(map[string]health.Check{}, tester, b, nil, nil), b
 }
 
 func call(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -257,5 +264,22 @@ func TestWhereAreWeIsJSONWhenTheCallerAlsoAcceptsJSON(t *testing.T) {
 		if ct := w.Header().Get("Content-Type"); ct != "application/json" {
 			t.Errorf("Accept %q got %q", accept, ct)
 		}
+	}
+}
+
+func TestAProposalCanBeHeldAndResumedOverHTTP(t *testing.T) {
+	h, b := newAPIWithBoard(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "demo", "name": "Demo"}`), http.StatusCreated)
+	if _, err := b.AddStory("demo", "tester", board.NewStory{Title: "Maybe", Proposed: true, Reasoning: "it might help"}); err != nil {
+		t.Fatal(err)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "on_hold"}`), http.StatusBadRequest)
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "on_hold", "reason": "wait for the design"}`), http.StatusOK)
+	if s["status"] != "on_hold" || s["held_from"] != "proposed" {
+		t.Fatalf("held %v", s)
+	}
+	s = want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "proposed"}`), http.StatusOK)
+	if s["status"] != "proposed" {
+		t.Fatalf("resumed %v", s)
 	}
 }
