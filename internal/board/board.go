@@ -29,6 +29,17 @@ var migrations = []string{
 			ELSE i.notes + '\n\n' + i.reasoning END,
 		i.state = CASE i.state WHEN 'proposed' THEN 'open' ELSE i.state END,
 		i.notes = NULL, i.reasoning = NULL, i.approved_by = NULL, i.approved_at = NULL`,
+	// Branches replace the release-stage flag: a flag set gives dev merging
+	// into main, otherwise main alone. MERGE makes a repeat harmless. A graph
+	// with no Workspace node yet is seeded by CreateWorkspace instead.
+	`MATCH (w:Workspace)
+		WITH w, coalesce(w.has_release_stage, false) AS release
+		MERGE (m:Branch {name: 'main'})
+			ON CREATE SET m.created_by = 'migration', m.created_at = toString(localdatetime()) + 'Z'
+		FOREACH (_ IN CASE WHEN release THEN [1] ELSE [] END |
+			MERGE (d:Branch {name: 'dev'})
+				ON CREATE SET d.into = 'main', d.created_by = 'migration', d.created_at = toString(localdatetime()) + 'Z')
+		SET w.has_release_stage = NULL`,
 }
 
 // Kind says why the board refused a request.

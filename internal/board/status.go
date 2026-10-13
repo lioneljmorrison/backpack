@@ -113,8 +113,9 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story) WHERE NOT t.status IN $complete
 		WITH w, s, collect(t.id) AS waiting
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s) WHERE d.status <> 'closed'
-		WITH w, s, waiting, collect(d.id) AS dependents, s.status AS from,
-			coalesce(w.has_release_stage, false) AS release, coalesce(w.next_log, 1) AS n
+		WITH w, s, waiting, collect(d.id) AS dependents, s.status AS from, coalesce(w.next_log, 1) AS n
+		OPTIONAL MATCH (br:Branch) WHERE br.into IS NOT NULL
+		WITH w, s, waiting, dependents, from, n, count(br) > 0 AS release
 		WITH w, s, waiting, dependents, from, n, CASE
 			WHEN NOT ((from + '>' + $to) IN $moves OR (from = 'on_hold' AND $to = s.held_from)) THEN 'move'
 			WHEN from = 'merged' AND $to = 'released' AND NOT release THEN 'no release'

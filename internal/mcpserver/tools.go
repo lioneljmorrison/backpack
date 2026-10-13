@@ -154,6 +154,7 @@ type dropIdeaIn struct {
 func addTools(s *mcp.Server, t tools) {
 	steps := map[string]step{}
 	tool(s, "list_workspaces", "Every workspace, by slug, with its name and repository. Use it to find a workspace's slug when the project's .backpack.json isn't at hand.", t.listWorkspaces)
+	tool(s, "list_branches", "A workspace's branches in merge order, each with the branch it merges into. The release branch merges nowhere and is marked release.", t.listBranches)
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
 	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, and the next three in the backlog.", t.whereAreWe)
 	tool(s, "get_story", "One story, with its status, what blocks it and what it blocks.", t.getStory)
@@ -194,6 +195,11 @@ func actor(ctx context.Context) string {
 func (t tools) listWorkspaces(_ context.Context, _ struct{}) (any, error) {
 	ws, err := t.b.Workspaces()
 	return map[string]any{"workspaces": ws}, err
+}
+
+func (t tools) listBranches(_ context.Context, a in) (any, error) {
+	bs, err := t.b.Branches(a.Workspace)
+	return map[string]any{"branches": bs}, err
 }
 
 func (t tools) whatsNext(_ context.Context, a in) (any, error) {

@@ -97,7 +97,7 @@ paths:
                 has_release_stage:
                   type: boolean
                   default: false
-                  description: Released sits between Merged and Deployed. Set once, at creation.
+                  description: Seeds the workspace's branches, once, at creation. True gives dev merging into main, and main; false gives main alone.
       responses:
         "201":
           description: Created
@@ -182,6 +182,26 @@ paths:
                         stories:
                           type: array
                           items: { $ref: "#/components/schemas/Story" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/branches:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The workspace's branches in merge order
+      description: Each branch comes before the one it merges into; the release branch, which merges nowhere, is last.
+      responses:
+        "200":
+          description: The branches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [branches]
+                properties:
+                  branches:
+                    type: array
+                    items: { $ref: "#/components/schemas/Branch" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/phases:
@@ -871,6 +891,16 @@ components:
         name: { type: string }
         repo_url: { type: string }
         has_release_stage: { type: boolean }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    Branch:
+      type: object
+      required: [name, release, created_by, created_at]
+      properties:
+        name: { type: string }
+        into: { type: string, description: The branch this one merges into; absent on the release branch. }
+        alias: { type: string, description: Display name only. }
+        release: { type: boolean, description: True for the branch that merges nowhere. }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
     Phase:
