@@ -105,6 +105,8 @@ secrets.
 Delivery is tracked in Backpack, workspace `backpack` (see `.backpack.json`),
 through the `backpack` MCP tools, added to Claude Code once per machine (see
 `docs/ADOPTING.md`). There is no tracking document, and tracking is never committed.
+The branches are in `list_branches`; change them with `add_branch`,
+`update_branch` and `remove_branch`.
 
 - **Orientation.** The session starts with "where are we". Ask `whats_next`
   for the next story and `get_story` for its detail. Don't guess the next task.
@@ -112,11 +114,12 @@ through the `backpack` MCP tools, added to Claude Code once per machine (see
   - start work: `in_progress`, with the task branch;
   - open the pull request: `in_review`, with its link;
   - merged into `dev`: `merged`, with the merge commit (`dev` is the first
-    branch, so no `into` is needed);
+    branch, so no `into` is needed; when several branches start the line,
+    name the one with `into`);
   - `dev` merged into `main`: one `merge_branch` call (branch `dev`, with the
     merge commit) moves every story merged into `dev` to `main`, each logged
     with that commit, in place of a `set_status` per story. Stories still in
-    progress or in review stay put.
+    progress or in review stay put. `deployed` follows once a story is in `main`.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,
