@@ -168,7 +168,7 @@ func TestAPhaseIsCompleteWhenEveryStoryStillWantedIsComplete(t *testing.T) {
 	if p := phase(t, b, 1); p.Complete || p.StoriesTotal != 3 || p.StoriesComplete != 1 {
 		t.Fatalf("one of three merged %+v", p)
 	}
-	walk(t, b, "S-2", "in_progress", "in_review", "merged", "deployed")
+	walk(t, b, "S-2", "in_progress", "in_review", "merged")
 	setStatus(t, b, "S-3", board.StatusChange{To: "closed", Reason: "not needed"})
 	if p := phase(t, b, 1); !p.Complete || p.StoriesTotal != 2 || p.StoriesComplete != 2 {
 		t.Fatalf("the rest merged or closed %+v", p)

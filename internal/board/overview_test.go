@@ -161,7 +161,7 @@ func TestTheBoardGroupsStoriesByColumnInDeliveryOrder(t *testing.T) {
 		names = append(names, c.Status)
 		got[c.Status] = ids(c.Stories)
 	}
-	if !slices.Equal(names, []string{"proposed", "on_hold", "backlog", "in_progress", "in_review", "merged", "deployed", "closed"}) || cols[5].Branch != "main" {
+	if !slices.Equal(names, []string{"proposed", "on_hold", "backlog", "in_progress", "in_review", "merged", "released", "closed"}) || cols[5].Branch != "main" {
 		t.Fatalf("columns %v", names)
 	}
 	if !slices.Equal(got["backlog"], []string{"S-6", "S-7", "S-8", "S-9"}) || !slices.Equal(got["merged"], []string{"S-1"}) ||
@@ -182,7 +182,7 @@ func TestTheBoardHasOneMergedColumnPerBranchInMergeOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cols) != 9 || cols[5].Status != "merged" || cols[5].Branch != "dev" || cols[6].Status != "merged" || cols[6].Branch != "main" ||
-		cols[7].Status != "deployed" || cols[7].Branch != "" || cols[6].Stories == nil {
+		cols[7].Status != "released" || cols[7].Branch != "" || cols[6].Stories == nil {
 		t.Fatalf("columns %+v", cols)
 	}
 	if !slices.Equal(ids(cols[5].Stories), []string{"S-1"}) || !slices.Equal(ids(cols[6].Stories), []string{"S-2"}) {

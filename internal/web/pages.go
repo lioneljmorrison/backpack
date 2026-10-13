@@ -224,20 +224,18 @@ func (s *site) searchPage(w http.ResponseWriter, r *http.Request) {
 var labels = map[string]string{
 	board.Proposed: "Proposed", board.Backlog: "Backlog", board.InProgress: "In progress",
 	board.InReview: "In review", board.Merged: "Merged",
-	board.Deployed: "Deployed", board.OnHold: "On hold", board.Closed: "Closed",
+	board.Released: "Released", board.OnHold: "On hold", board.Closed: "Closed",
 	"open": "Open", "refined": "Refined", "dropped": "Dropped",
 	"planning": "Planning", "building": "Building", "testing": "Testing", "waiting": "Waiting",
 	"note": "Note", "decision": "Decision", "commit": "Commit", "pr": "Pull request",
 	"status": "Status", "correction": "Correction",
+	"deployed": "Deployed", // no longer a status; old log entries and search states may say it
 }
 
 func label(s string) string {
-	// A merge move reads "merged:main"; an old log entry may read "released".
+	// A merge move reads "merged:main"; a release entry reads "released:main".
 	if to, into, ok := strings.Cut(s, ":"); ok {
 		return statusLabel(to, into)
-	}
-	if s == "released" {
-		return "Released"
 	}
 	if l, ok := labels[s]; ok {
 		return l

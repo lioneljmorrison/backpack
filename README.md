@@ -17,8 +17,10 @@ current state is hard to find. Backpack replaces that document: agents ask it
 - Each project has its own **workspace**, with one backlog ranked in delivery
   order.
 - Stories move (Proposed →) Backlog → In progress → In review → Merged →
-  Deployed, where Merged is one column per branch (such as Merged (dev) and
-  Merged (main)), and each keeps an append-only log. A story an agent
+  Released, where Merged is one column per branch (such as Merged (dev) and
+  Merged (main)), Released means the story is in an official release (cut with
+  `cut_release`, which records a version and its git tag), and each keeps an
+  append-only log. A story an agent
   adds is Proposed until a person approves it.
 - Dependencies are explicit, and a story always ranks below what it depends on.
 - Agents can **search** stories, ideas and phases by keyword or by meaning,
@@ -85,7 +87,7 @@ On the board with a mouse, a card can be dragged to the columns it may go to,
 which light up while you drag: drop a proposed story in the backlog where it
 should rank to approve it, send an in-progress story back to the backlog,
 resume a held story, step a story in review back to in progress, or move a
-merged story on to the next branch's Merged column or to deployed. A move that needs details asks for
+merged story on to the next branch's Merged column (releasing is a separate action, `cut_release`, not a drag). A move that needs details asks for
 them in a small prompt before it goes through: a reason to hold or close
 (including declining a proposal), a branch to start (and a workaround when the
 story is blocked), a pull request link for review, a merge commit for a merge.

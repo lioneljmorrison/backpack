@@ -119,9 +119,62 @@ func TestSetStatusMergesIntoANamedBranchOneStepAtATime(t *testing.T) {
 	if s := set(map[string]any{"to": "merged", "into": "main", "commit": "def5678"}); s["into"] != "main" {
 		t.Fatalf("a merge into main: %v", s)
 	}
-	why := refused(t, cs, "set_status", map[string]any{"workspace": "staged", "id": "S-1", "to": "released"})
-	if !strings.Contains(why, "release branch") {
+	for _, to := range []string{"released", "deployed"} {
+		why := refused(t, cs, "set_status", map[string]any{"workspace": "staged", "id": "S-1", "to": to})
+		if !strings.Contains(why, "cut_release") {
+			t.Fatalf("refusal %q", why)
+		}
+	}
+}
+
+func TestCutReleaseReleasesWhatIsMergedIntoTheReleaseBranch(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	mergedIntoDev(t, b, "Second")
+	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+		t.Fatal(err)
+	}
+	mergedIntoDev(t, b, "Third")
+	got := use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.0.0", "tag": "v1.0.0", "commit": "abc1234", "notes": "First cut"})
+	stories, _ := got["stories"].([]any)
+	if got["id"] != "R-1" || got["version"] != "v1.0.0" || got["tag"] != "v1.0.0" || got["commit"] != "abc1234" ||
+		len(stories) != 2 || stories[0] != "S-1" || stories[1] != "S-2" {
+		t.Fatalf("answer %v", got)
+	}
+	if s, err := b.Story("staged", "S-1"); err != nil || s.Status != "released" {
+		t.Fatalf("S-1 %+v, %v", s, err)
+	}
+	if s, err := b.Story("staged", "S-3"); err != nil || s.Status != "merged" || s.Into != "dev" {
+		t.Fatalf("S-3 %+v, %v", s, err)
+	}
+	// Refusals: a version taken, nothing to release, a missing version or tag.
+	if why := refused(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.0.0", "tag": "t"}); !strings.Contains(why, "v1.0.0") {
 		t.Fatalf("refusal %q", why)
+	}
+	if why := refused(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.1.0", "tag": "v1.1.0"}); !strings.Contains(why, "nothing to release") {
+		t.Fatalf("refusal %q", why)
+	}
+	refused(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.2.0"})
+	refused(t, cs, "cut_release", map[string]any{"workspace": "staged", "tag": "v1.2.0"})
+}
+
+func TestCutReleaseRunsInsideABatch(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+		t.Fatal(err)
+	}
+	rs := resultsIn(t, cs, "staged",
+		action("cut_release", map[string]any{"version": "v1", "tag": "v1"}),
+		action("cut_release", map[string]any{"version": "v2", "tag": "v2"}))
+	res, _ := rs[0]["result"].(map[string]any)
+	if rs[0]["ok"] != true || res["id"] != "R-1" {
+		t.Fatalf("cut in a batch: %v", rs[0])
+	}
+	if why, _ := rs[1]["error"].(string); rs[1]["ok"] != false || !strings.Contains(why, "nothing to release") {
+		t.Fatalf("a refused cut in a batch: %v", rs[1])
 	}
 }
 

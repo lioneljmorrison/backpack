@@ -438,9 +438,10 @@ not part of the board.
   `whats_next` per board, and closing it would move its stories to the parent
   branch's column at the merge commit. Not designed or scheduled; for now one
   workspace has one backlog.
-- **Order of delivery.** Phase 2 (Branches) brings branches, `into` and the
-  branch tools while Deployed still exists, so Deployed is allowed only from
-  the release branch until phase 3 (Releases) removes it.
+- **Order of delivery.** Phase 2 (Branches) brought branches, `into` and the
+  branch tools; phase 3 (Releases) added `cut_release` (2026-10-13, S-31),
+  which removed Deployed. Reading releases (`list_releases`, `get_release`, the
+  release page) and a story showing its release come after it.
 
 Questions about remaining work are logged on their stories in Backpack.
 
@@ -538,10 +539,12 @@ workspace's branches are seeded from the creation setting (one branch, or
   `released` (merged into `main`) and the old `deployed` status are refused
   with a message naming the new form. Migrations turn old released stories
   into merged into the release branch, and old deployed stories into released.
-  Until releases exist (2026-10-13, S-24 built the merge half), `deployed` remains,
-  allowed only from the release branch, and the migration turns old released
-  stories into merged into the release branch and gives old deployed stories
-  `into` the release branch. A merge to the next branch is a `merged` to
+  Two migrations did it: old released stories became merged into the release
+  branch, and old deployed stories got `into` the release branch (migration 8),
+  then became released (migration 9, which makes no release record). Released
+  is reached only by `cut_release` (2026-10-13, S-31): `set_status` to
+  `released` or `deployed` is refused naming it, and a released story keeps its
+  `into`. A merge to the next branch is a `merged` to
   `merged` change that names it (`into`) and carries its own commit.
 - **Empty lists:** `all(…)` over an empty list is true, so phase completion
   and the goals flag guard against no stories and no goals.
@@ -585,7 +588,7 @@ true or false). Every tool takes `workspace`. Since slice 6, `add_story`
 proposes: the story goes in as `proposed`, with a required `reasoning`.
 Ideas add `add_idea` (open at once, with optional `context`),
 `list_ideas`, `get_idea`, `update_idea`, `move_idea`,
-`refine_idea` and `drop_idea`. Search adds `search`. `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `merge_branch` (2026-10-13, S-25) takes a branch and its merge commit and answers
+`refine_idea` and `drop_idea`. Search adds `search`. `cut_release` (2026-10-13, S-31) takes a `version` and a `tag` (both required, plain text) and an optional `commit` and `notes`, answers with the release (`id`, `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` and `stories`, the ids it released in delivery order), and is the same action as `POST /v1/workspaces/{ws}/releases` (201); a version already released or nothing to release is a 409, a missing version or tag or odd text a 400, and it runs inside `batch`. It is one query: it makes the Release (R-n, from the workspace's `next_release` counter), marks each story merged into the release branch Released, links it with `IN_RELEASE`, and logs a status entry (merged to released, naming the release, with the commit when given) from one block of log ids. `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `merge_branch` (2026-10-13, S-25) takes a branch and its merge commit and answers
 `{"stories": [...]}`, the stories it moved; it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `add_branch` (2026-10-13, S-28) takes a `name`, the branch it merges `into` (required) and an optional `alias`, answers with the branch, and is the same action as `POST /v1/workspaces/{ws}/branches` (201); an unknown `into` is a 404, a taken name a 409, a missing `into` or a bad name a 400, and it runs inside `batch`. `update_branch` (2026-10-13, S-26, S-27, S-28) takes a branch and an optional new `name`, `alias` and `into`, answers with the branch, and is the same action as `PATCH /v1/workspaces/{ws}/branches/{name}`; `into` re-points where the branch merges (nothing moves; one query, with the cycle check a bounded walk of the branches' `into` names, since `into` is a property and not an edge), and is refused for the branch itself or one leading back to it, an unknown branch, the release branch, or empty on any other branch (409, or 404 for an unknown one); fields not given are left alone, a name already in use or with whitespace or over 100 characters is refused, and renaming to the branch's own name changes nothing. An `alias` (plain text, at most 100 characters; empty clears it) replaces only the branch name inside its web column heading, "Merged (Production)"; the story page, API, tools and logs keep the name. `remove_branch` (2026-10-13, S-29) takes a branch, answers `{"removed": true}`, and is the same action as `DELETE /v1/workspaces/{ws}/branches/{name}` (204, as removing a dependency); it is one query and runs inside `batch`. It is refused with 409 for the release branch, the only starting branch, and a branch that still has stories merged into it or branches merging into it (the reason names them), and with 404 for an unknown branch. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.

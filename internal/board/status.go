@@ -9,32 +9,33 @@ import (
 // The columns a story moves through, then the two it can be pulled into.
 // Proposed holds an agent's new story until a person approves it. A merged
 // story is in the column of the branch it reached (Story.Into), so there is
-// one Merged column per branch.
+// one Merged column per branch. Released is the last step and is reached only
+// by cutting a release (CutRelease), never by a status change.
 const (
 	Proposed   = "proposed"
 	Backlog    = "backlog"
 	InProgress = "in_progress"
 	InReview   = "in_review"
 	Merged     = "merged"
-	Deployed   = "deployed"
+	Released   = "released"
 	OnHold     = "on_hold"
 	Closed     = "closed"
 )
 
 // statuses is every status, in board order.
-var statuses = []string{Proposed, OnHold, Backlog, InProgress, InReview, Merged, Deployed, Closed}
+var statuses = []string{Proposed, OnHold, Backlog, InProgress, InReview, Merged, Released, Closed}
 
 // complete is every status in which a story's work has landed.
-var complete = []string{Merged, Deployed}
+var complete = []string{Merged, Released}
 
 // moves is every allowed change of status but those that depend on the story
 // or its branches: a story on hold resumes in the column it left, a merge
-// goes to a particular branch, and only a story in the release branch is
-// deployed.
+// goes to a particular branch. Nothing moves into Released here: a release
+// takes the stories.
 var moves = []string{
 	Proposed + ">" + Backlog, Proposed + ">" + OnHold, Proposed + ">" + Closed,
 	Backlog + ">" + InProgress, InProgress + ">" + InReview, InReview + ">" + Merged,
-	Merged + ">" + Merged, Merged + ">" + Deployed,
+	Merged + ">" + Merged,
 	InProgress + ">" + Backlog, InReview + ">" + InProgress,
 	Backlog + ">" + OnHold, InProgress + ">" + OnHold, InReview + ">" + OnHold,
 	Backlog + ">" + Closed, InProgress + ">" + Closed, InReview + ">" + Closed, OnHold + ">" + Closed,
@@ -99,10 +100,6 @@ func Moves(s Story, bs []Branch) []Move {
 			}
 			continue
 		}
-		if st == Deployed && s.Status == Merged {
-			i := slices.IndexFunc(bs, func(b Branch) bool { return b.Name == s.Into })
-			ok = i >= 0 && bs[i].Into == ""
-		}
 		if ok {
 			to = append(to, m)
 		}
@@ -126,8 +123,8 @@ type StatusChange struct {
 }
 
 func (c StatusChange) check() error {
-	if c.To == "released" {
-		return refuse(Invalid, "there is no released status; record a merge into the release branch (to merged, with into naming it)")
+	if c.To == Released || c.To == "deployed" {
+		return refuse(Invalid, "a story is released by cutting a release, not by a status change; use cut_release (deployed is no longer a status)")
 	}
 	if !slices.Contains(statuses, c.To) {
 		return refuse(Invalid, "no status %q", c.To)
@@ -179,14 +176,13 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 		WITH w, s, waiting, collect(d.id) AS dependents, s.status AS from, coalesce(w.next_log, 1) AS n
 		OPTIONAL MATCH (br:Branch)
 		WITH w, s, waiting, dependents, from, n, collect(br.name) AS names, collect(br.into) AS intos,
-			collect(CASE WHEN br.name = s.into THEN br.into END) AS afters,
-			collect(CASE WHEN br.into IS NULL THEN br.name END) AS releases
-		WITH w, s, waiting, dependents, from, n, names, intos, afters[0] AS after, releases[0] AS release,
+			collect(CASE WHEN br.name = s.into THEN br.into END) AS afters
+		WITH w, s, waiting, dependents, from, n, names, intos, afters[0] AS after,
 			[x IN names WHERE NOT x IN intos] AS starts
-		WITH w, s, waiting, dependents, from, n, names, after, release, starts,
+		WITH w, s, waiting, dependents, from, n, names, after, starts,
 			CASE WHEN from = 'merged' THEN $into
 				ELSE coalesce($into, CASE WHEN size(starts) = 1 THEN starts[0] END) END AS target
-		WITH w, s, waiting, dependents, from, n, target, starts, after, release, CASE
+		WITH w, s, waiting, dependents, from, n, target, starts, after, CASE
 			WHEN NOT ((from + '>' + $to) IN $moves OR (from = 'on_hold' AND $to = s.held_from)) THEN 'move'
 			WHEN $to = 'merged' AND $into IS NOT NULL AND NOT $into IN names THEN 'no branch'
 			WHEN from = 'in_review' AND $to = 'merged' AND $into IS NULL AND size(starts) > 1 THEN 'name'
@@ -194,7 +190,6 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 			WHEN from = 'merged' AND $to = 'merged' AND after IS NULL THEN 'last'
 			WHEN from = 'merged' AND $to = 'merged' AND target IS NULL THEN 'next'
 			WHEN from = 'merged' AND $to = 'merged' AND target <> after THEN 'next'
-			WHEN $to = 'deployed' AND (s.into IS NULL OR s.into <> release) THEN 'not release'
 			WHEN $to = 'closed' AND size(dependents) > 0 THEN 'dependents'
 			WHEN $to = 'merged' AND size(waiting) > 0 THEN 'blocked merge'
 			WHEN $workaround <> '' AND from <> 'backlog' THEN 'not starting'
@@ -219,7 +214,7 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + 1), at: $now, actor: $actor,
 					kind: 'decision', reason: $workaround, text: 'Started while blocked by ' +
 					reduce(t = '', x IN waiting | t + CASE WHEN t = '' THEN '' ELSE ', ' END + x)})))
-		RETURN violation, from, s.held_from AS held_from, waiting, dependents, starts, after, release, s.into AS into`,
+		RETURN violation, from, s.held_from AS held_from, waiting, dependents, starts, after, s.into AS into`,
 		map[string]any{
 			"id": id, "to": c.To, "moves": moves, "complete": complete, "actor": actor, "now": now(),
 			"reason": orNull(c.Reason), "branch": orNull(c.Branch), "pr": orNull(c.PRURL), "commit": orNull(c.Commit), "into": orNull(c.Into),
@@ -251,8 +246,6 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 		return Story{}, refuse(Conflict, "%s is already in %s, which merges nowhere", id, str(r, "into"))
 	case "next":
 		return Story{}, refuse(Conflict, "%s is merged into %s; its next merge is into %s", id, str(r, "into"), str(r, "after"))
-	case "not release":
-		return Story{}, refuse(Conflict, "%s is deployed only from the release branch %s; merge it there first", id, str(r, "release"))
 	case "dependents":
 		return Story{}, refuse(Conflict, "%s cannot be closed while %s depend on it; remove those dependencies first",
 			id, list(strs(r, "dependents")))

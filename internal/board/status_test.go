@@ -61,14 +61,14 @@ func TestAStoryMovesForwardThroughEveryColumnAndEachMoveIsLogged(t *testing.T) {
 	addStory(t, b, board.NewStory{Title: "A"})
 	steps := []board.StatusChange{
 		{To: "in_progress"}, {To: "in_review"}, {To: "merged", Commit: "c1"},
-		{To: "merged", Into: "main", Commit: "c2"}, {To: "deployed"},
+		{To: "merged", Into: "main", Commit: "c2"},
 	}
 	for _, c := range steps {
 		setStatus(t, b, "S-1", c)
 	}
-	s := wantStatus(t, b, "S-1", "deployed")
+	s := wantStatus(t, b, "S-1", "merged")
 	if s.Into != "main" {
-		t.Fatalf("a deployed story keeps the branch it reached: into %q", s.Into)
+		t.Fatalf("a merged story is in the branch it reached: into %q", s.Into)
 	}
 
 	log := readLog(t, b, "S-1")
@@ -83,8 +83,8 @@ func TestAStoryMovesForwardThroughEveryColumnAndEachMoveIsLogged(t *testing.T) {
 		from = steps[i].To
 	}
 	// Each merge's entry names the branch and the commit.
-	if log[2].Into != "dev" || log[2].Commit != "c1" || log[3].Into != "main" || log[3].Commit != "c2" || log[4].Into != "" {
-		t.Fatalf("merge entries %+v %+v %+v", log[2], log[3], log[4])
+	if log[2].Into != "dev" || log[2].Commit != "c1" || log[3].Into != "main" || log[3].Commit != "c2" {
+		t.Fatalf("merge entries %+v %+v", log[2], log[3])
 	}
 }
 
@@ -124,20 +124,11 @@ func TestMergingRecordsTheBranchReachedAndGoesOneStepAtATime(t *testing.T) {
 			{c: board.StatusChange{To: "merged", Into: "main"}, into: "main"},
 			{c: board.StatusChange{To: "merged", Into: "main"}, refuse: "merges nowhere"},
 		}},
-		{"deployed from dev is refused", two, []step{
-			{c: board.StatusChange{To: "merged"}, into: "dev"},
-			{c: board.StatusChange{To: "deployed"}, refuse: "main"},
-		}},
-		{"deployed from main", two, []step{
-			{c: board.StatusChange{To: "merged"}, into: "dev"},
-			{c: board.StatusChange{To: "merged", Into: "main"}, into: "main"},
-			{c: board.StatusChange{To: "deployed"}, into: "main"},
-		}},
 		{"one branch: merged reaches it", []string{"main"}, []step{{c: board.StatusChange{To: "merged"}, into: "main"}}},
 		{"one branch: main named", []string{"main"}, []step{{c: board.StatusChange{To: "merged", Into: "main"}, into: "main"}}},
-		{"one branch: deployed straight after", []string{"main"}, []step{
+		{"one branch: nothing merges past it", []string{"main"}, []step{
 			{c: board.StatusChange{To: "merged"}, into: "main"},
-			{c: board.StatusChange{To: "deployed"}, into: "main"},
+			{c: board.StatusChange{To: "merged", Into: "main"}, refuse: "merges nowhere"},
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -179,18 +170,6 @@ func TestMergingRecordsTheBranchReachedAndGoesOneStepAtATime(t *testing.T) {
 	}
 }
 
-func TestTheOldReleasedStatusIsRefusedAndNamesTheNewForm(t *testing.T) {
-	b := newReleasingWorkspace(t)
-	addStory(t, b, board.NewStory{Title: "A"})
-	walk(t, b, "S-1", "in_progress", "in_review", "merged")
-	_, err := b.SetStatus("demo", actor, "S-1", board.StatusChange{To: "released"})
-	wantKind(t, err, board.Invalid)
-	if !strings.Contains(err.Error(), "merged") || !strings.Contains(err.Error(), "release branch") {
-		t.Fatalf("refusal %q", err)
-	}
-	wantStatus(t, b, "S-1", "merged")
-}
-
 func TestABranchIsNamedOnlyWhenMerging(t *testing.T) {
 	b := newReleasingWorkspace(t)
 	addStory(t, b, board.NewStory{Title: "A"})
@@ -215,7 +194,6 @@ func TestStatusChangesThatSkipOrGoBackTooFarAreRefused(t *testing.T) {
 		{"skip to review", nil, "in_review", board.Conflict},
 		{"skip to merged", []string{"in_progress"}, "merged", board.Conflict},
 		{"back from merged", []string{"in_progress", "in_review", "merged"}, "in_review", board.Conflict},
-		{"out of deployed", []string{"in_progress", "in_review", "merged", "deployed"}, "backlog", board.Conflict},
 		{"back two", []string{"in_progress", "in_review"}, "backlog", board.Conflict},
 		{"same column", nil, "backlog", board.Conflict},
 		{"unknown column", nil, "done", board.Invalid},
@@ -505,11 +483,11 @@ func TestMovesListsWhereAStoryCanGoNext(t *testing.T) {
 		{board.Story{Status: board.Backlog}, one, []string{"on_hold", "in_progress", "closed"}},
 		{board.Story{Status: board.InReview}, one, []string{"on_hold", "in_progress", "merged:main", "closed"}},
 		{board.Story{Status: board.InReview}, two, []string{"on_hold", "in_progress", "merged:dev", "closed"}},
-		{board.Story{Status: board.Merged, Into: "main"}, one, []string{"deployed"}},
+		{board.Story{Status: board.Merged, Into: "main"}, one, nil},
 		{board.Story{Status: board.Merged, Into: "dev"}, two, []string{"merged:main"}},
-		{board.Story{Status: board.Merged, Into: "main"}, two, []string{"deployed"}},
+		{board.Story{Status: board.Merged, Into: "main"}, two, nil},
 		{board.Story{Status: board.OnHold, HeldFrom: board.InProgress}, one, []string{"in_progress", "closed"}},
-		{board.Story{Status: board.Deployed, Into: "main"}, one, nil},
+		{board.Story{Status: board.Released, Into: "main"}, one, nil},
 	} {
 		var got []string
 		for _, m := range board.Moves(c.s, c.bs) {

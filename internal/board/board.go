@@ -43,7 +43,7 @@ var migrations = []string{
 	// Every complete story names the branch it reached: merged is in the first
 	// branch (the one no branch merges into), released was a merge into the
 	// release branch (the one that merges nowhere) and becomes merged there,
-	// deployed stays deployed in the release branch. A story that already
+	// deployed stays deployed in the release branch (until the next migration). A story that already
 	// has a branch is left alone, so a repeat changes nothing.
 	`MATCH (b:Branch)
 		WITH collect(b.name) AS names, collect(b.into) AS intos,
@@ -53,6 +53,10 @@ var migrations = []string{
 		WITH s, s.status AS old, first, release
 		SET s.into = CASE old WHEN 'merged' THEN first ELSE release END,
 			s.status = CASE old WHEN 'released' THEN 'merged' ELSE old END`,
+	// Released replaces deployed as the last step: a deployed story reads as
+	// released, still in the branch it reached, with no release record. A
+	// repeat finds no deployed story.
+	"MATCH (s:Story {status: 'deployed'}) SET s.status = 'released'",
 }
 
 // Kind says why the board refused a request.
