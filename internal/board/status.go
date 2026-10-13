@@ -30,7 +30,7 @@ var complete = []string{Merged, Released, Deployed}
 // or its workspace: a story on hold resumes in the column it left, and
 // Merged goes to Released or Deployed by the workspace's release stage.
 var moves = []string{
-	Proposed + ">" + Backlog, Proposed + ">" + Closed,
+	Proposed + ">" + Backlog, Proposed + ">" + OnHold, Proposed + ">" + Closed,
 	Backlog + ">" + InProgress, InProgress + ">" + InReview, InReview + ">" + Merged,
 	Merged + ">" + Released, Merged + ">" + Deployed, Released + ">" + Deployed,
 	InProgress + ">" + Backlog, InReview + ">" + InProgress,

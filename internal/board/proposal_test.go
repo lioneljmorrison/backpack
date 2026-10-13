@@ -70,7 +70,7 @@ func TestAProposalIsApprovedIntoTheBacklogOrDeclinedByClosingIt(t *testing.T) {
 	}
 }
 
-func TestAProposalCannotBeStartedOrHeldAndAStoryCannotGoBackToProposed(t *testing.T) {
+func TestAProposalCannotBeStartedAndAStoryCannotGoBackToProposed(t *testing.T) {
 	b := newWorkspace(t)
 	propose(t, b, board.NewStory{Title: "A"})
 	addStory(t, b, board.NewStory{Title: "B"})
@@ -79,7 +79,6 @@ func TestAProposalCannotBeStartedOrHeldAndAStoryCannotGoBackToProposed(t *testin
 		to board.StatusChange
 	}{
 		{"S-1", board.StatusChange{To: "in_progress"}},
-		{"S-1", board.StatusChange{To: "on_hold", Reason: "later"}},
 		{"S-2", board.StatusChange{To: "proposed"}},
 	} {
 		_, err := b.SetStatus("demo", actor, c.id, c.to)
@@ -87,6 +86,37 @@ func TestAProposalCannotBeStartedOrHeldAndAStoryCannotGoBackToProposed(t *testin
 	}
 	wantStatus(t, b, "S-1", "proposed")
 	wantStatus(t, b, "S-2", "backlog")
+}
+
+func TestAProposalCanBeHeldWithAReasonAndResumesToProposed(t *testing.T) {
+	b := newWorkspace(t)
+	propose(t, b, board.NewStory{Title: "A"})
+	_, err := b.SetStatus("demo", actor, "S-1", board.StatusChange{To: "on_hold"})
+	wantKind(t, err, board.Invalid)
+	wantStatus(t, b, "S-1", "proposed")
+
+	held := setStatus(t, b, "S-1", board.StatusChange{To: "on_hold", Reason: "wait for the design"})
+	if held.HeldFrom != "proposed" || held.HoldReason != "wait for the design" {
+		t.Fatalf("held %+v", held)
+	}
+	w, err := b.Where("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.Proposed) != 0 {
+		t.Fatalf("a held proposal is listed as proposed: %v", ids(w.Proposed))
+	}
+	_, err = b.SetStatus("demo", actor, "S-1", board.StatusChange{To: "backlog"})
+	wantKind(t, err, board.Conflict)
+
+	setStatus(t, b, "S-1", board.StatusChange{To: "proposed"})
+	setStatus(t, b, "S-1", board.StatusChange{To: "backlog"})
+	wantStatus(t, b, "S-1", "backlog")
+	l := readLog(t, b, "S-1")
+	if len(l) != 4 || l[1].From != "proposed" || l[1].To != "on_hold" ||
+		l[2].From != "on_hold" || l[2].To != "proposed" || l[3].To != "backlog" {
+		t.Fatalf("log %+v", l)
+	}
 }
 
 func TestWhatsNextAndTheNextThreeSkipProposals(t *testing.T) {

@@ -190,3 +190,15 @@ func TestAWaitingStoryCanGoBackToWork(t *testing.T) {
 		t.Fatalf("activity %q, want building", got.Activity)
 	}
 }
+
+func TestAProposalCanBeHeldFromItsPage(t *testing.T) {
+	h, b := withDemo(t)
+	s := story(t, b, board.NewStory{Title: "Maybe", Proposed: true, Reasoning: "it might help"})
+	back := "/w/demo/stories/" + s.ID
+	wantPage(t, get(h, back, "bp_good"), `value="on_hold"`)
+	act(t, h, back+"/status", url.Values{"to": {"on_hold"}, "reason": {"Wait for the design"}}, back)
+	if status(t, b, s.ID) != board.OnHold {
+		t.Fatal("proposal is not on hold")
+	}
+	wantPage(t, get(h, back, "bp_good"), `value="proposed"`)
+}

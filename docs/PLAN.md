@@ -216,7 +216,7 @@ Each slice is its own branch and pull request into `dev`.
 - **Status flow.** A story moves forward one column, or back one before
   Merged (In review → In progress, In progress → Backlog). Nothing moves back
   from Merged on. Merged, Released and Deployed all count as **complete**.
-- **On hold.** A story in Backlog, In progress or In review can be put on
+- **On hold.** A story in Proposed, Backlog, In progress or In review can be put on
   hold with a reason (for example, needs more info). Resuming returns it to
   the column it left. "Blocked" stays reserved for dependencies.
 - **Closed.** A story no longer needed is closed with a reason. Closing is
@@ -281,7 +281,8 @@ Each slice is its own branch and pull request into `dev`.
   (slice 3's "only status changes" rule). `POST /stories` over HTTP still places directly into Backlog.
 - **Anyone approves**, over MCP or HTTP: Proposed → Backlog. Picking another
   spot is a move, then approval. Declining is Proposed → Closed, with a
-  reason. A story never goes back to Proposed.
+  reason. A story never goes back to Proposed, except a held proposal
+  resuming (2026-10-13 decision below).
 - **Where are we** lists what is waiting for approval. A proposed story in a
   phase counts as open work.
 
@@ -329,6 +330,14 @@ Each slice is its own branch and pull request into `dev`.
   drops and recreates the collection, so a change to the search schema
   applies at the next start whatever was there before: that is its
   migration.
+
+**Drag cards between columns** (settled 2026-10-13, S-18):
+- **A proposal can be put on hold.** Proposed → On hold, with a reason like
+  any hold, through MCP, API and web. It resumes to Proposed and is then
+  approved as usual; while held it is not listed as waiting for approval.
+  Why: dragging cards on the board needs to be able to park a proposal
+  without approving or declining it. This is the only way a story returns to
+  Proposed.
 
 Questions about remaining work are logged on their stories in Backpack.
 
