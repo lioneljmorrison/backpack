@@ -67,6 +67,12 @@ type mergeBranchIn struct {
 	Commit string `json:"commit" jsonschema:"the merge commit"`
 }
 
+type updateBranchIn struct {
+	in
+	Branch string  `json:"branch" jsonschema:"the branch to change, by its current name"`
+	Name   *string `json:"name,omitempty" jsonschema:"the new name: plain text, no whitespace, at most 100 characters, not already a branch's"`
+}
+
 type setStatusIn struct {
 	storyIn
 	To         string `json:"to" jsonschema:"proposed (only to resume a held proposal), backlog, in_progress, in_review, merged, deployed, on_hold or closed"`
@@ -170,6 +176,7 @@ func addTools(s *mcp.Server, t tools) {
 	write(s, steps, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it.", t.moveStory)
 	write(s, steps, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog, declined by closing it, or parked with on_hold. Merging records the branch reached (into; none means the first branch) and moves on one branch at a time, so merged into the release branch is a second merge; deployed is allowed only from the release branch. Merged and deployed are complete. on_hold resumes to the column it left (a held proposal resumes to proposed); closed is final. Every change is logged.", t.setStatus)
 	write(s, steps, "merge_branch", "Record that a branch was merged into the one it merges into, such as dev into main, at the merge commit. Every story merged into that branch moves to the next one at once, each logged with the commit; stories still in progress or in review stay put. Answers with the stories it moved, none when the branch holds nothing. The release branch merges nowhere, so it is refused.", t.mergeBranch)
+	write(s, steps, "update_branch", "Change a branch; fields not given are left as they are. Giving a new name renames it everywhere the board refers to it: the branches that merge into it and the stories that reached it. No story moves; past log entries keep the old name. A name already in use, or one that is empty, has whitespace or is over 100 characters, is refused. Answers with the branch.", t.updateBranch)
 	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
 	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
 	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
@@ -247,6 +254,10 @@ func (t tools) setStatus(ctx context.Context, a setStatusIn) (any, error) {
 func (t tools) mergeBranch(ctx context.Context, a mergeBranchIn) (any, error) {
 	moved, err := t.b.MergeBranch(a.Workspace, actor(ctx), a.Branch, a.Commit)
 	return map[string]any{"stories": moved}, err
+}
+
+func (t tools) updateBranch(ctx context.Context, a updateBranchIn) (any, error) {
+	return t.b.UpdateBranch(a.Workspace, actor(ctx), a.Branch, board.BranchPatch{Name: a.Name})
 }
 
 func (t tools) log(ctx context.Context, a logIn) (any, error) {

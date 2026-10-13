@@ -194,3 +194,43 @@ func TestMergeBranchRunsInsideABatch(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateBranchRenamesABranchAndRefusesATakenOrBadName(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	got := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "dev", "name": "develop"})
+	if got["name"] != "develop" || got["into"] != "main" {
+		t.Fatalf("answer %v", got)
+	}
+	if s, err := b.Story("staged", "S-1"); err != nil || s.Status != "merged" || s.Into != "develop" {
+		t.Fatalf("S-1: %+v, %v", s, err)
+	}
+	if why := refused(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "develop", "name": "main"}); !strings.Contains(why, "already") {
+		t.Fatalf("refusal %q", why)
+	}
+	refused(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "develop", "name": "two words"})
+	refused(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "nope", "name": "x"})
+	// A field not given is left alone.
+	if same := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "develop"}); same["name"] != "develop" {
+		t.Fatalf("an empty patch answered %v", same)
+	}
+}
+
+func TestUpdateBranchRunsInsideABatch(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	rs := resultsIn(t, cs, "staged",
+		action("update_branch", map[string]any{"branch": "dev", "name": "develop"}),
+		action("update_branch", map[string]any{"branch": "develop", "name": "main"}))
+	if res, _ := rs[0]["result"].(map[string]any); rs[0]["ok"] != true || res["name"] != "develop" {
+		t.Fatalf("rename in a batch: %v", rs[0])
+	}
+	if rs[1]["ok"] != false {
+		t.Fatalf("a refused rename in a batch: %v", rs[1])
+	}
+	if s, err := b.Story("staged", "S-1"); err != nil || s.Into != "develop" {
+		t.Fatalf("S-1: %+v, %v", s, err)
+	}
+}
