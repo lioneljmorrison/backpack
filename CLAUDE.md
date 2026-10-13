@@ -113,8 +113,10 @@ through the `backpack` MCP tools, added to Claude Code once per machine (see
   - open the pull request: `in_review`, with its link;
   - merged into `dev`: `merged`, with the merge commit (`dev` is the first
     branch, so no `into` is needed);
-  - merged into `main` when `dev` is merged into `main`: `merged` with
-    `into` `main`, and that merge commit.
+  - `dev` merged into `main`: one `merge_branch` call (branch `dev`, with the
+    merge commit) moves every story merged into `dev` to `main`, each logged
+    with that commit, in place of a `set_status` per story. Stories still in
+    progress or in review stay put.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,

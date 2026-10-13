@@ -239,8 +239,11 @@ is never committed.
   - open the pull request: `in_review`, with its link;
   - merged: `merged`, with the merge commit (it goes into the first branch,
     such as `dev`; name another with `into`);
-  - merged again into the next branch (`merged`, `into` `main`, with that merge
-    commit), one branch at a time, and `deployed` once it is in `main`.
+  - a branch merged into the next (such as `dev` into `main`): one
+    `merge_branch` call, naming the branch and the merge commit, moves every
+    story merged into it to the next branch, each logged with the commit, in
+    place of a `set_status` per story; stories still in progress or in review
+    stay put. `deployed` follows once a story is in `main`.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,

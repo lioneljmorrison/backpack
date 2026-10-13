@@ -70,3 +70,68 @@ func (b *Board) ReleaseStage(ws string) (bool, error) {
 	}
 	return hasReleaseStage(g)
 }
+
+// MergeBranch records that a branch was merged into the one it merges into,
+// at the given commit. Every story merged into the branch moves to the next
+// branch and gets the same log entry a single merge writes; stories still in
+// progress or in review stay put. It answers with the stories it moved, none
+// when the branch holds nothing. The release branch merges nowhere, so
+// merging it is refused. All of it is one query, so every story moves or none
+// does.
+func (b *Board) MergeBranch(ws, actor, branch, commit string) (_ []Story, err error) {
+	if commit == "" {
+		return nil, refuse(Invalid, "a commit is required to record a merge")
+	}
+	if branch == "" {
+		return nil, refuse(Invalid, "a branch is required")
+	}
+	if err := plainText(branch, commit); err != nil {
+		return nil, err
+	}
+	g, err := b.workspace(ws)
+	if err != nil {
+		return nil, err
+	}
+	res, err := g.Query(`
+		MATCH (w:Workspace)
+		OPTIONAL MATCH (b:Branch {name: $branch})
+		WITH w, b, coalesce(w.next_log, 1) AS n,
+			CASE WHEN b IS NULL THEN 'no branch' WHEN b.into IS NULL THEN 'release' END AS violation
+		OPTIONAL MATCH (s:Story {status: 'merged', into: $branch}) WHERE violation IS NULL
+		WITH w, b, n, violation, s ORDER BY s.rank, s.id
+		WITH w, b, n, violation, collect(s) AS ss
+		FOREACH (_ IN CASE WHEN violation IS NULL AND size(ss) > 0 THEN [1] ELSE [] END |
+			SET w.next_log = n + size(ss))
+		FOREACH (i IN range(0, size(ss) - 1) | FOREACH (s IN [ss[i]] |
+			SET s.into = b.into
+			CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $now, actor: $actor, kind: 'status',
+				from: 'merged', to: 'merged', commit: $commit, into: b.into})))
+		RETURN violation, b.into AS into, [s IN ss | s.id] AS ids`,
+		map[string]any{"branch": branch, "commit": commit, "actor": actor, "now": now()}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("merge branch: %w", err)
+	}
+	if !res.Next() {
+		return nil, refuse(NotFound, "no workspace %q", ws)
+	}
+	r := res.Record()
+	switch str(r, "violation") {
+	case "":
+	case "no branch":
+		return nil, refuse(NotFound, "%s has no branch %q", ws, branch)
+	default: // release
+		return nil, refuse(Conflict, "%s is the release branch and merges nowhere", branch)
+	}
+	moved := []Story{}
+	for _, id := range strs(r, "ids") {
+		s, err := story(g, id)
+		if err != nil {
+			return nil, err
+		}
+		moved = append(moved, s)
+	}
+	for _, s := range moved {
+		b.changed(nil, Change{ws, KindStory, s.ID})
+	}
+	return moved, nil
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -302,5 +303,46 @@ func TestWarmWithTypesenseUnreachableIsUnavailable(t *testing.T) {
 	b, _ := newBoard(t)
 	if err := unreachable(b).Warm(ctx); !errors.Is(err, search.ErrUnavailable) {
 		t.Fatalf("error = %v, want ErrUnavailable", err)
+	}
+}
+
+// A branch merge notifies the index of every story it moved (a failed sync
+// fails the test), and search still finds each in its state: merged for the
+// ones moved, in review for the one left behind.
+func TestAfterABranchMergeSearchFindsEveryMovedStoryAndTheOneLeftBehind(t *testing.T) {
+	b, x := newBoard(t)
+	b.OnChange(func(c board.Change) {
+		if err := x.Sync(ctx, c); err != nil {
+			t.Errorf("sync %+v: %v", c, err)
+		}
+	})
+	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "demo", HasReleaseStage: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Export invoices", "Export receipts", "Export statements", "Export refunds"} {
+		addStory(t, b, "demo", board.NewStory{Title: title})
+	}
+	for i, id := range []string{"S-1", "S-2", "S-3", "S-4"} {
+		steps := []board.StatusChange{{To: board.InProgress}, {To: board.InReview}}
+		if i < 3 {
+			steps = append(steps, board.StatusChange{To: board.Merged, Commit: "c1"})
+		}
+		for _, c := range steps {
+			if _, err := b.SetStatus("demo", actor, id, c); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	moved, err := b.MergeBranch("demo", actor, "dev", "x9")
+	if err != nil || len(moved) != 3 {
+		t.Fatalf("moved %+v, %v", moved, err)
+	}
+	got := map[string]string{}
+	for _, r := range find(t, x, "demo", "export") {
+		got[r.ID] = r.State
+	}
+	want := map[string]string{"S-1": "merged", "S-2": "merged", "S-3": "merged", "S-4": "in_review"}
+	if !maps.Equal(got, want) {
+		t.Fatalf("search found %v, want %v", got, want)
 	}
 }
