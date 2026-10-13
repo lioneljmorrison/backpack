@@ -129,7 +129,8 @@ workspace, and the page fetches itself again. Nothing is sent through an
 outside service: Backpack is one process, and board content stays on the
 host. A page never replaces something a person is typing or choosing; it
 says the page has changed instead. It also waits for a drag to finish. On
-the board, a card that moves slides to its new place, a new card fades in and
+the board, a card that moves slides to its new place (except one the person
+just dropped, which appears where they put it), a new card fades in and
 a card that leaves fades out, all over the same half second; with reduced
 motion asked for, the board redraws without animation. A person's own moves
 on the board (a drop, the move prompt, a card's arrows) redraw in place too:
