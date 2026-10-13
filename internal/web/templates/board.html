@@ -58,3 +58,21 @@
 
 {{end}}
 {{end}}
+
+{{define "after"}}
+{{/* The move prompt sits outside main: a live refresh swaps main's content. */}}
+<dialog id="move-prompt" aria-labelledby="move-title">
+  <form id="move-form" method="dialog">
+    <h2 id="move-title"></h2>
+    <p class="field" data-field="reason" hidden><label>Reason <input name="reason" required disabled></label></p>
+    <p class="field" data-field="workaround" hidden><label>Workaround, since it is blocked <input name="workaround" required disabled></label></p>
+    <p class="field" data-field="branch" hidden><label>Branch (optional) <input name="branch" disabled></label></p>
+    <p class="field" data-field="pr_url" hidden><label>Pull request link (optional) <input name="pr_url" type="url" disabled></label></p>
+    <p class="field" data-field="commit" hidden><label>Merge commit (optional) <input name="commit" disabled></label></p>
+    <div class="actions">
+      <button type="submit">Move</button>
+      <button type="button" class="secondary" data-cancel>Cancel</button>
+    </div>
+  </form>
+</dialog>
+{{end}}

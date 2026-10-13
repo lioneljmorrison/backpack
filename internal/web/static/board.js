@@ -6,19 +6,28 @@
 // a card puts it before that card, the bottom half after it.
 //
 // Moves that need more than a drop (a reason, a branch, a pull request link,
-// a merge commit) are not taken yet: needsPrompt says which they are.
+// a merge commit) ask for it in a small prompt first: promptFor says what each
+// asks. Cancelling sends nothing and the card stays where it was.
 //
 // Listeners sit on the document, so they survive live.js swapping in a
 // fresh board.
 (function () {
   let dragged = null;
+  let prompting = false;
 
-  // needsPrompt says whether moving a card from one status to another asks
-  // for something first. A held story resumes without being asked.
-  function needsPrompt(from, to) {
-    if (from === "on_hold") return to === "closed";
-    if (to === "in_progress") return from === "backlog";
-    return ["on_hold", "closed", "in_review", "merged"].includes(to);
+  // promptFor says what moving a card from one status to another asks for
+  // first: the fields, each optional unless marked required. Empty means the
+  // drop goes straight through. A held story resumes without being asked.
+  function promptFor(from, to, blocked) {
+    if (to === "on_hold" || to === "closed") return [{ name: "reason", required: true }];
+    if (to === "in_progress" && from === "backlog") {
+      const fields = [{ name: "branch" }];
+      if (blocked) fields.unshift({ name: "workaround", required: true });
+      return fields;
+    }
+    if (to === "in_review") return [{ name: "pr_url" }];
+    if (to === "merged") return [{ name: "commit" }];
+    return [];
   }
 
   // canDrop says whether the dragged card may be dropped on the column.
@@ -27,7 +36,7 @@
     const from = dragged.dataset.status;
     const to = column.dataset.status;
     if (from === "backlog" && to === "backlog") return dragged.dataset.move !== undefined;
-    return (dragged.dataset.moves || "").split(" ").includes(to) && !needsPrompt(from, to);
+    return (dragged.dataset.moves || "").split(" ").includes(to);
   }
 
   function clear() {
@@ -84,7 +93,9 @@
   });
 
   document.addEventListener("dragend", () => {
-    if (dragged) dragged.classList.remove("dragging");
+    // While the prompt is open the card keeps .dragging, which holds back
+    // live refreshes; closing the prompt lets go of it.
+    if (dragged && !prompting) dragged.classList.remove("dragging");
     dragged = null;
     clear();
   });
@@ -117,6 +128,50 @@
       submit(card.dataset.move, fields);
       return;
     }
-    submit(card.dataset.statusUrl, { ...fields, to, back: "board" });
+    const asks = promptFor(card.dataset.status, to, card.dataset.blocked !== undefined);
+    if (asks.length === 0) {
+      submit(card.dataset.statusUrl, { ...fields, to, back: "board" });
+      return;
+    }
+    ask(card, column, to, asks);
   });
+
+  // ask opens the prompt for a move and, on Move, sends the same status form
+  // a plain drop does, with what was typed. The card may be gone after a live
+  // refresh, so only its address and id are kept.
+  function ask(card, column, to, asks) {
+    const dialog = document.getElementById("move-prompt");
+    const form = document.getElementById("move-form");
+    if (!dialog || !dialog.showModal) return;
+    const url = card.dataset.statusUrl;
+    prompting = true;
+    document.getElementById("move-title").textContent = card.dataset.id + " to " + column.getAttribute("aria-label");
+    for (const field of form.querySelectorAll("[data-field]")) {
+      const ask = asks.find((a) => a.name === field.dataset.field);
+      const input = field.querySelector("input");
+      field.hidden = !ask;
+      input.disabled = !ask;
+      input.required = !!(ask && ask.required);
+      input.value = "";
+    }
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const fields = { to, back: "board" };
+      for (const input of form.querySelectorAll("input:not(:disabled)")) {
+        if (input.value.trim() !== "") fields[input.name] = input.value.trim();
+      }
+      submit(url, fields);
+    };
+    dialog.onclick = (e) => { if (e.target === dialog) dialog.close(); };
+    form.querySelector("[data-cancel]").onclick = () => dialog.close();
+    dialog.onclose = () => {
+      prompting = false;
+      for (const el of document.querySelectorAll(".dragging")) el.classList.remove("dragging");
+      // Let live.js run a refresh it held back while the prompt was open.
+      document.dispatchEvent(new Event("dragend"));
+    };
+    dialog.showModal();
+    const first = form.querySelector("input:not(:disabled)");
+    if (first) first.focus();
+  }
 })();

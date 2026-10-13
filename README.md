@@ -84,9 +84,13 @@ On the board with a mouse, a card can be dragged to the columns it may go to,
 which light up while you drag: drop a proposed story in the backlog where it
 should rank to approve it, send an in-progress story back to the backlog,
 resume a held story, step a story in review back to in progress, or move a
-merged story on to released or deployed. Moves that need a reason, a branch,
-a pull request link or a merge commit are not dragged yet; use the story's
-page. Dragging does not work on touch screens; the forms and arrows do.
+merged story on to released or deployed. A move that needs details asks for
+them in a small prompt before it goes through: a reason to hold or close
+(including declining a proposal), a branch to start (and a workaround when the
+story is blocked), a pull request link for review, a merge commit for merged.
+Only the reason and the workaround are required. Cancel, Escape or a click
+outside leaves the card where it was. Dragging does not work on touch
+screens; the forms and arrows do.
 
 ## Connecting a project
 

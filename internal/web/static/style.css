@@ -265,3 +265,9 @@ button.secondary { background: transparent; color: var(--bad); border-color: var
 
 .inline { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0; }
 .inline input { flex: 1; min-width: 8rem; }
+
+#move-prompt { border: 1px solid var(--border, currentColor); border-radius: var(--radius); padding: 1rem 1.25rem; max-width: 26rem; width: calc(100% - 2rem); }
+#move-prompt h2 { margin-top: 0; }
+#move-prompt .field { margin: 0 0 0.6rem; }
+#move-prompt label { display: block; }
+#move-prompt input { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2rem; }
