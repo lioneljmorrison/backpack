@@ -1,6 +1,7 @@
 package board_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/lioneljmorrison/backpack/internal/board"
@@ -148,8 +149,8 @@ func TestMigrationGivesCompleteStoriesTheBranchTheyReached(t *testing.T) {
 	}
 }
 
-// Migration 9 turns deployed into released, keeping the branch, and records no
-// release for them. Running it again changes nothing.
+// Migration 9 turns deployed into released, keeping the branch; migration 10
+// then places them in R-0 (the only release made). Running it again changes nothing.
 func TestMigrationTurnsDeployedStoriesIntoReleasedOnesWithoutARelease(t *testing.T) {
 	db, prefix := falkortest.Prefix(t)
 	b, err := board.New(db, prefix+"system", prefix+"ws:")
@@ -183,14 +184,17 @@ func TestMigrationTurnsDeployedStoriesIntoReleasedOnesWithoutARelease(t *testing
 				t.Fatalf("%s: %+v, %v; want %v", id, s, err, want)
 			}
 		}
-		res, err := g.ROQuery("OPTIONAL MATCH (r:Release) WITH count(r) AS r OPTIONAL MATCH ()-[e:IN_RELEASE]->() RETURN r, count(e)", nil, nil)
+		// Migration 9 records no release; migration 10 then puts the
+		// released story in R-0, once.
+		res, err := g.ROQuery("OPTIONAL MATCH (r:Release) WITH collect(r.id) AS r OPTIONAL MATCH (s)-[e:IN_RELEASE]->() RETURN r, count(e), collect(s.id)", nil, nil)
 		if err != nil || !res.Next() {
 			t.Fatalf("count releases: %v", err)
 		}
 		r, _ := res.Record().GetByIndex(0)
 		e, _ := res.Record().GetByIndex(1)
-		if r != int64(0) || e != int64(0) {
-			t.Fatalf("migration made %v releases and %v links", r, e)
+		ids, _ := res.Record().GetByIndex(2)
+		if fmt.Sprint(r) != "[R-0]" || e != int64(1) || fmt.Sprint(ids) != "[S-1]" {
+			t.Fatalf("migration made releases %v with %v links from %v", r, e, ids)
 		}
 	}
 }

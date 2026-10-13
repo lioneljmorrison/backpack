@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/lioneljmorrison/backpack/internal/board"
 	"github.com/lioneljmorrison/backpack/internal/falkor/falkortest"
 )
@@ -370,5 +371,123 @@ func TestAStoryReleasedBeforeReleasesWereRecordedNamesNone(t *testing.T) {
 	s, err := b.Story("demo", "S-1")
 	if err != nil || s.Status != board.Released || s.Release != nil {
 		t.Fatalf("story %+v, %v", s, err)
+	}
+}
+
+// beforeReleases builds a workspace as it stood before migration 10: three
+// released stories with no release (S-1, S-2 and S-4), one merged and one in
+// the backlog. The graph is set back one migration so the next open runs it.
+func beforeReleases(t *testing.T, orphans bool) (*falkordb.Graph, func() *board.Board) {
+	t.Helper()
+	db, prefix := falkortest.Prefix(t)
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "Demo", HasReleaseStage: true}); err != nil {
+		t.Fatal(err)
+	}
+	g := db.SelectGraph(prefix + "ws:demo")
+	qs := []string{
+		"CREATE (:Story {id: 'S-3', title: 'merged', status: 'merged', into: 'main', rank: 'c'})",
+		"CREATE (:Story {id: 'S-5', title: 'later', status: 'backlog', rank: 'e'})",
+		"MATCH (w:Workspace) SET w.next_log = 7, w.next_story = 6",
+	}
+	if orphans {
+		qs = append(qs,
+			"CREATE (:Story {id: 'S-1', title: 'old one', status: 'released', into: 'main', rank: 'a'})",
+			"CREATE (:Story {id: 'S-2', title: 'old two', status: 'released', into: 'main', rank: 'b'})",
+			"CREATE (:Story {id: 'S-4', title: 'old four', status: 'released', into: 'main', rank: 'd'})")
+	}
+	for _, q := range qs {
+		if _, err := g.Query(q, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return g, func() *board.Board {
+		t.Helper()
+		if _, err := g.Query("MATCH (s:SchemaVersion) SET s.v = 9", nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		nb, err := board.New(db, prefix+"system", prefix+"ws:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return nb
+	}
+}
+
+func TestMigrationPutsReleasedStoriesWithNoReleaseInR0(t *testing.T) {
+	g, reopen := beforeReleases(t, true)
+	for range 2 { // the second run finds nothing left over
+		b := reopen()
+		rs, err := b.ListReleases("demo")
+		if err != nil || len(rs) != 1 {
+			t.Fatalf("releases %+v, %v", rs, err)
+		}
+		r := rs[0]
+		if r.ID != "R-0" || r.Version != "Before releases" || r.Tag != "" || r.Commit != "" ||
+			!slices.Equal(r.Stories, []string{"S-1", "S-2", "S-4"}) {
+			t.Fatalf("R-0 %+v", r)
+		}
+		d, err := b.GetRelease("demo", "R-0")
+		if err != nil || len(d.Entries) != 3 || d.Entries[0].ID != "S-1" {
+			t.Fatalf("release page %+v, %v", d, err)
+		}
+		s := wantStatus(t, b, "S-2", board.Released)
+		if s.Release == nil || s.Release.ID != "R-0" || s.Release.Version != "Before releases" {
+			t.Fatalf("S-2 release %+v", s.Release)
+		}
+		if s := wantStatus(t, b, "S-3", board.Merged); s.Release != nil {
+			t.Fatalf("a merged story joined %+v", s.Release)
+		}
+		ids := map[string]bool{}
+		for _, id := range []string{"S-1", "S-2", "S-4"} {
+			log := readLog(t, b, id)
+			if len(log) != 1 || !strings.Contains(log[0].Text, "R-0") || log[0].Actor == "" || log[0].At == "" {
+				t.Fatalf("%s log %+v", id, log)
+			}
+			if ids[log[0].ID] {
+				t.Fatalf("log id %s used twice", log[0].ID)
+			}
+			ids[log[0].ID] = true
+		}
+		for _, want := range []string{"L-7", "L-8", "L-9"} {
+			if !ids[want] {
+				t.Fatalf("log ids %v, want a block from L-7", ids)
+			}
+		}
+	}
+	res, err := g.ROQuery("MATCH (w:Workspace) RETURN w.next_log, w.next_release", nil, nil)
+	if err != nil || !res.Next() {
+		t.Fatal(err)
+	}
+	if nl, _ := res.Record().GetByIndex(0); nl != int64(10) {
+		t.Fatalf("next_log %v, want 10", nl)
+	}
+	if nr, _ := res.Record().GetByIndex(1); nr != nil {
+		t.Fatalf("next_release %v, left alone", nr)
+	}
+}
+
+func TestMigrationMakesNoR0WhenNothingIsOrphaned(t *testing.T) {
+	_, reopen := beforeReleases(t, false)
+	b := reopen()
+	if rs, err := b.ListReleases("demo"); err != nil || len(rs) != 0 {
+		t.Fatalf("releases %+v, %v", rs, err)
+	}
+}
+
+func TestR0ListsLastAndCuttingStillStartsAtR1(t *testing.T) {
+	_, reopen := beforeReleases(t, true)
+	b := reopen()
+	s := mergedIntoMain(t, b, "New")
+	r, err := b.CutRelease("demo", actor, v1)
+	if err != nil || r.ID != "R-1" || !slices.Equal(r.Stories, []string{"S-3", s.ID}) {
+		t.Fatalf("cut %+v, %v", r, err)
+	}
+	rs, err := b.ListReleases("demo")
+	if err != nil || len(rs) != 2 || rs[0].ID != "R-1" || rs[1].ID != "R-0" {
+		t.Fatalf("order %+v, %v", rs, err)
 	}
 }

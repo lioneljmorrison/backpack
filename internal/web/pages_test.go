@@ -7,6 +7,7 @@ import (
 
 	"github.com/lioneljmorrison/backpack/internal/board"
 	"github.com/lioneljmorrison/backpack/internal/falkor/falkortest"
+	"github.com/lioneljmorrison/backpack/internal/live"
 	"github.com/lioneljmorrison/backpack/internal/search"
 	"github.com/lioneljmorrison/backpack/internal/search/typesensetest"
 )
@@ -508,5 +509,42 @@ func TestTheBoardsWhereAreWeAreaCountsWhatWaitsForARelease(t *testing.T) {
 	i := strings.Index(body, "Waiting for release")
 	if i < 0 || !strings.Contains(body[i:i+200], "<strong>1</strong>") {
 		t.Fatalf("the where-are-we area does not count the unreleased story")
+	}
+}
+
+// A story released before releases existed sits in R-0, whose page lists it
+// and shows no empty tag.
+func TestTheReleasePageForR0ListsItsStoriesAndShowsNoTag(t *testing.T) {
+	db, prefix := falkortest.Prefix(t)
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "demo", Name: "Demo"}))
+	g := db.SelectGraph(prefix + "ws:demo")
+	for _, q := range []string{
+		"CREATE (:Story {id: 'S-1', title: 'Shipped long ago', status: 'released', into: 'main', rank: 'a'})",
+		"MATCH (s:SchemaVersion) SET s.v = 9",
+	} {
+		if _, err := g.Query(q, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, err = board.New(db, prefix+"system", prefix+"ws:") // runs the R-0 migration
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := New(known, b, nil, live.New())
+	page := get(h, "/w/demo/releases/R-0", "bp_good").Body.String()
+	for _, want := range []string{"R-0", "Before releases", "Shipped long ago", `href="/w/demo/stories/S-1"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the R-0 page lacks %q", want)
+		}
+	}
+	if strings.Contains(page, "Tag") {
+		t.Error("the R-0 page shows a tag")
+	}
+	if !strings.Contains(get(h, "/w/demo/stories/S-1", "bp_good").Body.String(), `href="/w/demo/releases/R-0"`) {
+		t.Error("the story page does not link to R-0")
 	}
 }
