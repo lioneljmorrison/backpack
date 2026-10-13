@@ -80,7 +80,7 @@ func parse() map[string]*template.Template {
 	return pages
 }
 
-var funcs = template.FuncMap{"label": label, "when": when, "percent": percent, "cardOf": cardOf,
+var funcs = template.FuncMap{"label": label, "when": when, "percent": percent,
 	"list": func(v ...string) []string { return v }}
 
 // card is what the card template is given: a story and its workspace, and

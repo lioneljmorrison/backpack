@@ -394,8 +394,8 @@ func TestMovesListsWhereAStoryCanGoNext(t *testing.T) {
 		want    []string
 	}{
 		{board.Story{Status: board.Proposed}, false, []string{board.Backlog, board.Closed}},
-		{board.Story{Status: board.Backlog}, false, []string{board.InProgress, board.OnHold, board.Closed}},
-		{board.Story{Status: board.InReview}, false, []string{board.InProgress, board.Merged, board.OnHold, board.Closed}},
+		{board.Story{Status: board.Backlog}, false, []string{board.OnHold, board.InProgress, board.Closed}},
+		{board.Story{Status: board.InReview}, false, []string{board.OnHold, board.InProgress, board.Merged, board.Closed}},
 		{board.Story{Status: board.Merged}, false, []string{board.Deployed}},
 		{board.Story{Status: board.Merged}, true, []string{board.Released}},
 		{board.Story{Status: board.OnHold, HeldFrom: board.InProgress}, false, []string{board.InProgress, board.Closed}},

@@ -123,7 +123,7 @@ func TestTheBoardAndStoryPagesWatchForChangesAndOthersDont(t *testing.T) {
 	h, b := withDemo(t)
 	s := story(t, b, board.NewStory{Title: "Watched"})
 	watching := `data-live="/w/demo/events"`
-	wantPage(t, get(h, "/w/demo", "bp_good"), watching, `data-live-kinds="story phase"`, `src="/static/live.js"`)
+	wantPage(t, get(h, "/w/demo", "bp_good"), watching, `data-live-kinds="story phase idea"`, `src="/static/live.js"`)
 	wantPage(t, get(h, "/w/demo/stories/"+s.ID, "bp_good"), watching, `data-live-kinds="story"`, `src="/static/live.js"`)
 	for _, path := range []string{"/w/demo/phases", "/w/demo/ideas", "/"} {
 		if page := get(h, path, "bp_good").Body.String(); strings.Contains(page, "data-live") || strings.Contains(page, "live.js") {

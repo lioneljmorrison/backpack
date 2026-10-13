@@ -187,9 +187,6 @@ h2 .tag, h1 .tag { vertical-align: middle; }
 .card-title { color: var(--text); display: block; }
 .card-title:hover { color: var(--accent); }
 
-.closed { margin-top: 1.5rem; }
-.closed summary { cursor: pointer; color: var(--muted); margin-bottom: 0.5rem; }
-.closed .card { max-width: 40rem; opacity: 0.8; }
 
 .detail { max-width: 48rem; }
 .links { padding-left: 1.2rem; }
