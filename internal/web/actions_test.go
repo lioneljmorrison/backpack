@@ -277,3 +277,48 @@ func TestADropThatTheStatusFlowRefusesDoesNotMoveTheStory(t *testing.T) {
 		t.Fatalf("story changed: %s -> %s", before, order(t, b))
 	}
 }
+
+func TestABoardDropWithAReasonHoldsClosesAndDeclines(t *testing.T) {
+	h, b := withDemo(t)
+	drop := func(id, to string) {
+		act(t, h, "/w/demo/stories/"+id+"/status", url.Values{"to": {to}, "reason": {"Not now"}, "back": {"board"}}, "/w/demo")
+	}
+	held := story(t, b, board.NewStory{Title: "Held"})
+	drop(held.ID, "on_hold")
+	prop := story(t, b, board.NewStory{Title: "Proposal", Proposed: true, Reasoning: "x"})
+	drop(prop.ID, "closed")
+	for id, want := range map[string]string{held.ID: board.OnHold, prop.ID: board.Closed} {
+		if got := status(t, b, id); got != want {
+			t.Errorf("%s is %s, want %s", id, got, want)
+		}
+	}
+	drop(held.ID, "closed")
+	if status(t, b, held.ID) != board.Closed {
+		t.Error("a held story is not closed")
+	}
+}
+
+func TestABoardDropWithoutAReasonIsRefusedOnTheBoard(t *testing.T) {
+	h, b := withDemo(t)
+	s := story(t, b, board.NewStory{Title: "Work"})
+	page := act(t, h, "/w/demo/stories/"+s.ID+"/status", url.Values{"to": {"on_hold"}, "back": {"board"}}, "/w/demo")
+	if !strings.Contains(page, `class="error"`) || status(t, b, s.ID) != board.Backlog {
+		t.Fatal("a hold without a reason was not refused on the board")
+	}
+}
+
+func TestStartingABlockedStoryByDropNeedsAWorkaround(t *testing.T) {
+	h, b := withDemo(t)
+	first := story(t, b, board.NewStory{Title: "First"})
+	second := story(t, b, board.NewStory{Title: "Second"})
+	must[board.Story](t)(b.AddDependency("demo", "tester", second.ID, first.ID))
+	path := "/w/demo/stories/" + second.ID + "/status"
+	page := act(t, h, path, url.Values{"to": {"in_progress"}, "back": {"board"}}, "/w/demo")
+	if !strings.Contains(page, `class="error"`) || status(t, b, second.ID) != board.Backlog {
+		t.Fatal("starting a blocked story without a workaround was not refused on the board")
+	}
+	act(t, h, path, url.Values{"to": {"in_progress"}, "workaround": {"Stub it"}, "back": {"board"}}, "/w/demo")
+	if status(t, b, second.ID) != board.InProgress {
+		t.Fatal("a blocked story with a workaround did not start")
+	}
+}

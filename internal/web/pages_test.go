@@ -271,3 +271,38 @@ func TestDeployedClosedAndIdeaCardsAreNotDraggable(t *testing.T) {
 		t.Error("Ideas column takes drops")
 	}
 }
+
+func TestTheBoardCarriesTheMovePrompt(t *testing.T) {
+	h, _ := withDemo(t)
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	d := strings.Index(page, `<dialog`)
+	if d < 0 {
+		t.Fatal("no move prompt on the board")
+	}
+	if strings.Index(page, "</main>") > d {
+		t.Error("the prompt is inside main, which a live refresh replaces")
+	}
+	prompt := page[d : d+strings.Index(page[d:], "</dialog>")]
+	for _, want := range []string{`name="reason"`, `name="branch"`, `name="workaround"`, `name="pr_url"`, `name="commit"`, `<label`, `required`} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the prompt lacks %s", want)
+		}
+	}
+}
+
+func TestABlockedCardSaysSo(t *testing.T) {
+	h, b := withDemo(t)
+	first := story(t, b, board.NewStory{Title: "First"})
+	second := story(t, b, board.NewStory{Title: "Second"})
+	free := story(t, b, board.NewStory{Title: "Free"})
+	must[board.Story](t)(b.AddDependency("demo", "tester", second.ID, first.ID))
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	if tag := cardTag(t, page, second.ID); !strings.Contains(tag, "data-blocked") {
+		t.Errorf("blocked card: %s", tag)
+	}
+	for _, id := range []string{first.ID, free.ID} {
+		if tag := cardTag(t, page, id); strings.Contains(tag, "data-blocked") {
+			t.Errorf("%s is not blocked: %s", id, tag)
+		}
+	}
+}
