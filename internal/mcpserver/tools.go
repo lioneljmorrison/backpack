@@ -74,6 +74,11 @@ type addBranchIn struct {
 	Alias string `json:"alias,omitempty" jsonschema:"the name the web board's column heading shows instead of the branch name: plain text, at most 100 characters"`
 }
 
+type removeBranchIn struct {
+	in
+	Branch string `json:"branch" jsonschema:"the branch to remove, by name"`
+}
+
 type updateBranchIn struct {
 	in
 	Branch string  `json:"branch" jsonschema:"the branch to change, by its current name"`
@@ -190,6 +195,7 @@ func addTools(s *mcp.Server, t tools) {
 	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
 	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
 	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
+	write(s, steps, "remove_branch", "Remove a branch, only when nothing refers to it: no story is merged into it (whatever its status) and no branch merges into it. The refusal names the stories and branches that still do. The release branch is never removed, nor the first branch (the only branch nothing merges into); with several branches nothing merges into, an empty one can go. An unknown branch is refused. Past log entries keep the removed name.", t.removeBranch)
 	write(s, steps, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
 	tool(s, "list_phases", "Every phase in order, with its goals, how many stories are complete, whether it is complete, and whether its goals were all met while stories are still open.", t.listPhases)
 	write(s, steps, "add_phase", "Add a phase, numbered after the last one.", t.addPhase)
@@ -268,6 +274,11 @@ func (t tools) mergeBranch(ctx context.Context, a mergeBranchIn) (any, error) {
 
 func (t tools) addBranch(ctx context.Context, a addBranchIn) (any, error) {
 	return t.b.AddBranch(a.Workspace, actor(ctx), board.Branch{Name: a.Name, Into: a.Into, Alias: a.Alias})
+}
+
+func (t tools) removeBranch(ctx context.Context, a removeBranchIn) (any, error) {
+	err := t.b.RemoveBranch(a.Workspace, actor(ctx), a.Branch)
+	return map[string]any{"removed": true}, err
 }
 
 func (t tools) updateBranch(ctx context.Context, a updateBranchIn) (any, error) {

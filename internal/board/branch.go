@@ -343,3 +343,69 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 	}
 	return branchNamed(g, "update branch", name)
 }
+
+// RemoveBranch takes a branch off the board, only when nothing refers to it:
+// no story is merged into it (whatever its status) and no branch merges into
+// it. The refusal names what still does. The release branch is never removed,
+// nor the first branch: the only one nothing merges into, where a story from
+// review is merged first. With several such starting branches an empty one can
+// go. An unknown branch is NotFound. Past log entries keep the removed name,
+// because a log is never edited. It is one query, so the branch is removed with
+// every check made or not at all.
+func (b *Board) RemoveBranch(ws, actor, branch string) error {
+	if branch == "" {
+		return refuse(Invalid, "a branch is required")
+	}
+	if err := plainText(branch); err != nil {
+		return err
+	}
+	g, err := b.workspace(ws)
+	if err != nil {
+		return err
+	}
+	res, err := g.Query(`
+		MATCH (w:Workspace)
+		OPTIONAL MATCH (b:Branch {name: $branch})
+		OPTIONAL MATCH (a:Branch)
+		WITH b, collect(a) AS every
+		WITH b,
+			[a IN every WHERE size([d IN every WHERE d.into = a.name]) = 0 | a.name] AS starting,
+			[a IN every WHERE a.into = $branch | a.name] AS merging
+		OPTIONAL MATCH (s:Story {into: $branch})
+		WITH b, starting, merging, s ORDER BY s.rank, s.id
+		WITH b, starting, merging, collect(s.id) AS stories
+		WITH b, merging, stories,
+			CASE WHEN b IS NULL THEN 'no branch'
+				WHEN b.into IS NULL THEN 'release'
+				WHEN b.name IN starting AND size(starting) = 1 THEN 'first'
+				WHEN size(stories) > 0 OR size(merging) > 0 THEN 'in use' END AS violation
+		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END | DELETE b)
+		RETURN violation, merging, stories`,
+		map[string]any{"branch": branch}, nil)
+	if err != nil {
+		return fmt.Errorf("remove branch: %w", err)
+	}
+	if !res.Next() {
+		return refuse(NotFound, "no workspace %q", ws)
+	}
+	r := res.Record()
+	switch str(r, "violation") {
+	case "":
+		return nil
+	case "no branch":
+		return refuse(NotFound, "%s has no branch %q", ws, branch)
+	case "release":
+		return refuse(Conflict, "%s is the release branch and is never removed", branch)
+	case "first":
+		return refuse(Conflict, "%s is the first branch, the only one stories are merged into first, and is never removed", branch)
+	}
+	var refs []string
+	if ids := strs(r, "stories"); len(ids) > 0 {
+		refs = append(refs, "stories merged into it: "+strings.Join(ids, ", "))
+	}
+	if bs := strs(r, "merging"); len(bs) > 0 {
+		sort.Strings(bs)
+		refs = append(refs, "branches merging into it: "+strings.Join(bs, ", "))
+	}
+	return refuse(Conflict, "%s is still in use (%s)", branch, strings.Join(refs, "; "))
+}

@@ -277,3 +277,26 @@ func TestAddBranchRunsInsideABatch(t *testing.T) {
 		t.Fatalf("branches %+v, %v", bs, err)
 	}
 }
+
+func TestRemoveBranchTakesAnEmptyBranchOffAndRefusesOneInUse(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	if _, err := b.AddBranch("staged", "tester", board.Branch{Name: "staging", Into: "main"}); err != nil {
+		t.Fatal(err)
+	}
+	if why := refused(t, cs, "remove_branch", map[string]any{"workspace": "staged", "branch": "main"}); !strings.Contains(why, "release") {
+		t.Fatalf("refusal %q", why)
+	}
+	if why := refused(t, cs, "remove_branch", map[string]any{"workspace": "staged", "branch": "dev"}); !strings.Contains(why, "S-1") {
+		t.Fatalf("refusal %q", why)
+	}
+	refused(t, cs, "remove_branch", map[string]any{"workspace": "staged", "branch": "nope"})
+	if got := use(t, cs, "remove_branch", map[string]any{"workspace": "staged", "branch": "staging"}); got["removed"] != true {
+		t.Fatalf("answer %v", got)
+	}
+	bs, err := b.Branches("staged")
+	if err != nil || len(bs) != 2 {
+		t.Fatalf("branches %+v, %v", bs, err)
+	}
+}
