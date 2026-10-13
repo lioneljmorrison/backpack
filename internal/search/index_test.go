@@ -333,16 +333,23 @@ func TestAfterABranchMergeSearchFindsEveryMovedStoryAndTheOneLeftBehind(t *testi
 			}
 		}
 	}
+	states := func() map[string]string {
+		got := map[string]string{}
+		for _, r := range find(t, x, "demo", "export") {
+			got[r.ID] = r.State
+		}
+		return got
+	}
+	before := map[string]string{"S-1": "merged:dev", "S-2": "merged:dev", "S-3": "merged:dev", "S-4": "in_review"}
+	if got := states(); !maps.Equal(got, before) {
+		t.Fatalf("before the merge search found %v, want %v", got, before)
+	}
 	moved, err := b.MergeBranch("demo", actor, "dev", "x9")
 	if err != nil || len(moved) != 3 {
 		t.Fatalf("moved %+v, %v", moved, err)
 	}
-	got := map[string]string{}
-	for _, r := range find(t, x, "demo", "export") {
-		got[r.ID] = r.State
-	}
-	want := map[string]string{"S-1": "merged", "S-2": "merged", "S-3": "merged", "S-4": "in_review"}
-	if !maps.Equal(got, want) {
+	want := map[string]string{"S-1": "merged:main", "S-2": "merged:main", "S-3": "merged:main", "S-4": "in_review"}
+	if got := states(); !maps.Equal(got, want) {
 		t.Fatalf("search found %v, want %v", got, want)
 	}
 }

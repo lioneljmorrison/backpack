@@ -38,7 +38,8 @@ type Result struct {
 	Kind  string `json:"kind"`
 	ID    string `json:"id"`
 	Title string `json:"title"`
-	// State is a story's status or an idea's state; a phase has none.
+	// State is a story's status or an idea's state; a phase has none. A merged
+	// story's reads "merged:main", with the branch it reached.
 	State string `json:"state,omitempty"`
 }
 
@@ -265,7 +266,8 @@ func storyDoc(s board.Story, entries []board.LogEntry) doc {
 		detail = append(detail, e.Text, e.Reason)
 	}
 	return doc{ID: s.ID, Kind: board.KindStory, Ref: s.ID, Title: s.Title,
-		Summary: join(s.Description, s.Goal), Detail: join(detail...), State: s.Status}
+		Summary: join(s.Description, s.Goal), Detail: join(detail...),
+		State: board.Move{To: s.Status, Into: s.Into}.String()}
 }
 
 func ideaDoc(i board.Idea) doc {
