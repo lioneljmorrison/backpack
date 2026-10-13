@@ -49,7 +49,7 @@
     {{else}}<p class="empty">Nothing here</p>{{end}}
   </section>
   {{range .Columns}}
-  <section class="column" aria-label="{{label .Status}}">
+  <section class="column" aria-label="{{label .Status}}" data-status="{{.Status}}">
     <h2>{{label .Status}} <span class="count">{{len .Cards}}</span></h2>
     {{range .Cards}}{{template "card" .}}{{else}}<p class="empty">Nothing here</p>{{end}}
   </section>

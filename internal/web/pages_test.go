@@ -182,3 +182,92 @@ func TestSearchLinksEachMatchToItsPage(t *testing.T) {
 
 	wantPage(t, get(h, "/w/demo/search?q=invoices", "bp_good"), "Export invoices as PDF", `href="/w/demo/stories/S-1"`)
 }
+
+// cardTag is the opening tag of the card for story id on page.
+func cardTag(t *testing.T, page, id string) string {
+	t.Helper()
+	i := strings.Index(page, `data-id="`+id+`"`)
+	if i < 0 {
+		i = strings.Index(page, `<span class="id">`+id+`</span>`)
+	}
+	if i < 0 {
+		t.Fatalf("no card for %s", id)
+	}
+	start := strings.LastIndex(page[:i], "<article")
+	return page[start : start+strings.Index(page[start:], ">")+1]
+}
+
+func TestEachCardSaysWhichColumnsItMayBeDroppedOn(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}))
+	mk := func(ws string, n board.NewStory) board.Story {
+		return must[board.Story](t)(b.AddStory(ws, "tester", n))
+	}
+	set := func(ws, id string, c board.StatusChange) {
+		must[board.Story](t)(b.SetStatus(ws, "tester", id, c))
+	}
+	prop := mk("demo", board.NewStory{Title: "Maybe", Proposed: true, Reasoning: "x"})
+	back := mk("demo", board.NewStory{Title: "Queued"})
+	held := mk("demo", board.NewStory{Title: "Parked"})
+	set("demo", held.ID, board.StatusChange{To: board.InProgress, Branch: "feature/h"})
+	set("demo", held.ID, board.StatusChange{To: board.OnHold, Reason: "waiting"})
+	merged := func(ws string) board.Story {
+		s := mk(ws, board.NewStory{Title: "Landed"})
+		set(ws, s.ID, board.StatusChange{To: board.InProgress, Branch: "feature/m"})
+		set(ws, s.ID, board.StatusChange{To: board.InReview, PRURL: "https://example.invalid/pr/2"})
+		set(ws, s.ID, board.StatusChange{To: board.Merged, Commit: "abc1234"})
+		return s
+	}
+	plain, staged := merged("demo"), merged("staged")
+
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	for _, c := range []struct {
+		id, status, moves string
+	}{
+		{prop.ID, "proposed", "on_hold backlog closed"},
+		{back.ID, "backlog", "on_hold in_progress closed"},
+		{held.ID, "on_hold", "in_progress closed"},
+		{plain.ID, "merged", "deployed"},
+	} {
+		tag := cardTag(t, page, c.id)
+		for _, want := range []string{`draggable="true"`, `data-status="` + c.status + `"`, `data-moves="` + c.moves + `"`} {
+			if !strings.Contains(tag, want) {
+				t.Errorf("%s: %s lacks %s", c.id, tag, want)
+			}
+		}
+	}
+	sp := get(h, "/w/staged", "bp_good").Body.String()
+	if tag := cardTag(t, sp, staged.ID); !strings.Contains(tag, `data-moves="released"`) {
+		t.Errorf("merged card with a release stage: %s", tag)
+	}
+	for _, status := range []string{"proposed", "backlog", "on_hold", "in_progress", "in_review", "merged", "deployed", "closed"} {
+		if !strings.Contains(page, `data-status="`+status+`"`) {
+			t.Errorf("no column marked %s", status)
+		}
+	}
+}
+
+func TestDeployedClosedAndIdeaCardsAreNotDraggable(t *testing.T) {
+	h, b := withDemo(t)
+	set := func(id string, c board.StatusChange) {
+		must[board.Story](t)(b.SetStatus("demo", "tester", id, c))
+	}
+	done := story(t, b, board.NewStory{Title: "Shipped"})
+	set(done.ID, board.StatusChange{To: board.InProgress, Branch: "feature/d"})
+	set(done.ID, board.StatusChange{To: board.InReview, PRURL: "https://example.invalid/pr/3"})
+	set(done.ID, board.StatusChange{To: board.Merged, Commit: "abc1234"})
+	set(done.ID, board.StatusChange{To: board.Deployed})
+	shut := story(t, b, board.NewStory{Title: "Dropped"})
+	set(shut.ID, board.StatusChange{To: board.Closed, Reason: "no"})
+	must[board.Idea](t)(b.AddIdea("demo", "tester", board.NewIdea{Title: "Vague"}))
+
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	for _, id := range []string{done.ID, shut.ID, "I-1"} {
+		if tag := cardTag(t, page, id); strings.Contains(tag, "draggable") || strings.Contains(tag, "data-moves") {
+			t.Errorf("%s is draggable: %s", id, tag)
+		}
+	}
+	if strings.Contains(page, `aria-label="Ideas" data-status`) {
+		t.Error("Ideas column takes drops")
+	}
+}

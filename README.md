@@ -80,6 +80,14 @@ what it is doing, add to its log, add stories and ideas, and refine or drop
 ideas. Every change is recorded under the token's actor, and the board's
 rules apply exactly as they do for agents.
 
+On the board with a mouse, a card can be dragged to the columns it may go to,
+which light up while you drag: drop a proposed story in the backlog where it
+should rank to approve it, send an in-progress story back to the backlog,
+resume a held story, step a story in review back to in progress, or move a
+merged story on to released or deployed. Moves that need a reason, a branch,
+a pull request link or a merge commit are not dragged yet; use the story's
+page. Dragging does not work on touch screens; the forms and arrows do.
+
 ## Connecting a project
 
 [docs/ADOPTING.md](docs/ADOPTING.md) is written for an AI agent in the

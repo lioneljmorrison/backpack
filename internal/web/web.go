@@ -91,6 +91,8 @@ type card struct {
 	S        board.Story
 	Up, Down string
 	Movable  bool
+	// Moves are the statuses the card may be dropped on, from board.Moves.
+	Moves []string
 }
 
 func cardOf(ws string, s board.Story) card { return card{WS: ws, S: s} }
