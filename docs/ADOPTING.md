@@ -69,11 +69,6 @@ Also ask the person, without guessing:
 - **The workspace slug**: the project's short name on the board, using
   lowercase letters, digits and single hyphens, up to 64 characters. Suggest
   one from the repository's name (for example `my-app`) and let them confirm.
-- **Whether the project merges through an integration branch**: with one, a
-  story is merged into `dev` and later into `main`, and the board has a Merged
-  (dev) and a Merged (main) column; without one, a single Merged (main) column.
-  It is set when the workspace is created and can't be changed later. The
-  default is no.
 - **Whether a team shares this project**, which decides how the MCP server is
   set up in step 4.
 
@@ -90,16 +85,61 @@ It answers with the name the token was issued to. A `401` means the token is
 wrong or revoked, so give the person the steps in step 1 again. If the address
 can't be reached, check it with them.
 
-## 3. Create the workspace
+## 3. Set up the workspace and its branches
 
-Skip this if the workspace already exists. To check, run:
+Skip this if the workspace already exists, branches included. To check, run:
 
 ```bash
 curl -fsS -H "Authorization: Bearer $BACKPACK_TOKEN" -H "Accept: text/plain" \
   https://backpack.example.com/v1/workspaces/my-app/status
 ```
 
-A `404` means it doesn't exist yet, so create it:
+A `404` means it doesn't exist yet. A workspace's **branches** are the places
+a story can be merged into, in order, ending in the **release branch**. They
+can be changed at any time, so nothing here is final. Work them out in this
+order, and don't create anything until the person has approved the proposal.
+Nothing pending is stored in Backpack: the proposal lives in this conversation.
+
+### a. Read how the repository flows
+
+Find out how code reaches the release branch today, with the repository's own
+tools. For a Git repository, for example:
+
+```bash
+git branch -r                                  # the branches that exist
+gh repo view --json defaultBranchRef           # the default branch
+gh api repos/{owner}/{repo}/branches --jq '.[] | {name, protected}'
+gh pr list --state merged --limit 30 --json baseRefName,headRefName
+```
+
+The last one shows which branches pull requests merge into. Note the default
+branch (usually the release branch), any integration branch that pull requests
+target before it, any staging branch between them, and which branches are
+protected. Read the project's contributing notes too, if it has them. Don't
+guess what you can't see: ask.
+
+### b. Propose the branches
+
+Tell the person, in plain words, what you found and what you suggest:
+
+- the branches, in merge order (for example `dev` merges into `main`, or
+  `dev` merges into `staging`, which merges into `main`);
+- the **release branch**, the one nothing merges into;
+- any branch to show under another name on the web board (an `alias`, such as
+  "Production" for `main`).
+
+A project with a single branch is fine: `main` alone is the whole line.
+
+### c. Get the person's answer
+
+Wait for their approval or changes, and revise the proposal until they agree.
+Don't apply anything before then.
+
+### d. Apply it
+
+Create the workspace with the seed closest to the approved proposal. The
+`has_release_stage` setting only seeds the branches, once: `false` gives `main`
+alone, `true` gives `dev` merging into `main`. After that it means nothing.
 
 ```bash
 curl -fsS -X POST https://backpack.example.com/v1/workspaces \
@@ -108,10 +148,35 @@ curl -fsS -X POST https://backpack.example.com/v1/workspaces \
   -d '{"slug": "my-app", "name": "My app", "repo_url": "https://github.com/you/my-app", "has_release_stage": false}'
 ```
 
-`slug` and `name` are required. `repo_url` is optional. `has_release_stage` is
-the person's answer from step 1; it seeds the workspace's branches (`main` alone,
-or `dev` merging into `main`), which `list_branches` shows. If the repository's branches are called something else (`master`, `develop`), rename them with `update_branch`: every story stays in its column. To show a column under another name on the web board ("Merged (Production)" for `main`), give the branch an `alias` with the same tool; everything else keeps the branch name. A project with another branch, such as `staging` between `dev` and `main`, adds it with `add_branch` (naming the branch it merges `into`) and re-points the one before it with `update_branch` and `into`; no story moves, and a merge from `dev` then goes to `staging`. A branch the project no longer uses is taken off with `remove_branch`, once no story is merged into it and no branch merges into it; the release branch and the only starting branch are never removed. While two branches both merge into `main`, a story from review is merged into one of them by naming it (`into`). A `409` means the slug is already taken, so
-check with the person whether that workspace is this project's.
+`slug` and `name` are required. `repo_url` is optional. A `409` means the slug
+is already taken, so check with the person whether that workspace is this
+project's.
+
+Then bring the branches to the approved shape. These are MCP tools, which
+appear after step 4 and a restart; until then the same changes are HTTP calls
+(`POST /v1/workspaces/{ws}/branches`, `PATCH` and `DELETE`
+`/v1/workspaces/{ws}/branches/{name}`, in `api/openapi.yaml`). If the
+tools aren't there yet, carry on with step 4 and finish this after the
+restart. Check the result with `list_branches`.
+
+- **Rename** a seeded branch to the repository's name (`master`, `develop`):
+  `update_branch` with `branch` (its current name) and `name`. No story moves.
+- **Add** a branch: `add_branch` with `name`, `into` (the existing branch it
+  merges into; required, because the release branch is already there) and an
+  optional `alias`. For `staging` between `dev` and `main`, add `staging` into
+  `main`, then re-point `dev` with `update_branch` and `into` set to
+  `staging`.
+- **Show a column under another name** on the web board: `update_branch` with
+  `alias` (an empty one clears it). The API, tools and logs keep the branch
+  name.
+- **Remove** a seeded branch the project doesn't use (for example `dev`):
+  `remove_branch` with `branch`. It is refused while a story is merged into it
+  or a branch merges into it (re-point that branch first), and the release
+  branch and the only starting branch are never removed.
+
+While two or more branches both merge into the release branch (`dev` and
+`staging` into `main`), a story from review is merged into one of them by
+naming it (`into`).
 
 ## 4. Connect the MCP server
 
@@ -230,21 +295,21 @@ goes onto the board with `add_story`, and the document stops being updated.
 
 Delivery is tracked in Backpack, workspace `my-app` (see `.backpack.json`),
 through the `backpack` MCP tools. There is no tracking document, and tracking
-is never committed.
+is never committed. The branches are in `list_branches`; change them with
+`add_branch`, `update_branch` and `remove_branch`.
 
 - **Orientation.** The session starts with "where are we". Ask `whats_next`
   for the next story and `get_story` for its detail. Don't guess the next task.
 - **Record each move as it happens**, with `set_status`:
   - start work: `in_progress`, with the task branch;
   - open the pull request: `in_review`, with its link;
-  - merged: `merged`, with the merge commit (it goes into the first branch,
-    such as `dev`; name another with `into`, which is required when several
-    branches start the line, for example `dev` and `staging` both merging into `main`);
-  - a branch merged into the next (such as `dev` into `main`): one
-    `merge_branch` call, naming the branch and the merge commit, moves every
-    story merged into it to the next branch, each logged with the commit, in
-    place of a `set_status` per story; stories still in progress or in review
-    stay put. `deployed` follows once a story is in `main`.
+  - merged into `dev`: `merged`, with the merge commit (`dev` is the first
+    branch, so no `into` is needed; when several branches start the line,
+    name the one with `into`);
+  - `dev` merged into `main`: one `merge_branch` call (branch `dev`, with the
+    merge commit) moves every story merged into `dev` to `main`, each logged
+    with that commit, in place of a `set_status` per story. Stories still in
+    progress or in review stay put. `deployed` follows once a story is in `main`.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,
