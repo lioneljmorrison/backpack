@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -116,8 +117,29 @@ func (s *site) setStatus(w http.ResponseWriter, r *http.Request) {
 		Reason:     strings.TrimSpace(r.PostFormValue("reason")),
 		Workaround: strings.TrimSpace(r.PostFormValue("workaround")),
 	}
-	_, err := s.board.SetStatus(r.PathValue("ws"), actor(r), r.PathValue("id"), c)
-	s.done(w, r, storyURL(r, r.PathValue("id")), err)
+	ws, id := r.PathValue("ws"), r.PathValue("id")
+	// A drop on the board comes back to the board. Only this one fixed value
+	// is understood: back is never an address.
+	back := storyURL(r, id)
+	if r.PostFormValue("back") == "board" {
+		back = boardURL(r)
+	}
+	// A story dropped into the backlog lands where it was dropped: placed
+	// first, then its status changes. A drop the status flow would refuse is
+	// left alone, so it never moves a story it won't then change.
+	at := board.Position{Before: r.PostFormValue("before"), After: r.PostFormValue("after")}
+	if c.To == board.Backlog && (at.Before != "" || at.After != "") {
+		st, err := s.board.Story(ws, id)
+		if err == nil && slices.Contains(board.Moves(st, false), board.Backlog) {
+			_, err = s.board.MoveStory(ws, actor(r), id, at)
+		}
+		if err != nil {
+			s.done(w, r, back, err)
+			return
+		}
+	}
+	_, err := s.board.SetStatus(ws, actor(r), id, c)
+	s.done(w, r, back, err)
 }
 
 func (s *site) setActivity(w http.ResponseWriter, r *http.Request) {

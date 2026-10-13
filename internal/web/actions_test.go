@@ -202,3 +202,78 @@ func TestAProposalCanBeHeldFromItsPage(t *testing.T) {
 	}
 	wantPage(t, get(h, back, "bp_good"), `value="proposed"`)
 }
+
+// order is every story's id in delivery order.
+func order(t *testing.T, b *board.Board) string {
+	t.Helper()
+	var ids []string
+	for _, s := range must[[]board.Story](t)(b.Stories("demo")) {
+		ids = append(ids, s.ID)
+	}
+	return strings.Join(ids, " ")
+}
+
+func TestAStatusChangeFromTheBoardReturnsToTheBoard(t *testing.T) {
+	h, b := withDemo(t)
+	s := story(t, b, board.NewStory{Title: "Work"})
+	act(t, h, "/w/demo/stories/"+s.ID+"/status", url.Values{"to": {"in_progress"}, "branch": {"feature/x"}, "back": {"board"}}, "/w/demo")
+	if status(t, b, s.ID) != board.InProgress {
+		t.Fatal("story was not started")
+	}
+	// A refusal is shown on the board too.
+	page := act(t, h, "/w/demo/stories/"+s.ID+"/status", url.Values{"to": {"deployed"}, "back": {"board"}}, "/w/demo")
+	if !strings.Contains(page, `class="error"`) {
+		t.Fatal("the refusal is not shown on the board")
+	}
+}
+
+func TestBackIsOnlyEverTheBoard(t *testing.T) {
+	h, b := withDemo(t)
+	s := story(t, b, board.NewStory{Title: "Work"})
+	story := "/w/demo/stories/" + s.ID
+	for _, back := range []string{"https://evil.example/", "/w/other", "//evil.example", ""} {
+		act(t, h, story+"/status", url.Values{"to": {"on_hold"}, "reason": {"r"}, "back": {back}}, story)
+		act(t, h, story+"/status", url.Values{"to": {"backlog"}}, story)
+	}
+}
+
+func TestAProposalDroppedInTheBacklogIsPlacedThenApproved(t *testing.T) {
+	h, b := withDemo(t)
+	first := story(t, b, board.NewStory{Title: "First"})
+	second := story(t, b, board.NewStory{Title: "Second"})
+	p := story(t, b, board.NewStory{Title: "Maybe", Proposed: true, Reasoning: "might help"})
+	act(t, h, "/w/demo/stories/"+p.ID+"/status", url.Values{"to": {"backlog"}, "before": {second.ID}, "back": {"board"}}, "/w/demo")
+	all := must[[]board.Story](t)(b.Stories("demo"))
+	if len(all) != 3 || all[0].ID != first.ID || all[1].ID != p.ID || all[1].Status != board.Backlog || all[2].ID != second.ID {
+		t.Fatalf("order %+v, want First, the proposal in the backlog, Second", all)
+	}
+}
+
+func TestAPlacementThatBreaksADependencyLeavesTheProposalUnchanged(t *testing.T) {
+	h, b := withDemo(t)
+	first := story(t, b, board.NewStory{Title: "First"})
+	p := story(t, b, board.NewStory{Title: "Maybe", Proposed: true, Reasoning: "might help"})
+	must[board.Story](t)(b.AddDependency("demo", "tester", p.ID, first.ID))
+	before := order(t, b)
+	page := act(t, h, "/w/demo/stories/"+p.ID+"/status", url.Values{"to": {"backlog"}, "before": {first.ID}, "back": {"board"}}, "/w/demo")
+	if !strings.Contains(page, `class="error"`) {
+		t.Fatal("the refusal is not shown")
+	}
+	if status(t, b, p.ID) != board.Proposed || order(t, b) != before {
+		t.Fatalf("proposal changed: %s -> %s, status %s", before, order(t, b), status(t, b, p.ID))
+	}
+}
+
+func TestADropThatTheStatusFlowRefusesDoesNotMoveTheStory(t *testing.T) {
+	h, b := withDemo(t)
+	first := story(t, b, board.NewStory{Title: "First"})
+	second := story(t, b, board.NewStory{Title: "Second"})
+	must[board.Story](t)(b.SetStatus("demo", "tester", second.ID, board.StatusChange{To: board.InProgress, Branch: "feature/x"}))
+	must[board.Story](t)(b.SetStatus("demo", "tester", second.ID, board.StatusChange{To: board.InReview, PRURL: "https://example.invalid/pr/1"}))
+	before := order(t, b)
+	// In review cannot go straight back to the backlog.
+	act(t, h, "/w/demo/stories/"+second.ID+"/status", url.Values{"to": {"backlog"}, "before": {first.ID}, "back": {"board"}}, "/w/demo")
+	if status(t, b, second.ID) != board.InReview || order(t, b) != before {
+		t.Fatalf("story changed: %s -> %s", before, order(t, b))
+	}
+}

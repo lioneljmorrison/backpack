@@ -36,7 +36,7 @@
 
 {{/* card is one story on a board or in a list: a card value from cardOf. */}}
 {{define "card"}}
-<article class="card{{if .S.Blocked}} blocked{{end}}"{{if .Movable}} draggable="true" data-move="/w/{{.WS}}/stories/{{.S.ID}}/move" data-id="{{.S.ID}}"{{end}}>
+<article class="card{{if .S.Blocked}} blocked{{end}}"{{if or .Movable .Moves}} draggable="true" data-id="{{.S.ID}}" data-status="{{.S.Status}}" data-status-url="/w/{{.WS}}/stories/{{.S.ID}}/status" data-moves="{{range $i, $m := .Moves}}{{if $i}} {{end}}{{$m}}{{end}}"{{end}}{{if .Movable}} data-move="/w/{{.WS}}/stories/{{.S.ID}}/move"{{end}}>
   <a class="card-title" href="/w/{{.WS}}/stories/{{.S.ID}}"><span class="id">{{.S.ID}}</span> {{.S.Title}}</a>
   <div class="tags">
     {{if .S.Phase}}<span class="tag">Phase {{.S.Phase}}</span>{{end}}

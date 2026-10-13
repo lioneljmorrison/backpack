@@ -69,6 +69,7 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		col := column{Status: c.Status, Cards: make([]card, len(c.Stories))}
 		for i, st := range c.Stories {
 			col.Cards[i] = cardOf(ws.Slug, st)
+			col.Cards[i].Moves = board.Moves(st, ws.HasReleaseStage)
 			// The backlog is where order is chosen; a card moves past its
 			// neighbours there.
 			if c.Status == board.Backlog {
