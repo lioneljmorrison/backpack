@@ -89,7 +89,9 @@ them in a small prompt before it goes through: a reason to hold or close
 (including declining a proposal), a branch to start (and a workaround when the
 story is blocked), a pull request link for review, a merge commit for merged.
 Only the reason and the workaround are required. Cancel, Escape or a click
-outside leaves the card where it was. Dragging does not work on touch
+outside leaves the card where it was. Your own moves on the board, by drag,
+prompt or arrows, are sent in the background and the board redraws in place
+without reloading the page. Dragging does not work on touch
 screens; the forms and arrows do.
 
 ## Connecting a project
