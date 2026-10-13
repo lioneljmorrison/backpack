@@ -342,3 +342,33 @@ func TestWhereAreWeNamesTheStoriesMergedIntoTheReleaseBranchWaitingForARelease(t
 		t.Fatalf("text:\n%s", w.Text())
 	}
 }
+
+func TestAReleasedStoryNamesItsReleaseAndOthersNameNone(t *testing.T) {
+	b := threeInMainOneInDev(t)
+	if _, err := b.CutRelease("demo", actor, v1); err != nil {
+		t.Fatal(err)
+	}
+	s := wantStatus(t, b, "S-1", board.Released)
+	if s.Release == nil || s.Release.ID != "R-1" || s.Release.Version != "v1.0.0" {
+		t.Fatalf("S-1 release %+v", s.Release)
+	}
+	if s := wantStatus(t, b, "S-4", board.Merged); s.Release != nil {
+		t.Fatalf("an unreleased story names release %+v", s.Release)
+	}
+	// The list and a release's own stories carry it too, from the same read.
+	all, err := b.Stories("demo")
+	if err != nil || all[0].Release == nil || all[0].Release.ID != "R-1" || all[3].Release != nil {
+		t.Fatalf("stories %+v, %v", all, err)
+	}
+}
+
+func TestAStoryReleasedBeforeReleasesWereRecordedNamesNone(t *testing.T) {
+	b, g := newWorkspaceGraph(t)
+	if _, err := g.Query("CREATE (:Story {id: 'S-1', title: 'old', status: 'released', into: 'main', rank: 'a'})", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	s, err := b.Story("demo", "S-1")
+	if err != nil || s.Status != board.Released || s.Release != nil {
+		t.Fatalf("story %+v, %v", s, err)
+	}
+}

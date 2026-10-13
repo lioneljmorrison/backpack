@@ -381,8 +381,10 @@ func TestCuttingAReleaseOverHTTPReleasesWhatIsMergedIntoTheReleaseBranch(t *test
 	}
 	if s := want(t, call(t, h, "GET", p+"/S-1", ""), http.StatusOK); s["status"] != "released" || s["into"] != "main" {
 		t.Fatalf("S-1 %v", s)
+	} else if rel, _ := s["release"].(map[string]any); rel["id"] != "R-1" || rel["version"] != "v1.0.0" {
+		t.Fatalf("S-1 names no release: %v", s)
 	}
-	if s := want(t, call(t, h, "GET", p+"/S-2", ""), http.StatusOK); s["status"] != "merged" || s["into"] != "dev" {
+	if s := want(t, call(t, h, "GET", p+"/S-2", ""), http.StatusOK); s["status"] != "merged" || s["into"] != "dev" || s["release"] != nil {
 		t.Fatalf("S-2 %v", s)
 	}
 	// The same version again, and a cut with nothing left, are conflicts.

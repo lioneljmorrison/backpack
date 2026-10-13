@@ -13,6 +13,7 @@
   {{with .HoldReason}}<span class="tag warn">On hold: {{.}}</span>{{end}}
   {{with .Branch}}<span class="tag"><code>{{.}}</code></span>{{end}}
   {{with .PRURL}}<a class="tag" href="{{.}}">Pull request</a>{{end}}
+  {{with .Release}}<a class="tag" href="/w/{{$ws}}/releases/{{.ID}}">Release {{.Version}}</a>{{end}}
 </div>
 <div class="detail">
   {{with .Description}}<h2>Description</h2><p class="text">{{.}}</p>{{end}}
