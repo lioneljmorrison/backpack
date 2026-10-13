@@ -40,6 +40,19 @@ var migrations = []string{
 			MERGE (d:Branch {name: 'dev'})
 				ON CREATE SET d.into = 'main', d.created_by = 'migration', d.created_at = toString(localdatetime()) + 'Z')
 		SET w.has_release_stage = NULL`,
+	// Every complete story names the branch it reached: merged is in the first
+	// branch (the one no branch merges into), released was a merge into the
+	// release branch (the one that merges nowhere) and becomes merged there,
+	// deployed stays deployed in the release branch. A story that already
+	// has a branch is left alone, so a repeat changes nothing.
+	`MATCH (b:Branch)
+		WITH collect(b.name) AS names, collect(b.into) AS intos,
+			collect(CASE WHEN b.into IS NULL THEN b.name END) AS releases
+		WITH [x IN names WHERE NOT x IN intos][0] AS first, releases[0] AS release
+		MATCH (s:Story) WHERE s.status IN ['merged', 'released', 'deployed'] AND s.into IS NULL
+		WITH s, s.status AS old, first, release
+		SET s.into = CASE old WHEN 'merged' THEN first ELSE release END,
+			s.status = CASE old WHEN 'released' THEN 'merged' ELSE old END`,
 }
 
 // Kind says why the board refused a request.

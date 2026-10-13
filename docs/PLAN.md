@@ -523,6 +523,11 @@ workspace's branches are seeded from the creation setting (one branch, or
   `released` (merged into `main`) and the old `deployed` status are refused
   with a message naming the new form. Migrations turn old released stories
   into merged into the release branch, and old deployed stories into released.
+  Until releases exist (2026-10-13, S-24 built the merge half), `deployed` remains,
+  allowed only from the release branch, and the migration turns old released
+  stories into merged into the release branch and gives old deployed stories
+  `into` the release branch. A merge to the next branch is a `merged` to
+  `merged` change that names it (`into`) and carries its own commit.
 - **Empty lists:** `all(…)` over an empty list is true, so phase completion
   and the goals flag guard against no stories and no goals.
 

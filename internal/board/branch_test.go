@@ -87,3 +87,62 @@ func TestMigrationBuildsBranchesFromTheOldReleaseStageFlag(t *testing.T) {
 		}
 	}
 }
+
+// An old-style graph holds stories merged, released and deployed. Migration 8
+// gives each the branch it reached: merged is in the first branch, released
+// becomes merged into the release branch, deployed stays deployed in the
+// release branch. Running it again changes nothing.
+func TestMigrationGivesCompleteStoriesTheBranchTheyReached(t *testing.T) {
+	for _, c := range []struct {
+		name, flag string
+		want       map[string][2]string // story id -> status, into
+	}{
+		{"two branches", "true", map[string][2]string{
+			"S-1": {"merged", "dev"}, "S-2": {"merged", "main"}, "S-3": {"deployed", "main"}, "S-4": {"backlog", ""}}},
+		{"one branch", "false", map[string][2]string{
+			"S-1": {"merged", "main"}, "S-2": {"merged", "main"}, "S-3": {"deployed", "main"}, "S-4": {"backlog", ""}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			db, prefix := falkortest.Prefix(t)
+			sys, ws := db.SelectGraph(prefix+"system"), db.SelectGraph(prefix+"ws:old")
+			if _, err := sys.Query("CREATE (:WorkspaceEntry {slug: 'old', name: 'Old', created_by: 'x', created_at: 'y'})", nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ws.Query("CREATE (:Workspace {slug: 'old', next_story: 5, next_goal: 1, next_log: 1, has_release_stage: "+c.flag+"})", nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := board.New(db, prefix+"system", prefix+"ws:"); err != nil {
+				t.Fatal(err)
+			}
+			// Back to the graph as it was before migration 8: statuses only.
+			for q, params := range map[string]map[string]any{
+				"CREATE (:Story {id: 'S-1', title: 'a', status: 'merged', rank: 'a'})":   nil,
+				"CREATE (:Story {id: 'S-2', title: 'b', status: 'released', rank: 'b'})": nil,
+				"CREATE (:Story {id: 'S-3', title: 'c', status: 'deployed', rank: 'c'})": nil,
+				"CREATE (:Story {id: 'S-4', title: 'd', status: 'backlog', rank: 'd'})":  nil,
+			} {
+				if _, err := ws.Query(q, params, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for range 2 {
+				if _, err := ws.Query("MATCH (s:SchemaVersion) SET s.v = 7", nil, nil); err != nil {
+					t.Fatal(err)
+				}
+				b, err := board.New(db, prefix+"system", prefix+"ws:")
+				if err != nil {
+					t.Fatal(err)
+				}
+				for id, want := range c.want {
+					s, err := b.Story("old", id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if s.Status != want[0] || s.Into != want[1] {
+						t.Fatalf("%s: %s into %q, want %v", id, s.Status, s.Into, want)
+					}
+				}
+			}
+		})
+	}
+}

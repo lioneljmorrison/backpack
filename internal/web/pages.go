@@ -43,7 +43,10 @@ type boardData struct {
 
 type column struct {
 	Status string
-	Cards  []card
+	// Into names the branch of a merged column.
+	Into  string
+	Title string
+	Cards []card
 }
 
 func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +57,7 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 	}
 	var d boardData
 	var cols []board.Column
-	release, err := s.board.ReleaseStage(ws.Slug)
+	bs, err := s.board.Branches(ws.Slug)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -71,10 +74,10 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, c := range cols {
-		col := column{Status: c.Status, Cards: make([]card, len(c.Stories))}
+		col := column{Status: c.Status, Into: c.Branch, Title: statusLabel(c.Status, c.Branch), Cards: make([]card, len(c.Stories))}
 		for i, st := range c.Stories {
 			col.Cards[i] = cardOf(ws.Slug, st)
-			col.Cards[i].Moves = board.Moves(st, release)
+			col.Cards[i].Moves = moveKeys(board.Moves(st, bs))
 			// The backlog is where order is chosen; a card moves past its
 			// neighbours there.
 			if c.Status == board.Backlog {
@@ -118,12 +121,12 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	release, err := s.board.ReleaseStage(ws.Slug)
+	bs, err := s.board.Branches(ws.Slug)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	d.Moves = board.Moves(d.Story, release)
+	d.Moves = moveKeys(board.Moves(d.Story, bs))
 	d.Titles = make(map[string]string, len(all))
 	for _, st := range all {
 		d.Titles[st.ID] = st.Title
@@ -209,7 +212,7 @@ func (s *site) searchPage(w http.ResponseWriter, r *http.Request) {
 // labels are how statuses, activities and log kinds read on a page.
 var labels = map[string]string{
 	board.Proposed: "Proposed", board.Backlog: "Backlog", board.InProgress: "In progress",
-	board.InReview: "In review", board.Merged: "Merged", board.Released: "Released",
+	board.InReview: "In review", board.Merged: "Merged",
 	board.Deployed: "Deployed", board.OnHold: "On hold", board.Closed: "Closed",
 	"open": "Open", "refined": "Refined", "dropped": "Dropped",
 	"planning": "Planning", "building": "Building", "testing": "Testing", "waiting": "Waiting",
@@ -218,10 +221,38 @@ var labels = map[string]string{
 }
 
 func label(s string) string {
+	// A merge move reads "merged:main"; an old log entry may read "released".
+	if to, into, ok := strings.Cut(s, ":"); ok {
+		return statusLabel(to, into)
+	}
+	if s == "released" {
+		return "Released"
+	}
 	if l, ok := labels[s]; ok {
 		return l
 	}
 	return s
+}
+
+// statusLabel is a status as a column or tag names it: a merged story is in
+// the branch it reached, as in "Merged (main)".
+func statusLabel(status, into string) string {
+	if into != "" && status == board.Merged {
+		return label(status) + " (" + into + ")"
+	}
+	return label(status)
+}
+
+// storyLabel is where a story stands, by its status and the branch it reached.
+func storyLabel(s board.Story) string { return statusLabel(s.Status, s.Into) }
+
+// moveKeys are moves as the page writes them, "merged:main" for a merge.
+func moveKeys(ms []board.Move) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.String()
+	}
+	return out
 }
 
 // when shows a recorded time to the minute, in UTC like the record.

@@ -16,6 +16,7 @@ type LogEntry struct {
 	Commit      string   `json:"commit,omitempty"`
 	PRURL       string   `json:"pr_url,omitempty"`
 	Branch      string   `json:"branch,omitempty"`
+	Into        string   `json:"into,omitempty"`
 	From        string   `json:"from,omitempty"`
 	To          string   `json:"to,omitempty"`
 	Corrects    string   `json:"corrects,omitempty"`
@@ -128,7 +129,7 @@ func (b *Board) Log(ws, id string) ([]LogEntry, error) {
 		OPTIONAL MATCH (e)-[:CORRECTS]->(c:LogEntry)
 		OPTIONAL MATCH (by:LogEntry)-[:CORRECTS]->(e)
 		RETURN e.id AS id, e.at AS at, e.actor AS actor, e.kind AS kind, e.text AS text,
-			e.reason AS reason, e.commit AS commit, e.pr_url AS pr_url, e.branch AS branch,
+			e.reason AS reason, e.commit AS commit, e.pr_url AS pr_url, e.branch AS branch, e.into AS into,
 			e.from AS from, e.to AS to, c.id AS corrects, collect(by.id) AS corrected_by`,
 		map[string]any{"id": id}, nil)
 	if err != nil {
@@ -144,7 +145,7 @@ func (b *Board) Log(ws, id string) ([]LogEntry, error) {
 		out = append(out, LogEntry{
 			ID: str(r, "id"), At: str(r, "at"), Actor: str(r, "actor"), Kind: str(r, "kind"),
 			Text: str(r, "text"), Reason: str(r, "reason"), Commit: str(r, "commit"), PRURL: str(r, "pr_url"),
-			Branch: str(r, "branch"), From: str(r, "from"), To: str(r, "to"), Corrects: str(r, "corrects"),
+			Branch: str(r, "branch"), Into: str(r, "into"), From: str(r, "from"), To: str(r, "to"), Corrects: str(r, "corrects"),
 			CorrectedBy: byNumber(strs(r, "corrected_by")),
 		})
 	}

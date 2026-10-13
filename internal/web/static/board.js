@@ -33,8 +33,15 @@
       return fields;
     }
     if (to === "in_review") return [{ name: "pr_url" }];
-    if (to === "merged") return [{ name: "commit" }];
+    if (to === "merged") return [{ name: "commit" }]; // a merge column also says its branch (data-into)
     return [];
+  }
+
+  // keyOf names a column the way a card's data-moves does: its status, and
+  // for a merged column "merged:" and the branch it is for.
+  function keyOf(column) {
+    const into = column.dataset.into;
+    return column.dataset.status + (into ? ":" + into : "");
   }
 
   // canDrop says whether the dragged card may be dropped on the column.
@@ -43,7 +50,7 @@
     const from = dragged.dataset.status;
     const to = column.dataset.status;
     if (from === "backlog" && to === "backlog") return dragged.dataset.move !== undefined;
-    return (dragged.dataset.moves || "").split(" ").includes(to);
+    return (dragged.dataset.moves || "").split(" ").includes(keyOf(column));
   }
 
   function clear() {
@@ -145,6 +152,8 @@
     const card = dragged;
     const to = column.dataset.status;
     const fields = {};
+    // A drop on a merged column records a merge into that branch.
+    if (column.dataset.into) fields.into = column.dataset.into;
     if (to === "backlog") {
       const at = aim(column, e);
       if (at.card) fields[at.above ? "before" : "after"] = at.card.dataset.id;
@@ -161,13 +170,13 @@
       submit(card.dataset.statusUrl, { ...fields, to, back: "board" }, card.dataset.id);
       return;
     }
-    ask(card, column, to, asks);
+    ask(card, column, to, asks, fields);
   });
 
   // ask opens the prompt for a move and, on Move, sends the same status form
   // a plain drop does, with what was typed. The card may be gone after a live
   // refresh, so only its address and id are kept.
-  function ask(card, column, to, asks) {
+  function ask(card, column, to, asks, extra) {
     const dialog = document.getElementById("move-prompt");
     const form = document.getElementById("move-form");
     if (!dialog || !dialog.showModal) return;
@@ -184,7 +193,7 @@
     }
     form.onsubmit = (e) => {
       e.preventDefault();
-      const fields = { to, back: "board" };
+      const fields = { ...extra, to, back: "board" };
       for (const input of form.querySelectorAll("input:not(:disabled)")) {
         if (input.value.trim() !== "") fields[input.name] = input.value.trim();
       }

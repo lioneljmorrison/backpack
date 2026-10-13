@@ -97,3 +97,30 @@ func TestSetStatusHoldsAProposalAndResumesItToProposed(t *testing.T) {
 		t.Fatalf("resumed %v", s)
 	}
 }
+
+func TestSetStatusMergesIntoANamedBranchOneStepAtATime(t *testing.T) {
+	b, cs := connect(t)
+	if _, err := b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AddStory("staged", "tester", board.NewStory{Title: "First"}); err != nil {
+		t.Fatal(err)
+	}
+	set := func(args map[string]any) map[string]any {
+		args["workspace"], args["id"] = "staged", "S-1"
+		return use(t, cs, "set_status", args)
+	}
+	set(map[string]any{"to": "in_progress"})
+	set(map[string]any{"to": "in_review"})
+	refused(t, cs, "set_status", map[string]any{"workspace": "staged", "id": "S-1", "to": "merged", "into": "main"})
+	if s := set(map[string]any{"to": "merged", "commit": "abc1234"}); s["into"] != "dev" {
+		t.Fatalf("a merge naming no branch: %v", s)
+	}
+	if s := set(map[string]any{"to": "merged", "into": "main", "commit": "def5678"}); s["into"] != "main" {
+		t.Fatalf("a merge into main: %v", s)
+	}
+	why := refused(t, cs, "set_status", map[string]any{"workspace": "staged", "id": "S-1", "to": "released"})
+	if !strings.Contains(why, "release branch") {
+		t.Fatalf("refusal %q", why)
+	}
+}

@@ -63,10 +63,11 @@ type moveStoryIn struct {
 
 type setStatusIn struct {
 	storyIn
-	To         string `json:"to" jsonschema:"proposed (only to resume a held proposal), backlog, in_progress, in_review, merged, released, deployed, on_hold or closed"`
+	To         string `json:"to" jsonschema:"proposed (only to resume a held proposal), backlog, in_progress, in_review, merged, deployed, on_hold or closed"`
 	Branch     string `json:"branch,omitempty" jsonschema:"only when starting: the task branch"`
 	PRURL      string `json:"pr_url,omitempty" jsonschema:"only when opening review: the pull request's link"`
 	Commit     string `json:"commit,omitempty" jsonschema:"only when merging: the merge commit"`
+	Into       string `json:"into,omitempty" jsonschema:"only when merging: the branch merged into; with none, the first branch (such as dev). A story moves on to the branch its current one merges into, one step at a time"`
 	Reason     string `json:"reason,omitempty" jsonschema:"required when putting on hold or closing, and only then"`
 	Workaround string `json:"workaround,omitempty" jsonschema:"only when starting a blocked story: how it goes ahead anyway"`
 }
@@ -161,7 +162,7 @@ func addTools(s *mcp.Server, t tools) {
 	write(s, steps, "add_story", "Propose a story: it goes in as proposed, directly before or after another story or at the bottom when neither is given, with the reasoning for that spot logged as a decision. It waits until a person approves it by setting its status to backlog. It must rank below everything it will depend on.", t.addStory)
 	write(s, steps, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing.", t.updateStory)
 	write(s, steps, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it.", t.moveStory)
-	write(s, steps, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog, declined by closing it, or parked with on_hold. Merged, released and deployed are complete. on_hold resumes to the column it left (a held proposal resumes to proposed); closed is final. Every change is logged.", t.setStatus)
+	write(s, steps, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog, declined by closing it, or parked with on_hold. Merging records the branch reached (into; none means the first branch) and moves on one branch at a time, so merged into the release branch is a second merge; deployed is allowed only from the release branch. Merged and deployed are complete. on_hold resumes to the column it left (a held proposal resumes to proposed); closed is final. Every change is logged.", t.setStatus)
 	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry.", t.log)
 	tool(s, "read_log", "A story's log, oldest first.", t.readLog)
 	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle.", t.addDependency)
@@ -233,7 +234,7 @@ func (t tools) moveStory(ctx context.Context, a moveStoryIn) (any, error) {
 
 func (t tools) setStatus(ctx context.Context, a setStatusIn) (any, error) {
 	return t.b.SetStatus(a.Workspace, actor(ctx), a.ID, board.StatusChange{To: a.To, Branch: a.Branch,
-		PRURL: a.PRURL, Commit: a.Commit, Reason: a.Reason, Workaround: a.Workaround})
+		PRURL: a.PRURL, Commit: a.Commit, Into: a.Into, Reason: a.Reason, Workaround: a.Workaround})
 }
 
 func (t tools) log(ctx context.Context, a logIn) (any, error) {
