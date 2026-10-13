@@ -65,6 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const x = window.scrollX;
     const y = window.scrollY;
     const boardX = main.querySelector(".board")?.scrollLeft;
+    // board.js notes where the cards are before they are swapped out.
+    document.dispatchEvent(new Event("backpack:refreshing"));
     main.replaceChildren(...fresh.childNodes);
     if (error && !main.querySelector(":scope > .error")) main.prepend(error);
     for (const d of main.querySelectorAll("details")) d.open = open.has(d.className);

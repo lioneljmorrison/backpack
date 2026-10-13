@@ -9,9 +9,15 @@
 // a merge commit) ask for it in a small prompt first: promptFor says what each
 // asks. Cancelling sends nothing and the card stays where it was.
 //
+// When live.js swaps in a fresh board, cards that moved slide to their new
+// place, new cards fade in and cards that left fade out, unless the person
+// asks for reduced motion.
+//
 // Listeners sit on the document, so they survive live.js swapping in a
 // fresh board.
 (function () {
+  const MOTION_MS = 500;
+  const CARDS = "main .board .card[data-id]";
   let dragged = null;
   let prompting = false;
 
@@ -174,4 +180,73 @@
     const first = form.querySelector("input:not(:disabled)");
     if (first) first.focus();
   }
+
+  // Cards are measured against the board's own content, not the window, so
+  // a card that only shifted because something above the board changed size
+  // does not slide. getBoundingClientRect includes a running animation's
+  // transform, so a redraw mid-slide continues from where the card is seen.
+  let before = null;
+
+  function snapshot() {
+    const board = document.querySelector("main .board");
+    if (!board) return null;
+    const origin = board.getBoundingClientRect();
+    const cards = new Map();
+    for (const el of board.querySelectorAll(CARDS)) {
+      const r = el.getBoundingClientRect();
+      cards.set(el.dataset.id, {
+        el,
+        view: r,
+        x: r.left - origin.left + board.scrollLeft,
+        y: r.top - origin.top + board.scrollTop,
+      });
+    }
+    return cards;
+  }
+
+  const motion = { duration: MOTION_MS, easing: "ease-out" };
+
+  document.addEventListener("backpack:refreshing", () => {
+    before = snapshot();
+  });
+
+  document.addEventListener("backpack:refreshed", () => {
+    const old = before;
+    before = null;
+    if (!old || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const now = snapshot();
+    if (!now) return;
+    for (const [id, card] of now) {
+      const was = old.get(id);
+      if (!was) {
+        card.el.animate([{ opacity: 0 }, { opacity: 1 }], motion);
+        continue;
+      }
+      const dx = was.x - card.x;
+      const dy = was.y - card.y;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+      card.el.animate([{ transform: "translate(" + dx + "px, " + dy + "px)" }, { transform: "none" }], motion);
+    }
+    // A card that left the board fades out where it was, as a copy.
+    for (const [id, card] of old) {
+      if (now.has(id)) continue;
+      const ghost = card.el.cloneNode(true);
+      ghost.removeAttribute("draggable");
+      ghost.setAttribute("aria-hidden", "true");
+      Object.assign(ghost.style, {
+        position: "fixed",
+        left: card.view.left + "px",
+        top: card.view.top + "px",
+        width: card.view.width + "px",
+        height: card.view.height + "px",
+        margin: "0",
+        pointerEvents: "none",
+      });
+      document.body.append(ghost);
+      ghost.animate([{ opacity: 1 }, { opacity: 0 }], motion).finished.then(
+        () => ghost.remove(),
+        () => ghost.remove(),
+      );
+    }
+  });
 })();
