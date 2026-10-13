@@ -142,10 +142,11 @@ func (b *Board) MergeBranch(ws, actor, branch, commit string) (_ []Story, err er
 // maxBranchName bounds a branch's name, in characters.
 const maxBranchName = 100
 
-// BranchPatch changes a branch; a field left nil is left as it is. Only the
-// name can change so far.
+// BranchPatch changes a branch; a field left nil is left as it is. An empty
+// Alias clears the alias.
 type BranchPatch struct {
-	Name *string `json:"name"`
+	Name  *string `json:"name"`
+	Alias *string `json:"alias"`
 }
 
 // UpdateBranch changes a branch. Renaming it changes its name everywhere the
@@ -153,7 +154,9 @@ type BranchPatch struct {
 // reached it. No story moves, and past log entries keep the old name, because
 // a log is never edited. A name already in use, or one that is empty, has
 // whitespace or runs past 100 characters, is refused; renaming a branch to its
-// own name, like an empty patch, is accepted and changes nothing. It is one
+// own name, like an empty patch, is accepted and changes nothing. An alias is
+// the name its column heading shows on the web, and nothing else uses it; it
+// is plain text of at most 100 characters, and an empty one clears it. It is one
 // query, so every reference follows or none does. It answers with the branch
 // as it is now, and tells the board's watchers about each story it renamed.
 func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Branch, err error) {
@@ -168,6 +171,14 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 			return Branch{}, refuse(Invalid, "a branch's name cannot contain whitespace")
 		}
 		if err := plainText(n); err != nil {
+			return Branch{}, err
+		}
+	}
+	if patch.Alias != nil {
+		if utf8.RuneCountInString(*patch.Alias) > maxBranchName {
+			return Branch{}, refuse(Invalid, "a branch's alias is at most %d characters", maxBranchName)
+		}
+		if err := plainText(*patch.Alias); err != nil {
 			return Branch{}, err
 		}
 	}
@@ -191,8 +202,10 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 			SET b.name = $name
 			FOREACH (s IN ss | SET s.into = $name)
 			FOREACH (c IN cs | SET c.into = $name))
+		FOREACH (_ IN CASE WHEN violation IS NULL AND $alias IS NOT NULL THEN [1] ELSE [] END |
+			SET b.alias = CASE WHEN $alias = '' THEN null ELSE $alias END)
 		RETURN violation, [s IN ss | s.id] AS ids`,
-		map[string]any{"branch": branch, "name": opt(patch.Name)}, nil)
+		map[string]any{"branch": branch, "name": opt(patch.Name), "alias": opt(patch.Alias)}, nil)
 	if err != nil {
 		return Branch{}, fmt.Errorf("update branch: %w", err)
 	}

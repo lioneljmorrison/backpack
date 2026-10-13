@@ -110,7 +110,7 @@ curl -fsS -X POST https://backpack.example.com/v1/workspaces \
 
 `slug` and `name` are required. `repo_url` is optional. `has_release_stage` is
 the person's answer from step 1; it seeds the workspace's branches (`main` alone,
-or `dev` merging into `main`), which `list_branches` shows. If the repository's branches are called something else (`master`, `develop`), rename them with `update_branch`: every story stays in its column. A `409` means the slug is already taken, so
+or `dev` merging into `main`), which `list_branches` shows. If the repository's branches are called something else (`master`, `develop`), rename them with `update_branch`: every story stays in its column. To show a column under another name on the web board ("Merged (Production)" for `main`), give the branch an `alias` with the same tool; everything else keeps the branch name. A `409` means the slug is already taken, so
 check with the person whether that workspace is this project's.
 
 ## 4. Connect the MCP server

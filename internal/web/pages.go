@@ -73,8 +73,19 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	// A column's heading shows its branch's alias; everything else keeps the name.
+	aliases := map[string]string{}
+	for _, br := range bs {
+		if br.Alias != "" {
+			aliases[br.Name] = br.Alias
+		}
+	}
 	for _, c := range cols {
-		col := column{Status: c.Status, Into: c.Branch, Title: statusLabel(c.Status, c.Branch), Cards: make([]card, len(c.Stories))}
+		heading := c.Branch
+		if a, ok := aliases[heading]; ok {
+			heading = a
+		}
+		col := column{Status: c.Status, Into: c.Branch, Title: statusLabel(c.Status, heading), Cards: make([]card, len(c.Stories))}
 		for i, st := range c.Stories {
 			col.Cards[i] = cardOf(ws.Slug, st)
 			col.Cards[i].Moves = moveKeys(board.Moves(st, bs))
