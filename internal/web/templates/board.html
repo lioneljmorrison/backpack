@@ -42,6 +42,12 @@
 <div class="toolbar"><a class="button" href="/w/{{$ws}}/stories/new">New story</a></div>
 
 <div class="board">
+  <section class="column" aria-label="Ideas">
+    <h2>Ideas <span class="count">{{len .Ideas}}</span></h2>
+    {{range .Ideas}}
+    <article class="card"><a class="card-title" href="/w/{{$ws}}/ideas#{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}}</a></article>
+    {{else}}<p class="empty">Nothing here</p>{{end}}
+  </section>
   {{range .Columns}}
   <section class="column" aria-label="{{label .Status}}">
     <h2>{{label .Status}} <span class="count">{{len .Cards}}</span></h2>
@@ -50,11 +56,5 @@
   {{end}}
 </div>
 
-{{with .Closed}}
-<details class="closed">
-  <summary>Closed ({{len .}})</summary>
-  {{range .}}{{template "card" (cardOf $ws .)}}{{end}}
-</details>
-{{end}}
 {{end}}
 {{end}}

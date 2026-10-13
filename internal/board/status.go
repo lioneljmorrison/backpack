@@ -21,7 +21,7 @@ const (
 )
 
 // statuses is every status, in board order.
-var statuses = []string{Proposed, Backlog, InProgress, InReview, Merged, Released, Deployed, OnHold, Closed}
+var statuses = []string{Proposed, OnHold, Backlog, InProgress, InReview, Merged, Released, Deployed, Closed}
 
 // complete is every status in which a story's work has landed.
 var complete = []string{Merged, Released, Deployed}

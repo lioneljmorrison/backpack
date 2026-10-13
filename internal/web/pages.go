@@ -34,10 +34,11 @@ func (s *site) workspace(slug string) (*board.Workspace, error) {
 }
 
 type boardData struct {
-	Where   board.Where
-	Next    *board.Story
+	Where board.Where
+	Next  *board.Story
+	// Ideas are the open ideas, shown as the first column.
+	Ideas   []board.Idea
 	Columns []column
-	Closed  []board.Story
 }
 
 type column struct {
@@ -55,7 +56,9 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 	var cols []board.Column
 	if d.Where, err = s.board.Where(ws.Slug); err == nil {
 		if d.Next, err = s.board.Next(ws.Slug); err == nil {
-			cols, err = s.board.Board(ws.Slug)
+			if cols, err = s.board.Board(ws.Slug); err == nil {
+				d.Ideas, err = s.board.Ideas(ws.Slug)
+			}
 		}
 	}
 	if err != nil {
@@ -63,11 +66,6 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, c := range cols {
-		// Closed stories are history, not work: they go below the board.
-		if c.Status == board.Closed {
-			d.Closed = c.Stories
-			continue
-		}
 		col := column{Status: c.Status, Cards: make([]card, len(c.Stories))}
 		for i, st := range c.Stories {
 			col.Cards[i] = cardOf(ws.Slug, st)
@@ -85,7 +83,7 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Columns = append(d.Columns, col)
 	}
-	s.render(w, r, http.StatusOK, "board", page{Title: ws.Name, WS: ws, Nav: "board", Live: "story phase", Data: d})
+	s.render(w, r, http.StatusOK, "board", page{Title: ws.Name, WS: ws, Nav: "board", Live: "story phase idea", Data: d})
 }
 
 type storyData struct {

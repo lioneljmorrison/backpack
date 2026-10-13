@@ -62,6 +62,47 @@ func TestTheBoardShowsEachColumnWithItsStoriesInDeliveryOrder(t *testing.T) {
 	}
 }
 
+func TestTheBoardRunsFromIdeasThroughOnHoldAndBacklogToClosed(t *testing.T) {
+	h, _ := withDemo(t)
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	order := []string{"Ideas", "Proposed", "On hold", "Backlog", "In progress", "Deployed", "Closed"}
+	for i := 1; i < len(order); i++ {
+		if !before(page, `aria-label="`+order[i-1]+`"`, `aria-label="`+order[i]+`"`) {
+			t.Errorf("%s is not before %s", order[i-1], order[i])
+		}
+	}
+}
+
+func TestTheBoardShowsOpenIdeasInTheirOwnColumn(t *testing.T) {
+	h, b := withDemo(t)
+	open := must[board.Idea](t)(b.AddIdea("demo", "tester", board.NewIdea{Title: "Dark mode"}))
+	dropped := must[board.Idea](t)(b.AddIdea("demo", "tester", board.NewIdea{Title: "Sound effects"}))
+	must[board.Idea](t)(b.DropIdea("demo", "tester", dropped.ID, "nobody wants it"))
+
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	if !before(page, `aria-label="Ideas"`, "Dark mode") || !before(page, "Dark mode", `aria-label="Proposed"`) {
+		t.Error("an open idea is not in the Ideas column")
+	}
+	wantPage(t, get(h, "/w/demo", "bp_good"), `href="/w/demo/ideas#`+open.ID+`"`)
+	if strings.Contains(page, "Sound effects") {
+		t.Error("a dropped idea is on the board")
+	}
+}
+
+func TestClosedStoriesHaveAColumnOnTheBoard(t *testing.T) {
+	h, b := withDemo(t)
+	s := story(t, b, board.NewStory{Title: "Not needed after all"})
+	must[board.Story](t)(b.SetStatus("demo", "tester", s.ID, board.StatusChange{To: board.Closed, Reason: "superseded"}))
+
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	if !before(page, `aria-label="Closed"`, "Not needed after all") {
+		t.Error("a closed story is not in the Closed column")
+	}
+	if strings.Contains(page, "<details") {
+		t.Error("closed stories are still folded away")
+	}
+}
+
 func TestTheBoardMarksBlockedStoriesAndWhatInProgressWorkIsDoing(t *testing.T) {
 	h, b := withDemo(t)
 	first := story(t, b, board.NewStory{Title: "Groundwork"})
