@@ -47,6 +47,8 @@ what/why/how, status) are answered directly.
 
 Any change touching more than one file, or any new endpoint, MCP tool, graph
 node or edge, index or migration, is planned and explicitly approved before code is written.
+Working through the backlog (below) is the one exception: there, an approved
+story's plan is the approved plan.
 
 ## Plans are written for people
 
@@ -135,6 +137,45 @@ through the `backpack` MCP tools, added to Claude Code once per machine (see
   turn it into work, such as notes, links, documents or background. Build the
   stories or phase from that context, then `refine_idea` links them and
   closes the idea; `drop_idea` closes one that became nothing, with a reason.
+
+## Working through the backlog
+
+"Work the backlog", "complete the backlog" or "build backlog" means: deliver
+every ready story, one at a time, with a sub-agent doing each build. This
+instruction is the standing request to use sub-agents for it. A story in the
+backlog was approved by a person, so its plan is the approved plan. Merging
+into `dev` is authorised; merging `dev` into `main` and deploying are not.
+
+The main session coordinates and keeps Backpack current; it does not write
+the code. For each story:
+
+1. `whats_next`. If no story is ready, stop and report.
+2. If the story's plan is thin or leaves a question open, hand it to the
+   `planner` and bring its plan to the person for approval; work on nothing
+   else until they answer.
+3. Cut the task branch from an up-to-date `origin/dev`; `set_status`
+   `in_progress` with the branch.
+4. Hand the story to the `executor`, one at a time, never in parallel. Give
+   it the story's id, goal and plan, the branch, and these rules: follow the
+   plan and `docs/ENGINEERING-STANDARD.md`; tests first; `make gates` must
+   pass (after `make forward` when the stack runs on another host); if the
+   change alters how Backpack is built, run, configured or used, or adds a
+   known limitation, update README.md, CLAUDE.md or `docs/` to match and list
+   the doc changes in the report; commit on the branch (don't push); report
+   what changed, any deviation from the plan and why, and any gap or new work
+   it found. Keep the story's activity current with `update_story` as it moves.
+5. Review the diff against the goal (`git diff origin/dev...`) and check the
+   docs match. Send it back to the same sub-agent (`SendMessage`) for fixes.
+6. Push, open the pull request into `dev` (`in_review`), merge it once the
+   gates pass (`merged`, with the merge commit). Log decisions and deviations.
+7. New work the sub-agent found: `search`, then `add_story` as proposed.
+   Don't wait for approval; continue with the next ready story.
+8. If the build fails twice or the plan doesn't hold, `on_hold` with the
+   reason and move on.
+
+Internal refactors and bug fixes that don't change behaviour need no doc
+change. Finish with a summary: stories merged, stories on hold and why,
+proposed stories awaiting approval.
 
 ## Branching
 
