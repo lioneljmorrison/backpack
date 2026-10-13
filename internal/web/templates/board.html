@@ -1,4 +1,4 @@
-{{define "head"}}<script src="/static/board.js" defer></script>{{end}}
+{{define "head"}}<script src="{{static "board.js"}}" defer></script>{{end}}
 {{define "content"}}
 {{$ws := .WS.Slug}}
 {{with .Data}}

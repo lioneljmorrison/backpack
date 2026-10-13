@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} · Backpack</title>
-<link rel="stylesheet" href="/static/style.css">
-{{if .Live}}<script src="/static/live.js" defer></script>{{end}}
+<link rel="stylesheet" href="{{static "style.css"}}">
+{{if .Live}}<script src="{{static "live.js"}}" defer></script>{{end}}
 {{block "head" .}}{{end}}
 </head>
 <body>
