@@ -36,7 +36,9 @@ jobs:
           echo "Typesense did not become healthy"; exit 1
       # Test packages run in parallel, and a collection created while another
       # is still downloading the embedding model gets no embedder. Creating
-      # one first downloads the model once, before any test starts.
+      # one first downloads the model once, before any test starts. The test
+      # helper then keeps a collection of its own so the model is never
+      # unloaded by another test's cleanup.
       - name: Load the search model
         run: |
           curl -fsS -X POST localhost:8108/collections -H "X-TYPESENSE-API-KEY: ci-only" \
