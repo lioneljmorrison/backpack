@@ -353,3 +353,36 @@ func TestAfterABranchMergeSearchFindsEveryMovedStoryAndTheOneLeftBehind(t *testi
 		t.Fatalf("search found %v, want %v", got, want)
 	}
 }
+
+// Renaming a branch notifies the index of every story that reached it, so
+// search reads "merged:develop" and not the old name.
+func TestAfterABranchRenameSearchReadsTheNewBranchInEachStoryState(t *testing.T) {
+	b, x := newBoard(t)
+	b.OnChange(func(c board.Change) {
+		if err := x.Sync(ctx, c); err != nil {
+			t.Errorf("sync %+v: %v", c, err)
+		}
+	})
+	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "demo", Name: "demo", HasReleaseStage: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Export invoices", "Export receipts"} {
+		addStory(t, b, "demo", board.NewStory{Title: title})
+	}
+	for _, id := range []string{"S-1", "S-2"} {
+		for _, c := range []board.StatusChange{{To: board.InProgress}, {To: board.InReview}, {To: board.Merged, Commit: "c1"}} {
+			if _, err := b.SetStatus("demo", actor, id, c); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	name := "develop"
+	if _, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Name: &name}); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range find(t, x, "demo", "export") {
+		if r.State != "merged:develop" {
+			t.Fatalf("%s is %q in search, want merged:develop", r.ID, r.State)
+		}
+	}
+}

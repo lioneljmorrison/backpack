@@ -3,6 +3,9 @@ package board
 import (
 	"fmt"
 	"sort"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/FalkorDB/falkordb-go/v2"
 )
@@ -134,4 +137,93 @@ func (b *Board) MergeBranch(ws, actor, branch, commit string) (_ []Story, err er
 		b.changed(nil, Change{ws, KindStory, s.ID})
 	}
 	return moved, nil
+}
+
+// maxBranchName bounds a branch's name, in characters.
+const maxBranchName = 100
+
+// BranchPatch changes a branch; a field left nil is left as it is. Only the
+// name can change so far.
+type BranchPatch struct {
+	Name *string `json:"name"`
+}
+
+// UpdateBranch changes a branch. Renaming it changes its name everywhere the
+// board refers to it: the branches that merge into it and the stories that
+// reached it. No story moves, and past log entries keep the old name, because
+// a log is never edited. A name already in use, or one that is empty, has
+// whitespace or runs past 100 characters, is refused; renaming a branch to its
+// own name, like an empty patch, is accepted and changes nothing. It is one
+// query, so every reference follows or none does. It answers with the branch
+// as it is now, and tells the board's watchers about each story it renamed.
+func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Branch, err error) {
+	if patch.Name != nil {
+		n := *patch.Name
+		switch {
+		case n == "":
+			return Branch{}, refuse(Invalid, "a branch's name cannot be empty")
+		case utf8.RuneCountInString(n) > maxBranchName:
+			return Branch{}, refuse(Invalid, "a branch's name is at most %d characters", maxBranchName)
+		case strings.ContainsFunc(n, unicode.IsSpace):
+			return Branch{}, refuse(Invalid, "a branch's name cannot contain whitespace")
+		}
+		if err := plainText(n); err != nil {
+			return Branch{}, err
+		}
+	}
+	g, err := b.workspace(ws)
+	if err != nil {
+		return Branch{}, err
+	}
+	res, err := g.Query(`
+		MATCH (w:Workspace)
+		OPTIONAL MATCH (b:Branch {name: $branch})
+		OPTIONAL MATCH (x:Branch) WHERE x.name = $name
+		WITH b, x,
+			CASE WHEN b IS NULL THEN 'no branch'
+				WHEN x IS NOT NULL AND x.name <> b.name THEN 'taken' END AS violation,
+			b IS NOT NULL AND $name IS NOT NULL AND $name <> b.name AS renames
+		OPTIONAL MATCH (s:Story {into: $branch}) WHERE violation IS NULL AND renames
+		WITH b, violation, renames, collect(s) AS ss
+		OPTIONAL MATCH (c:Branch {into: $branch}) WHERE violation IS NULL AND renames
+		WITH b, violation, renames, ss, collect(c) AS cs
+		FOREACH (_ IN CASE WHEN violation IS NULL AND renames THEN [1] ELSE [] END |
+			SET b.name = $name
+			FOREACH (s IN ss | SET s.into = $name)
+			FOREACH (c IN cs | SET c.into = $name))
+		RETURN violation, [s IN ss | s.id] AS ids`,
+		map[string]any{"branch": branch, "name": opt(patch.Name)}, nil)
+	if err != nil {
+		return Branch{}, fmt.Errorf("update branch: %w", err)
+	}
+	if !res.Next() {
+		return Branch{}, refuse(NotFound, "no workspace %q", ws)
+	}
+	r := res.Record()
+	switch str(r, "violation") {
+	case "":
+	case "no branch":
+		return Branch{}, refuse(NotFound, "%s has no branch %q", ws, branch)
+	default: // taken
+		return Branch{}, refuse(Conflict, "%s already has a branch named %q", ws, deref(patch.Name))
+	}
+	ids := strs(r, "ids")
+	sort.Strings(ids)
+	name := branch
+	if patch.Name != nil {
+		name = *patch.Name
+	}
+	for _, id := range ids {
+		b.changed(nil, Change{ws, KindStory, id})
+	}
+	bs, err := branches(g)
+	if err != nil {
+		return Branch{}, err
+	}
+	for _, br := range bs {
+		if br.Name == name {
+			return br, nil
+		}
+	}
+	return Branch{}, fmt.Errorf("update branch: %q is gone after the change", name)
 }

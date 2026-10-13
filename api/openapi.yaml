@@ -207,6 +207,42 @@ paths:
                     items: { $ref: "#/components/schemas/Branch" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/branches/{name}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: name
+        in: path
+        required: true
+        description: The branch, by its current name
+        schema: { type: string }
+    patch:
+      summary: Change a branch
+      description: >-
+        Fields not given are left as they are. A new name replaces the old one
+        everywhere the board refers to it: the branches that merge into this
+        one and the stories that reached it. Every story stays in its column,
+        and past log entries keep the old name. A name that is empty, has
+        whitespace or is over 100 characters is refused, as is one already in
+        use. Giving the branch's own name changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 100, description: The new name, plain text with no whitespace }
+      responses:
+        "200":
+          description: The branch as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branch" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/workspaces/{ws}/branches/{name}/merged:
     parameters:
       - $ref: "#/components/parameters/Workspace"

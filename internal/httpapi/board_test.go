@@ -376,3 +376,28 @@ func TestMergeBranchOverHTTPMovesEveryStoryOnIt(t *testing.T) {
 		t.Fatalf("moved again %v", again)
 	}
 }
+
+func TestRenameBranchOverHTTPKeepsStoriesWhereTheyAre(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	want(t, call(t, h, "POST", p, `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"in_progress", "in_review"} {
+		want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+	m := "/v1/workspaces/staged/branches/"
+	got := want(t, call(t, h, "PATCH", m+"dev", `{"name": "develop"}`), http.StatusOK)
+	if got["name"] != "develop" || got["into"] != "main" {
+		t.Fatalf("answered %v", got)
+	}
+	s := want(t, call(t, h, "GET", p+"/S-1", ""), http.StatusOK)
+	if s["status"] != "merged" || s["into"] != "develop" {
+		t.Fatalf("story %v", s)
+	}
+	want(t, call(t, h, "PATCH", m+"develop", `{"name": "main"}`), http.StatusConflict)
+	want(t, call(t, h, "PATCH", m+"develop", `{"name": "a b"}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", m+"develop", `{"name": ""}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", m+"nope", `{"name": "x"}`), http.StatusNotFound)
+	want(t, call(t, h, "PATCH", m+"develop", `{}`), http.StatusOK)
+}
