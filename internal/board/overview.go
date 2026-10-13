@@ -40,6 +40,9 @@ type Where struct {
 	OnHold     []Story `json:"on_hold"`
 	// Next is the top of the backlog, blocked stories included.
 	Next []Story `json:"next"`
+	// Unreleased is what is merged into the release branch and not yet in a
+	// release, in delivery order.
+	Unreleased []Story `json:"unreleased"`
 }
 
 // Where reads the current phase, the work under way and what comes next.
@@ -56,7 +59,18 @@ func (b *Board) Where(ws string) (Where, error) {
 	if err != nil {
 		return Where{}, err
 	}
-	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}}
+	bs, err := branches(g)
+	if err != nil {
+		return Where{}, err
+	}
+	release := ""
+	for _, br := range bs {
+		if br.Release {
+			release = br.Name
+			break
+		}
+	}
+	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, Unreleased: []Story{}}
 	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete }); i >= 0 {
 		w.Phase = &ps[i]
 	}
@@ -70,6 +84,10 @@ func (b *Board) Where(ws string) (Where, error) {
 			w.InReview = append(w.InReview, s)
 		case OnHold:
 			w.OnHold = append(w.OnHold, s)
+		case Merged:
+			if release != "" && s.Into == release {
+				w.Unreleased = append(w.Unreleased, s)
+			}
 		case Backlog:
 			if len(w.Next) < upcoming {
 				w.Next = append(w.Next, s)
@@ -81,7 +99,7 @@ func (b *Board) Where(ws string) (Where, error) {
 
 // Text is "where are we" as a few lines for a session hook.
 func (w Where) Text() string {
-	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next) == 0 {
+	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next)+len(w.Unreleased) == 0 {
 		return "Nothing in progress, in review or in the backlog.\n"
 	}
 	var b strings.Builder
@@ -129,6 +147,7 @@ func (w Where) Text() string {
 	section("On hold", w.OnHold, func(s Story) []string {
 		return []string{fmt.Sprintf("%s (was in %s)", s.HoldReason, label(s.HeldFrom))}
 	})
+	section("Merged, waiting for a release", w.Unreleased, none)
 	section("Next", w.Next, none)
 	section("Waiting for approval", w.Proposed, none)
 	return b.String()

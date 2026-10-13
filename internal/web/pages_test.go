@@ -426,3 +426,74 @@ func TestAnOldDeployedEntryStillReadsSensibly(t *testing.T) {
 		t.Errorf("label(released:main) = %q, want Released without a branch", got)
 	}
 }
+
+// shipped walks a story to merged (into the release branch of a workspace
+// with one branch) and returns it.
+func shipped(t *testing.T, b *board.Board, title string) board.Story {
+	t.Helper()
+	s := story(t, b, board.NewStory{Title: title})
+	for _, c := range []board.StatusChange{{To: board.InProgress}, {To: board.InReview}, {To: board.Merged, Commit: "abc1234"}} {
+		must[board.Story](t)(b.SetStatus("demo", "tester", s.ID, c))
+	}
+	return s
+}
+
+func TestAReleasePageShowsTheVersionTagDateNotesAndItsStoriesAsAChangelog(t *testing.T) {
+	h, b := withDemo(t)
+	one, two := shipped(t, b, "Shipped one"), shipped(t, b, "Shipped <two>")
+	r := must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.2.0", Tag: "rel-1.2.0", Commit: "9f8e7d6", Notes: "The first <b>cut</b>"}))
+	page := get(h, "/w/demo/releases/"+r.ID, "bp_good")
+	if page.Code != http.StatusOK {
+		t.Fatalf("status %d", page.Code)
+	}
+	body := page.Body.String()
+	for _, want := range []string{"v1.2.0", "rel-1.2.0", "9f8e7d6", r.CreatedAt[:10], "The first &lt;b&gt;cut&lt;/b&gt;",
+		`href="/w/demo/stories/` + one.ID + `"`, "Shipped one", `href="/w/demo/stories/` + two.ID + `"`, "Shipped &lt;two&gt;"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the release page lacks %q", want)
+		}
+	}
+	if !before(body, "Shipped one", "Shipped &lt;two&gt;") {
+		t.Error("stories are not in delivery order")
+	}
+	if got := get(h, "/w/demo/releases/R-9", "bp_good"); got.Code != http.StatusNotFound {
+		t.Errorf("unknown release: status %d", got.Code)
+	}
+	if got := get(h, "/w/demo/releases/"+r.ID, ""); got.Code == http.StatusOK {
+		t.Error("a release page opens without signing in")
+	}
+}
+
+func TestTheReleasesPageListsReleasesNewestFirstAndTheNavLinksToIt(t *testing.T) {
+	h, b := withDemo(t)
+	empty := get(h, "/w/demo/releases", "bp_good")
+	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), "No releases yet") {
+		t.Fatalf("empty list: %d", empty.Code)
+	}
+	shipped(t, b, "One")
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.0.0", Tag: "v1.0.0"}))
+	shipped(t, b, "Two")
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1.1.0", Tag: "v1.1.0"}))
+	body := get(h, "/w/demo/releases", "bp_good").Body.String()
+	for _, want := range []string{`href="/w/demo/releases/R-1"`, `href="/w/demo/releases/R-2"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the list lacks %q", want)
+		}
+	}
+	if !before(body, "v1.1.0", "v1.0.0") {
+		t.Error("the list is not newest first")
+	}
+	if !strings.Contains(get(h, "/w/demo", "bp_good").Body.String(), `href="/w/demo/releases"`) {
+		t.Error("the navigation does not link to the releases")
+	}
+}
+
+func TestTheBoardsWhereAreWeAreaCountsWhatWaitsForARelease(t *testing.T) {
+	h, b := withDemo(t)
+	shipped(t, b, "Waiting")
+	body := get(h, "/w/demo", "bp_good").Body.String()
+	i := strings.Index(body, "Waiting for release")
+	if i < 0 || !strings.Contains(body[i:i+200], "<strong>1</strong>") {
+		t.Fatalf("the where-are-we area does not count the unreleased story")
+	}
+}

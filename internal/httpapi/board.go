@@ -25,6 +25,8 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/branches/{name}", a.updateBranch)
 	mux.HandleFunc("DELETE /v1/workspaces/{ws}/branches/{name}", a.removeBranch)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/branches/{name}/merged", a.mergeBranch)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/releases", a.listReleases)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/releases/{id}", a.getRelease)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/releases", a.cutRelease)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/status", a.where)
@@ -128,6 +130,16 @@ func (a boardAPI) cutRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	rel, err := a.b.CutRelease(r.PathValue("ws"), actor(r), in)
 	respond(w, http.StatusCreated, rel, err)
+}
+
+func (a boardAPI) listReleases(w http.ResponseWriter, r *http.Request) {
+	rs, err := a.b.ListReleases(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"releases": rs}, err)
+}
+
+func (a boardAPI) getRelease(w http.ResponseWriter, r *http.Request) {
+	rel, err := a.b.GetRelease(r.PathValue("ws"), r.PathValue("id"))
+	respond(w, http.StatusOK, rel, err)
 }
 
 func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {
