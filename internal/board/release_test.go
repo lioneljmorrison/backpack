@@ -262,3 +262,83 @@ func TestSettingReleasedOrDeployedIsRefusedAndNamesCutRelease(t *testing.T) {
 	}
 	wantStatus(t, b, "S-1", board.Merged)
 }
+
+func TestReleasesListNewestFirstByNumberNotByText(t *testing.T) {
+	b := newReleasingWorkspace(t)
+	if rs, err := b.ListReleases("demo"); err != nil || rs == nil || len(rs) != 0 {
+		t.Fatalf("no releases yet: %v, %v", rs, err)
+	}
+	for i := 1; i <= 10; i++ {
+		s := mergedIntoMain(t, b, fmt.Sprintf("Story %d", i))
+		v := fmt.Sprintf("v%d", i)
+		if _, err := b.CutRelease("demo", actor, board.NewRelease{Version: v, Tag: v, Notes: "n " + v, Commit: "c" + v}); err != nil {
+			t.Fatal(err, s.ID)
+		}
+	}
+	rs, err := b.ListReleases("demo")
+	if err != nil || len(rs) != 10 {
+		t.Fatalf("%d releases, %v", len(rs), err)
+	}
+	if rs[0].ID != "R-10" || rs[1].ID != "R-9" || rs[9].ID != "R-1" {
+		t.Fatalf("order %s %s ... %s", rs[0].ID, rs[1].ID, rs[9].ID)
+	}
+	top := rs[0]
+	if top.Version != "v10" || top.Tag != "v10" || top.Commit != "cv10" || top.Notes != "n v10" ||
+		top.CreatedBy != actor || top.CreatedAt == "" || !slices.Equal(top.Stories, []string{"S-10"}) {
+		t.Fatalf("top %+v", top)
+	}
+	_, err = b.ListReleases("nope")
+	wantKind(t, err, board.NotFound)
+}
+
+func TestAReleaseReadsWithItsStoriesInDeliveryOrder(t *testing.T) {
+	b := threeInMainOneInDev(t)
+	cut, err := b.CutRelease("demo", actor, v1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A story that moves down the board after the cut still reads in rank order.
+	r, err := b.GetRelease("demo", "R-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.ID != cut.ID || r.Version != "v1.0.0" || r.Tag != "v1.0.0" || r.Commit != "abc123" || r.Notes != "First cut" ||
+		r.CreatedBy != actor || r.CreatedAt != cut.CreatedAt {
+		t.Fatalf("release %+v", r)
+	}
+	got := ids(r.Entries)
+	if !slices.Equal(got, []string{"S-1", "S-2", "S-3"}) {
+		t.Fatalf("stories %v", got)
+	}
+	if r.Entries[0].Title != "In main 1" || r.Entries[0].Status != board.Released || r.Entries[0].Into != "main" {
+		t.Fatalf("story %+v", r.Entries[0])
+	}
+	_, err = b.GetRelease("demo", "R-9")
+	wantKind(t, err, board.NotFound)
+	_, err = b.GetRelease("nope", "R-1")
+	wantKind(t, err, board.NotFound)
+}
+
+func TestWhereAreWeNamesTheStoriesMergedIntoTheReleaseBranchWaitingForARelease(t *testing.T) {
+	b := threeInMainOneInDev(t)
+	w, err := b.Where("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(ids(w.Unreleased), []string{"S-1", "S-2", "S-3"}) || w.Unreleased[0].Title != "In main 1" {
+		t.Fatalf("unreleased %+v", w.Unreleased)
+	}
+	if text := w.Text(); !strings.Contains(text, "Merged, waiting for a release:\n  S-1 In main 1\n") || strings.Contains(text, "S-4") {
+		t.Fatalf("text:\n%s", text)
+	}
+	if _, err := b.CutRelease("demo", actor, v1); err != nil {
+		t.Fatal(err)
+	}
+	w, err = b.Where("demo")
+	if err != nil || w.Unreleased == nil || len(w.Unreleased) != 0 {
+		t.Fatalf("after the cut: %+v, %v", w.Unreleased, err)
+	}
+	if strings.Contains(w.Text(), "waiting for a release") {
+		t.Fatalf("text:\n%s", w.Text())
+	}
+}

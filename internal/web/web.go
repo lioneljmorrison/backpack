@@ -73,7 +73,7 @@ func New(lookup auth.LookupFunc, b *board.Board, x *search.Index, hub *live.Hub)
 }
 
 func parse(a *assets) map[string]*template.Template {
-	names := []string{"signin", "workspaces", "board", "story", "phases", "ideas", "search", "newstory"}
+	names := []string{"signin", "workspaces", "board", "story", "phases", "releases", "release", "ideas", "search", "newstory"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, name := range names {
 		pages[name] = template.Must(template.New("").Funcs(funcs).Funcs(template.FuncMap{"static": a.url}).ParseFS(files, "templates/layout.html", "templates/"+name+".html"))

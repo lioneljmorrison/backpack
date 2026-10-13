@@ -20,6 +20,7 @@
   <div><div class="muted">In progress</div><strong>{{len .Where.InProgress}}</strong></div>
   <div><div class="muted">In review</div><strong>{{len .Where.InReview}}</strong></div>
   <div><div class="muted">Waiting for approval</div><strong>{{len .Where.Proposed}}</strong></div>
+  <div><div class="muted">Waiting for release</div><a href="/w/{{$ws}}/releases"><strong>{{len .Where.Unreleased}}</strong></a></div>
 </section>
 
 {{with .Where.Proposed}}

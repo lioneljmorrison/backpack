@@ -1,0 +1,21 @@
+{{define "content"}}
+{{$ws := .WS.Slug}}
+{{with .Data}}
+<p class="muted"><a href="/w/{{$ws}}/releases">← Releases</a></p>
+<h1><span class="id">{{.ID}}</span> {{.Version}}</h1>
+<div class="tags">
+  <span class="tag">Tag <code>{{.Tag}}</code></span>
+  {{with .Commit}}<span class="tag">Commit <code>{{.}}</code></span>{{end}}
+  <span class="tag">{{when .CreatedAt}} by {{.CreatedBy}}</span>
+</div>
+<div class="detail">
+  {{with .Notes}}<h2>Notes</h2><p class="text">{{.}}</p>{{end}}
+  <h2>Stories</h2>
+  <div class="list">
+    {{range .Entries}}
+    <a class="row" href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}}</a>
+    {{end}}
+  </div>
+</div>
+{{end}}
+{{end}}

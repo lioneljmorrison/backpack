@@ -2,6 +2,9 @@ package board
 
 import (
 	"fmt"
+	"slices"
+
+	"github.com/FalkorDB/falkordb-go/v2"
 )
 
 // Release is an official release: what shipped together, under a version and
@@ -94,4 +97,72 @@ func (b *Board) CutRelease(ws, actor string, n NewRelease) (_ Release, err error
 	}
 	return Release{ID: str(r, "id"), Version: n.Version, Tag: n.Tag, Commit: n.Commit, Notes: n.Notes,
 		CreatedBy: actor, CreatedAt: at, Stories: ids}, nil
+}
+
+// ReleaseDetail is a release read with its stories in full, in delivery
+// order: the changelog. Entries is what "stories" holds in its JSON, in place
+// of the bare ids Release carries.
+type ReleaseDetail struct {
+	Release
+	Entries []Story `json:"stories"`
+}
+
+// ListReleases reads every release, newest first. Each lists the ids of its
+// stories; GetRelease reads them in full. The order is by number, so R-10
+// comes before R-9.
+func (b *Board) ListReleases(ws string) ([]Release, error) {
+	g, err := b.workspace(ws)
+	if err != nil {
+		return nil, err
+	}
+	return releases(g, "")
+}
+
+// GetRelease reads one release with its stories, or NotFound.
+func (b *Board) GetRelease(ws, id string) (ReleaseDetail, error) {
+	g, err := b.workspace(ws)
+	if err != nil {
+		return ReleaseDetail{}, err
+	}
+	rs, err := releases(g, id)
+	if err != nil {
+		return ReleaseDetail{}, err
+	}
+	if len(rs) == 0 {
+		return ReleaseDetail{}, refuse(NotFound, "no release %q", id)
+	}
+	all, err := stories(g, "")
+	if err != nil {
+		return ReleaseDetail{}, err
+	}
+	d := ReleaseDetail{Release: rs[0], Entries: []Story{}}
+	for _, s := range all { // rank order is delivery order
+		if slices.Contains(d.Stories, s.ID) {
+			d.Entries = append(d.Entries, s)
+		}
+	}
+	return d, nil
+}
+
+// releases reads every release, newest first, or only release id when set.
+func releases(g *falkordb.Graph, id string) ([]Release, error) {
+	res, err := g.ROQuery(`
+		MATCH (r:Release) WHERE $id = '' OR r.id = $id
+		OPTIONAL MATCH (s:Story)-[:IN_RELEASE]->(r)
+		WITH r, s ORDER BY s.rank, s.id
+		RETURN r.id AS id, r.version AS version, r.tag AS tag, r.commit AS commit, r.notes AS notes,
+			r.created_by AS by, r.created_at AS at, collect(s.id) AS ids`,
+		map[string]any{"id": id}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("read releases: %w", err)
+	}
+	out := []Release{}
+	for res.Next() {
+		r := res.Record()
+		out = append(out, Release{ID: str(r, "id"), Version: str(r, "version"), Tag: str(r, "tag"),
+			Commit: str(r, "commit"), Notes: str(r, "notes"), CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
+			Stories: strs(r, "ids")})
+	}
+	slices.SortFunc(out, func(a, b Release) int { return seq(b.ID) - seq(a.ID) })
+	return out, nil
 }

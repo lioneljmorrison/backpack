@@ -353,3 +353,46 @@ func TestRemoveBranchTakesAnEmptyBranchOffAndRefusesOneInUse(t *testing.T) {
 		t.Fatalf("branches %+v, %v", bs, err)
 	}
 }
+
+func TestReleasesAreListedAndReadWithTheirStoriesAndWhereAreWeNamesWhatWaits(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	if got := use(t, cs, "list_releases", map[string]any{"workspace": "staged"}); got["releases"] == nil || len(got["releases"].([]any)) != 0 {
+		t.Fatalf("no releases yet: %v", got)
+	}
+	mergedIntoDev(t, b, "First")
+	mergedIntoDev(t, b, "Second")
+	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+		t.Fatal(err)
+	}
+	where := use(t, cs, "where_are_we", map[string]any{"workspace": "staged"})
+	if un, _ := where["unreleased"].([]any); len(un) != 2 || un[0].(map[string]any)["id"] != "S-1" || un[0].(map[string]any)["title"] != "First" {
+		t.Fatalf("where %v", where)
+	}
+	use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.0.0", "tag": "v1.0.0", "commit": "abc1234", "notes": "First cut"})
+	mergedIntoDev(t, b, "Third")
+	if _, err := b.MergeBranch("staged", "tester", "dev", "x10"); err != nil {
+		t.Fatal(err)
+	}
+	use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.1.0", "tag": "v1.1.0"})
+
+	list := use(t, cs, "list_releases", map[string]any{"workspace": "staged"})["releases"].([]any)
+	if len(list) != 2 || list[0].(map[string]any)["id"] != "R-2" || list[1].(map[string]any)["id"] != "R-1" {
+		t.Fatalf("list %v", list)
+	}
+	first := list[1].(map[string]any)
+	if first["version"] != "v1.0.0" || first["tag"] != "v1.0.0" || first["commit"] != "abc1234" || first["notes"] != "First cut" ||
+		first["created_by"] == "" || len(first["stories"].([]any)) != 2 {
+		t.Fatalf("R-1 in the list %v", first)
+	}
+	got := use(t, cs, "get_release", map[string]any{"workspace": "staged", "id": "R-1"})
+	ss := got["stories"].([]any)
+	if got["version"] != "v1.0.0" || len(ss) != 2 || ss[0].(map[string]any)["id"] != "S-1" ||
+		ss[0].(map[string]any)["title"] != "First" || ss[1].(map[string]any)["id"] != "S-2" {
+		t.Fatalf("release %v", got)
+	}
+	if why := refused(t, cs, "get_release", map[string]any{"workspace": "staged", "id": "R-9"}); !strings.Contains(why, "R-9") {
+		t.Fatalf("refusal %q", why)
+	}
+	refused(t, cs, "list_releases", map[string]any{"workspace": "nope"})
+}

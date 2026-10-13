@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -497,4 +498,42 @@ func TestRemoveBranchOverHTTP(t *testing.T) {
 	want(t, call(t, h, "DELETE", m+"/staging", ""), http.StatusNotFound)
 	// dev is now the only starting branch.
 	want(t, call(t, h, "DELETE", m+"/dev", ""), http.StatusConflict)
+}
+
+func TestReleasesAreListedAndReadOverHTTP(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	rp := "/v1/workspaces/staged/releases"
+	if l := want(t, call(t, h, "GET", rp, ""), http.StatusOK); l["releases"] == nil || len(l["releases"].([]any)) != 0 {
+		t.Fatalf("no releases yet %v", l)
+	}
+	for i, title := range []string{"A", "B"} {
+		id := fmt.Sprintf("S-%d", i+1)
+		want(t, call(t, h, "POST", p, `{"title": "`+title+`"}`), http.StatusCreated)
+		for _, to := range []string{"in_progress", "in_review"} {
+			want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "`+to+`"}`), http.StatusOK)
+		}
+		want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "merged", "commit": "c1"}`), http.StatusOK)
+		want(t, call(t, h, "POST", p+"/"+id+"/status", `{"to": "merged", "into": "main", "commit": "c2"}`), http.StatusOK)
+	}
+	st := want(t, call(t, h, "GET", "/v1/workspaces/staged/status", ""), http.StatusOK)
+	if un := st["unreleased"].([]any); len(un) != 2 || un[0].(map[string]any)["title"] != "A" {
+		t.Fatalf("status %v", st)
+	}
+	want(t, call(t, h, "POST", rp, `{"version": "v1", "tag": "v1", "notes": "First"}`), http.StatusCreated)
+	if st := want(t, call(t, h, "GET", "/v1/workspaces/staged/status", ""), http.StatusOK); len(st["unreleased"].([]any)) != 0 {
+		t.Fatalf("status after the cut %v", st)
+	}
+	l := want(t, call(t, h, "GET", rp, ""), http.StatusOK)["releases"].([]any)
+	if len(l) != 1 || l[0].(map[string]any)["id"] != "R-1" || l[0].(map[string]any)["notes"] != "First" {
+		t.Fatalf("list %v", l)
+	}
+	r := want(t, call(t, h, "GET", rp+"/R-1", ""), http.StatusOK)
+	ss := r["stories"].([]any)
+	if r["version"] != "v1" || len(ss) != 2 || ss[0].(map[string]any)["title"] != "A" || ss[1].(map[string]any)["id"] != "S-2" {
+		t.Fatalf("release %v", r)
+	}
+	want(t, call(t, h, "GET", rp+"/R-9", ""), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/nope/releases", ""), http.StatusNotFound)
 }

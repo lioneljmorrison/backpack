@@ -349,6 +349,25 @@ paths:
   /v1/workspaces/{ws}/releases:
     parameters:
       - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The workspace's releases, newest first
+      description: >-
+        Newest first by number (R-10 before R-9). Each release lists the ids
+        of its stories in delivery order; read one release for them in full.
+      responses:
+        "200":
+          description: The releases; an empty list when none has been cut
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [releases]
+                properties:
+                  releases:
+                    type: array
+                    items: { $ref: "#/components/schemas/Release" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
     post:
       summary: Cut a release, releasing every story merged into the release branch
       description: >-
@@ -384,6 +403,23 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/releases/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: R-1 }
+    get:
+      summary: One release with its stories, as a changelog
+      responses:
+        "200":
+          description: The release; stories are the full stories, in delivery order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReleaseDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/phases:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -1108,6 +1144,21 @@ components:
           type: array
           items: { type: string, example: S-12 }
           description: The stories it released, in delivery order
+    ReleaseDetail:
+      type: object
+      required: [id, version, tag, created_by, created_at, stories]
+      properties:
+        id: { type: string, example: R-1 }
+        version: { type: string, example: v1.0.0 }
+        tag: { type: string, example: v1.0.0 }
+        commit: { type: string }
+        notes: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        stories:
+          type: array
+          description: The stories it released, in full, in delivery order
+          items: { $ref: "#/components/schemas/Story" }
     Phase:
       type: object
       required: [number, title, description, goals, stories_total, stories_complete, complete, goals_met_early, created_by, created_at]
@@ -1206,7 +1257,7 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, proposed, in_progress, in_review, on_hold, next]
+      required: [phase, proposed, in_progress, in_review, on_hold, next, unreleased]
       properties:
         phase:
           description: The first phase that is not complete; null when there is none
@@ -1229,6 +1280,10 @@ components:
         next:
           type: array
           description: The top three of the backlog, blocked stories included
+          items: { $ref: "#/components/schemas/Story" }
+        unreleased:
+          type: array
+          description: Merged into the release branch and not yet in a release, in delivery order
           items: { $ref: "#/components/schemas/Story" }
     Idea:
       type: object

@@ -15,6 +15,7 @@
   <nav aria-label="{{.Name}}">
     <a href="/w/{{.Slug}}"{{if eq $.Nav "board"}} aria-current="page"{{end}}>{{.Name}}</a>
     <a href="/w/{{.Slug}}/phases"{{if eq $.Nav "phases"}} aria-current="page"{{end}}>Phases</a>
+    <a href="/w/{{.Slug}}/releases"{{if eq $.Nav "releases"}} aria-current="page"{{end}}>Releases</a>
     <a href="/w/{{.Slug}}/ideas"{{if eq $.Nav "ideas"}} aria-current="page"{{end}}>Ideas</a>
     <a href="/w/{{.Slug}}/search"{{if eq $.Nav "search"}} aria-current="page"{{end}}>Search</a>
   </nav>

@@ -14,6 +14,8 @@ func (s *site) routePages(mux *http.ServeMux) {
 	mux.HandleFunc("GET /w/{ws}", s.boardPage)
 	mux.HandleFunc("GET /w/{ws}/stories/{id}", s.storyPage)
 	mux.HandleFunc("GET /w/{ws}/phases", s.phasesPage)
+	mux.HandleFunc("GET /w/{ws}/releases", s.releasesPage)
+	mux.HandleFunc("GET /w/{ws}/releases/{id}", s.releasePage)
 	mux.HandleFunc("GET /w/{ws}/ideas", s.ideasPage)
 	mux.HandleFunc("GET /w/{ws}/search", s.searchPage)
 	mux.HandleFunc("GET /w/{ws}/events", s.events)
@@ -175,6 +177,34 @@ func (s *site) phasesPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.render(w, r, http.StatusOK, "phases", page{Title: "Phases · " + ws.Name, WS: ws, Nav: "phases", Data: d})
+}
+
+func (s *site) releasesPage(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.workspace(r.PathValue("ws"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	rs, err := s.board.ListReleases(ws.Slug)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, "releases", page{Title: "Releases · " + ws.Name, WS: ws, Nav: "releases", Live: "story", Data: rs})
+}
+
+func (s *site) releasePage(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.workspace(r.PathValue("ws"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	rel, err := s.board.GetRelease(ws.Slug, r.PathValue("id"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, "release", page{Title: rel.ID + " " + rel.Version, WS: ws, Nav: "releases", Live: "story", Data: rel})
 }
 
 func (s *site) ideasPage(w http.ResponseWriter, r *http.Request) {
