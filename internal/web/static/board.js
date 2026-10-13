@@ -11,7 +11,8 @@
 //
 // When live.js swaps in a fresh board, cards that moved slide to their new
 // place, new cards fade in and cards that left fade out, unless the person
-// asks for reduced motion.
+// asks for reduced motion. A card the person dropped does not slide: it
+// lands where they put it.
 //
 // Listeners sit on the document, so they survive live.js swapping in a
 // fresh board.
@@ -73,10 +74,12 @@
 
   // submit sends a move. live.js claims it to send in the background and
   // redraw the board in place; unclaimed, a plain form post reloads the page.
-  function submit(action, fields) {
+  // dropped names the story a person just dropped, so its redraw doesn't
+  // slide it: they already put it there by hand.
+  function submit(action, fields, dropped) {
     const send = new CustomEvent("backpack:send", {
       cancelable: true,
-      detail: { action, body: new URLSearchParams(fields) },
+      detail: { action, body: new URLSearchParams(fields), dropped },
     });
     if (!document.dispatchEvent(send)) return;
     const form = document.createElement("form");
@@ -150,12 +153,12 @@
     if (card.dataset.status === "backlog" && to === "backlog") {
       // Reordering: nothing to do when dropped beside itself or with nowhere to go.
       if (!fields.before && !fields.after) return;
-      submit(card.dataset.move, fields);
+      submit(card.dataset.move, fields, card.dataset.id);
       return;
     }
     const asks = promptFor(card.dataset.status, to, card.dataset.blocked !== undefined);
     if (asks.length === 0) {
-      submit(card.dataset.statusUrl, { ...fields, to, back: "board" });
+      submit(card.dataset.statusUrl, { ...fields, to, back: "board" }, card.dataset.id);
       return;
     }
     ask(card, column, to, asks);
@@ -206,6 +209,7 @@
   // does not slide. getBoundingClientRect includes a running animation's
   // transform, so a redraw mid-slide continues from where the card is seen.
   let before = null;
+  let dropped = null;
 
   function snapshot() {
     const board = document.querySelector("main .board");
@@ -226,13 +230,16 @@
 
   const motion = { duration: MOTION_MS, easing: "ease-out" };
 
-  document.addEventListener("backpack:refreshing", () => {
+  document.addEventListener("backpack:refreshing", (e) => {
     before = snapshot();
+    dropped = (e.detail && e.detail.dropped) || null;
   });
 
   document.addEventListener("backpack:refreshed", () => {
     const old = before;
+    const landed = dropped;
     before = null;
+    dropped = null;
     if (!old || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const now = snapshot();
     if (!now) return;
@@ -242,6 +249,8 @@
         card.el.animate([{ opacity: 0 }, { opacity: 1 }], motion);
         continue;
       }
+      // A card the person dropped is already where they put it.
+      if (id === landed) continue;
       const dx = was.x - card.x;
       const dy = was.y - card.y;
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
