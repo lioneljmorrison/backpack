@@ -54,7 +54,9 @@ type page struct {
 // New returns the pages. Only /sign-in and /static/ are open without a token.
 // Pages that watch the board hear of its changes from hub.
 func New(lookup auth.LookupFunc, b *board.Board, x *search.Index, hub *live.Hub) http.Handler {
-	s := &site{lookup: lookup, board: b, search: x, live: hub, pages: parse()}
+	static, _ := fs.Sub(files, "static")
+	assets := newAssets(static)
+	s := &site{lookup: lookup, board: b, search: x, live: hub, pages: parse(assets)}
 
 	signedIn := http.NewServeMux()
 	signedIn.HandleFunc("GET /{$}", s.workspaces)
@@ -62,20 +64,19 @@ func New(lookup auth.LookupFunc, b *board.Board, x *search.Index, hub *live.Hub)
 	s.routePages(signedIn)
 	s.routeActions(signedIn)
 
-	static, _ := fs.Sub(files, "static")
 	mux := http.NewServeMux()
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
+	mux.Handle("GET /static/", assets.handler())
 	mux.HandleFunc("GET /sign-in", s.signInPage)
 	mux.HandleFunc("POST /sign-in", s.signIn)
 	mux.Handle("/", auth.RequireCookie(lookup, cookieName, "/sign-in")(signedIn))
 	return http.NewCrossOriginProtection().Handler(mux)
 }
 
-func parse() map[string]*template.Template {
+func parse(a *assets) map[string]*template.Template {
 	names := []string{"signin", "workspaces", "board", "story", "phases", "ideas", "search", "newstory"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, name := range names {
-		pages[name] = template.Must(template.New("").Funcs(funcs).ParseFS(files, "templates/layout.html", "templates/"+name+".html"))
+		pages[name] = template.Must(template.New("").Funcs(funcs).Funcs(template.FuncMap{"static": a.url}).ParseFS(files, "templates/layout.html", "templates/"+name+".html"))
 	}
 	return pages
 }
