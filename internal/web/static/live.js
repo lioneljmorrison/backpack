@@ -64,10 +64,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const open = new Set([...main.querySelectorAll("details[open]")].map((d) => d.className));
     const x = window.scrollX;
     const y = window.scrollY;
+    const boardX = main.querySelector(".board")?.scrollLeft;
     main.replaceChildren(...fresh.childNodes);
     if (error && !main.querySelector(":scope > .error")) main.prepend(error);
     for (const d of main.querySelectorAll("details")) d.open = open.has(d.className);
     window.scrollTo(x, y);
+    // The board scrolls sideways on its own, apart from the window.
+    const board = main.querySelector(".board");
+    if (board && boardX) board.scrollLeft = boardX;
     document.dispatchEvent(new Event("backpack:refreshed"));
   }
 

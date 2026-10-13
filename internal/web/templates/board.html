@@ -45,7 +45,7 @@
   <section class="column" aria-label="Ideas">
     <h2>Ideas <span class="count">{{len .Ideas}}</span></h2>
     {{range .Ideas}}
-    <article class="card"><a class="card-title" href="/w/{{$ws}}/ideas#{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}}</a></article>
+    <article class="card" data-id="{{.ID}}"><a class="card-title" href="/w/{{$ws}}/ideas#{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}}</a></article>
     {{else}}<p class="empty">Nothing here</p>{{end}}
   </section>
   {{range .Columns}}
