@@ -69,9 +69,11 @@ Also ask the person, without guessing:
 - **The workspace slug**: the project's short name on the board, using
   lowercase letters, digits and single hyphens, up to 64 characters. Suggest
   one from the repository's name (for example `my-app`) and let them confirm.
-- **Whether the project has a release stage**: a Released step between Merged
-  and Deployed, for projects that ship merged work in releases. It is set when
-  the workspace is created and can't be changed later. The default is no.
+- **Whether the project merges through an integration branch**: with one, a
+  story is merged into `dev` and later into `main`, and the board has a Merged
+  (dev) and a Merged (main) column; without one, a single Merged (main) column.
+  It is set when the workspace is created and can't be changed later. The
+  default is no.
 - **Whether a team shares this project**, which decides how the MCP server is
   set up in step 4.
 
@@ -235,8 +237,10 @@ is never committed.
 - **Record each move as it happens**, with `set_status`:
   - start work: `in_progress`, with the task branch;
   - open the pull request: `in_review`, with its link;
-  - merged: `merged`, with the merge commit;
-  - then `released` and `deployed` as they happen.
+  - merged: `merged`, with the merge commit (it goes into the first branch,
+    such as `dev`; name another with `into`);
+  - merged again into the next branch (`merged`, `into` `main`, with that merge
+    commit), one branch at a time, and `deployed` once it is in `main`.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,

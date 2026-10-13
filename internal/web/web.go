@@ -81,7 +81,7 @@ func parse(a *assets) map[string]*template.Template {
 	return pages
 }
 
-var funcs = template.FuncMap{"label": label, "when": when, "percent": percent,
+var funcs = template.FuncMap{"label": label, "storyLabel": storyLabel, "when": when, "percent": percent,
 	"list": func(v ...string) []string { return v }}
 
 // card is what the card template is given: a story and its workspace, and
@@ -91,7 +91,8 @@ type card struct {
 	S        board.Story
 	Up, Down string
 	Movable  bool
-	// Moves are the statuses the card may be dropped on, from board.Moves.
+	// Moves are the columns the card may be dropped on, from board.Moves: a
+	// status, or "merged:branch" for a merge.
 	Moves []string
 }
 

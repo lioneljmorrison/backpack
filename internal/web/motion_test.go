@@ -70,6 +70,21 @@ const over = { closest: (sel) => (sel.startsWith(".column") ? column : b) };
 fire(new Ev("drop", { target: over, clientY: 0 }));
 check(sent && sent.dropped === "S-1", "a drop names the dropped story, got " + JSON.stringify(sent && sent.dropped));
 
+// A merged card may be dropped only on the merged column of the branch its
+// data-moves names.
+const merged = makeCard("S-3", "merged", 0, 100, { moves: "merged:main" });
+const mergedCol = (into) => ({ dataset: { status: "merged", into }, getAttribute() { return "Merged (" + into + ")"; },
+  querySelectorAll() { return []; }, classList: { add() {}, remove() {} } });
+const hover = (col) => {
+  const ev = new Ev("dragover", { target: { closest: () => col }, dataTransfer: {}, clientY: 0 });
+  fire(new Ev("dragstart", { target: merged, dataTransfer: { setData() {} } }));
+  fire(ev);
+  fire(new Ev("dragend"));
+  return ev.defaultPrevented;
+};
+check(hover(mergedCol("main")), "a merged card may be dropped on the next branch's column");
+check(!hover(mergedCol("dev")), "a merged card must not be dropped on another branch's column");
+
 // An arrow button's move names no dropped story.
 sent = null;
 const form = { matches: () => true, getAttribute: () => "/w/d/stories/S-1/status" };

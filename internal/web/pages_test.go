@@ -49,7 +49,7 @@ func TestTheBoardShowsEachColumnWithItsStoriesInDeliveryOrder(t *testing.T) {
 	must[board.Story](t)(b.SetStatus("demo", "tester", started.ID, board.StatusChange{To: board.InProgress, Branch: "feature/x"}))
 
 	w := get(h, "/w/demo", "bp_good")
-	wantPage(t, w, "Demo", "Backlog", "In progress", "Merged", "Deployed", `href="/w/demo/stories/S-1"`)
+	wantPage(t, w, "Demo", "Backlog", "In progress", "Merged (main)", "Deployed", `href="/w/demo/stories/S-1"`)
 	page := w.Body.String()
 	if !before(page, `aria-label="Backlog"`, `aria-label="In progress"`) || !before(page, `aria-label="In progress"`, `aria-label="Deployed"`) {
 		t.Error("columns are not in board order")
@@ -57,8 +57,8 @@ func TestTheBoardShowsEachColumnWithItsStoriesInDeliveryOrder(t *testing.T) {
 	if !before(page, "First in line", "Second in line") {
 		t.Error("backlog is not in delivery order")
 	}
-	if strings.Contains(page, "Released") {
-		t.Error("Released shown for a workspace without a release stage")
+	if strings.Contains(page, "Released") || strings.Contains(page, "Merged (dev)") {
+		t.Error("a column for a branch the workspace does not have")
 	}
 }
 
@@ -237,8 +237,16 @@ func TestEachCardSaysWhichColumnsItMayBeDroppedOn(t *testing.T) {
 		}
 	}
 	sp := get(h, "/w/staged", "bp_good").Body.String()
-	if tag := cardTag(t, sp, staged.ID); !strings.Contains(tag, `data-moves="released"`) {
-		t.Errorf("merged card with a release stage: %s", tag)
+	if tag := cardTag(t, sp, staged.ID); !strings.Contains(tag, `data-moves="merged:main"`) {
+		t.Errorf("a card merged into dev may be dropped on Merged (main): %s", tag)
+	}
+	for _, want := range []string{`aria-label="Merged (dev)" data-status="merged" data-into="dev"`, `aria-label="Merged (main)" data-status="merged" data-into="main"`} {
+		if !strings.Contains(sp, want) {
+			t.Errorf("staged board lacks %s", want)
+		}
+	}
+	if !before(sp, `aria-label="Merged (dev)"`, `aria-label="Merged (main)"`) || strings.Contains(sp, "Released") {
+		t.Error("merged columns are not in merge order, or Released is shown")
 	}
 	for _, status := range []string{"proposed", "backlog", "on_hold", "in_progress", "in_review", "merged", "deployed", "closed"} {
 		if !strings.Contains(page, `data-status="`+status+`"`) {

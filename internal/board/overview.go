@@ -134,20 +134,22 @@ func (w Where) Text() string {
 	return b.String()
 }
 
-// Column is one column of the board, its stories in delivery order.
+// Column is one column of the board, its stories in delivery order. A merged
+// column names its branch.
 type Column struct {
 	Status  string  `json:"status"`
+	Branch  string  `json:"branch,omitempty"`
 	Stories []Story `json:"stories"`
 }
 
-// Board reads every story grouped by column. Released appears only when the
-// workspace has a release stage.
+// Board reads every story grouped by column. Merged has one column per
+// branch, in merge order, holding the stories whose furthest branch it is.
 func (b *Board) Board(ws string) ([]Column, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
 		return nil, err
 	}
-	release, err := hasReleaseStage(g)
+	bs, err := branches(g)
 	if err != nil {
 		return nil, err
 	}
@@ -157,14 +159,21 @@ func (b *Board) Board(ws string) ([]Column, error) {
 	}
 	in := map[string][]Story{}
 	for _, s := range ss {
-		in[s.Status] = append(in[s.Status], s)
+		k := s.Status
+		if k == Merged {
+			k += ":" + s.Into
+		}
+		in[k] = append(in[k], s)
 	}
 	cols := []Column{}
 	for _, status := range statuses {
-		if status == Released && !release {
+		if status != Merged {
+			cols = append(cols, Column{Status: status, Stories: append([]Story{}, in[status]...)})
 			continue
 		}
-		cols = append(cols, Column{Status: status, Stories: append([]Story{}, in[status]...)})
+		for _, br := range bs {
+			cols = append(cols, Column{Status: status, Branch: br.Name, Stories: append([]Story{}, in[status+":"+br.Name]...)})
+		}
 	}
 	return cols, nil
 }

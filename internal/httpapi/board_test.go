@@ -297,3 +297,55 @@ func TestListBranches(t *testing.T) {
 	}
 	want(t, call(t, h, "GET", "/v1/workspaces/nope/branches", ""), http.StatusNotFound)
 }
+
+func TestMergesOverHTTPNameTheBranchAndGoOneStepAtATime(t *testing.T) {
+	h := newAPI(t)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "staged", "name": "Staged", "has_release_stage": true}`), http.StatusCreated)
+	p := "/v1/workspaces/staged/stories"
+	want(t, call(t, h, "POST", p, `{"title": "A"}`), http.StatusCreated)
+	for _, to := range []string{"in_progress", "in_review"} {
+		want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	e := want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "into": "main"}`), http.StatusConflict)
+	if !strings.Contains(e["error"].(string), "dev") {
+		t.Fatalf("refusal %v", e)
+	}
+	s := want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "commit": "abc1234"}`), http.StatusOK)
+	if s["status"] != "merged" || s["into"] != "dev" {
+		t.Fatalf("merged %v", s)
+	}
+	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "deployed"}`), http.StatusConflict)
+	s = want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "merged", "into": "main", "commit": "def5678"}`), http.StatusOK)
+	if s["into"] != "main" {
+		t.Fatalf("merged %v", s)
+	}
+	want(t, call(t, h, "POST", p+"/S-1/status", `{"to": "deployed"}`), http.StatusOK)
+
+	log := want(t, call(t, h, "GET", p+"/S-1/log", ""), http.StatusOK)["entries"].([]any)
+	if m := log[2].(map[string]any); m["into"] != "dev" || m["commit"] != "abc1234" {
+		t.Fatalf("first merge entry %v", m)
+	}
+	if m := log[3].(map[string]any); m["into"] != "main" || m["commit"] != "def5678" {
+		t.Fatalf("second merge entry %v", m)
+	}
+	// The board has one merged column per branch, in merge order.
+	cols := want(t, call(t, h, "GET", "/v1/workspaces/staged/board", ""), http.StatusOK)["columns"].([]any)
+	var merged []string
+	for _, c := range cols {
+		if c := c.(map[string]any); c["status"] == "merged" {
+			merged = append(merged, c["branch"].(string))
+		}
+	}
+	if len(merged) != 2 || merged[0] != "dev" || merged[1] != "main" {
+		t.Fatalf("merged columns %v", merged)
+	}
+}
+
+func TestTheOldReleasedStatusIsABadRequestOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	e := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "released"}`), http.StatusBadRequest)
+	if !strings.Contains(e["error"].(string), "release branch") {
+		t.Fatalf("refusal %v", e)
+	}
+}

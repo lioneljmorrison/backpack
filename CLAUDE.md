@@ -19,7 +19,7 @@ dependency of the code.
 - **Dependencies** are explicit and read both ways (blocks / blocked by). A
   story always ranks below what it depends on.
 - Stories move: (Proposed →) Backlog → In progress → In review → Merged
-  (complete) → Released → Deployed. A story an agent adds is Proposed until a
+  (complete, one column per branch: Merged (dev), Merged (main)) → Deployed. A story an agent adds is Proposed until a
   person approves it.
 - Every story keeps an **append-only log**.
 
@@ -111,8 +111,10 @@ through the `backpack` MCP tools, added to Claude Code once per machine (see
 - **Record each move as it happens**, with `set_status`:
   - start work: `in_progress`, with the task branch;
   - open the pull request: `in_review`, with its link;
-  - merged into `dev`: `merged`, with the merge commit;
-  - released when `dev` is merged into `main`.
+  - merged into `dev`: `merged`, with the merge commit (`dev` is the first
+    branch, so no `into` is needed);
+  - merged into `main` when `dev` is merged into `main`: `merged` with
+    `into` `main`, and that merge commit.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
 - **Log as you go** with `log`: decisions with their reason, notable commits,

@@ -16,7 +16,7 @@
   {{end}}
   <div class="list">
     {{range .Stories}}
-    <a class="row" href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}} <span class="tag status">{{label .Status}}</span></a>
+    <a class="row" href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}} <span class="tag status">{{storyLabel .}}</span></a>
     {{end}}
   </div>
 </section>

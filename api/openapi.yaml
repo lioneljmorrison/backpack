@@ -162,7 +162,9 @@ paths:
       - $ref: "#/components/parameters/Workspace"
     get:
       summary: Every story by column, each column in delivery order
-      description: Released appears only for a workspace with a release stage.
+      description: >-
+        Merged has one column per branch, in merge order, each naming its
+        branch; a story is in the column of the furthest branch it reached.
       responses:
         "200":
           description: The columns, in board order
@@ -179,6 +181,7 @@ paths:
                       required: [status, stories]
                       properties:
                         status: { $ref: "#/components/schemas/Status" }
+                        branch: { type: string, description: "On a merged column: the branch it is for" }
                         stories:
                           type: array
                           items: { $ref: "#/components/schemas/Story" }
@@ -454,7 +457,12 @@ paths:
       summary: Move a story to another column
       description: >-
         Forward one column, or back one before Merged: Backlog, In progress,
-        In review, Merged, Released (only with a release stage), Deployed.
+        In review, Merged, Deployed. Merging records the branch reached (`into`;
+        none means the first branch, the one no branch merges into) and a story
+        moves on only to the branch its current one merges into, one step at a
+        time, as a merged-to-merged move with that branch and its merge commit.
+        Deployed is allowed only from the release branch. The old `released`
+        status is refused: merge into the release branch instead.
         From Proposed, Backlog, In progress or In review a story can be put on hold,
         and resumes in the column it left (a held proposal resumes to Proposed, to be approved as usual); from those and On hold it can be
         closed. Deployed and Closed are final. Starting a blocked story needs
@@ -475,6 +483,7 @@ paths:
                 workaround: { type: string, description: "Only when starting a blocked story", example: build against mock data }
                 pr_url: { type: string, description: "Only when opening review" }
                 commit: { type: string, description: "Only when merging" }
+                into: { type: string, description: "Only when merging: the branch merged into; none means the first branch" }
                 reason: { type: string, description: "Required when holding or closing, and only then" }
       responses:
         "200":
@@ -914,7 +923,7 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Goal" }
         stories_total: { type: integer, description: "Its stories, leaving out closed ones" }
-        stories_complete: { type: integer, description: "Its stories that are merged, released or deployed" }
+        stories_complete: { type: integer, description: "Its stories that are merged or deployed" }
         complete: { type: boolean, description: "Every story left is complete; with nothing left in it, every goal is met" }
         goals_met_early: { type: boolean, description: "Every goal is met but some stories are still open" }
         created_by: { type: string }
@@ -963,13 +972,14 @@ components:
         activity: { $ref: "#/components/schemas/Activity" }
         waiting_on: { type: string }
         branch: { type: string }
+        into: { type: string, description: "A merged story: the furthest branch it reached" }
         pr_url: { type: string }
         workaround: { type: string, description: "How it was started while blocked" }
     Status:
       type: string
-      enum: [proposed, backlog, in_progress, in_review, merged, released, deployed, on_hold, closed]
+      enum: [proposed, backlog, in_progress, in_review, merged, deployed, on_hold, closed]
       description: >-
-        Merged, released and deployed are complete. A proposed story waits for
+        Merged (into any branch) and deployed are complete. A proposed story waits for
         a person to approve it into the backlog, or to decline it by closing it.
     Activity:
       type: string
@@ -988,6 +998,7 @@ components:
         commit: { type: string }
         pr_url: { type: string }
         branch: { type: string }
+        into: { type: string, description: "A merge: the branch it reached" }
         from: { $ref: "#/components/schemas/Status" }
         to: { $ref: "#/components/schemas/Status" }
         corrects: { type: string, description: "The entry this one corrects" }

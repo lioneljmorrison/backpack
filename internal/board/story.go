@@ -26,14 +26,17 @@ type Story struct {
 	Activity   string   `json:"activity,omitempty"`
 	WaitingOn  string   `json:"waiting_on,omitempty"`
 	Branch     string   `json:"branch,omitempty"`
-	PRURL      string   `json:"pr_url,omitempty"`
-	Workaround string   `json:"workaround,omitempty"`
-	CreatedBy  string   `json:"created_by"`
-	CreatedAt  string   `json:"created_at"`
-	MovedBy    string   `json:"moved_by,omitempty"`
-	MovedAt    string   `json:"moved_at,omitempty"`
-	UpdatedBy  string   `json:"updated_by,omitempty"`
-	UpdatedAt  string   `json:"updated_at,omitempty"`
+	// Into is the furthest branch a merged story reached, by name; none
+	// before it is merged. Branch is the task branch it is built on.
+	Into       string `json:"into,omitempty"`
+	PRURL      string `json:"pr_url,omitempty"`
+	Workaround string `json:"workaround,omitempty"`
+	CreatedBy  string `json:"created_by"`
+	CreatedAt  string `json:"created_at"`
+	MovedBy    string `json:"moved_by,omitempty"`
+	MovedAt    string `json:"moved_at,omitempty"`
+	UpdatedBy  string `json:"updated_by,omitempty"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
 
 	// waiting is the dependencies that are not yet complete.
 	waiting []string
@@ -362,7 +365,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
 			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
-			s.waiting_on AS waiting_on, s.branch AS branch, s.pr_url AS pr_url, s.workaround AS workaround,
+			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
 			s.created_by AS created_by, s.created_at AS created_at,
 			s.moved_by AS moved_by, s.moved_at AS moved_at,
 			s.updated_by AS updated_by, s.updated_at AS updated_at
@@ -381,7 +384,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
 			Blocked: len(waiting) > 0, waiting: waiting,
 			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
-			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), PRURL: str(r, "pr_url"),
+			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), Into: str(r, "into"), PRURL: str(r, "pr_url"),
 			Workaround: str(r, "workaround"),
 			CreatedBy:  str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
