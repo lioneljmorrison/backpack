@@ -223,7 +223,9 @@ paths:
         one and the stories that reached it. Every story stays in its column,
         and past log entries keep the old name. A name that is empty, has
         whitespace or is over 100 characters is refused, as is one already in
-        use. Giving the branch's own name changes nothing.
+        use. Giving the branch's own name changes nothing. An alias is the name the
+        web board's column heading shows for the branch ("Merged (Production)");
+        the API, tools and logs keep using the name. An empty alias clears it.
       requestBody:
         required: true
         content:
@@ -233,6 +235,7 @@ paths:
               additionalProperties: false
               properties:
                 name: { type: string, maxLength: 100, description: The new name, plain text with no whitespace }
+                alias: { type: string, maxLength: 100, description: "The web column heading's name for the branch, plain text; an empty string clears it" }
       responses:
         "200":
           description: The branch as it is now
@@ -986,7 +989,7 @@ components:
       properties:
         name: { type: string }
         into: { type: string, description: The branch this one merges into; absent on the release branch. }
-        alias: { type: string, description: Display name only. }
+        alias: { type: string, description: "Display name only: the web board's column heading shows it; everything else uses the name. Absent when none is set." }
         release: { type: boolean, description: True for the branch that merges nowhere. }
         created_by: { type: string }
         created_at: { type: string, format: date-time }

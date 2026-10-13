@@ -346,3 +346,44 @@ func TestASearchStateWithABranchReadsAsTheColumnIsNamed(t *testing.T) {
 		}
 	}
 }
+
+func TestABranchAliasRenamesOnlyItsColumnHeading(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}))
+	s := must[board.Story](t)(b.AddStory("staged", "tester", board.NewStory{Title: "Landed"}))
+	for _, c := range []board.StatusChange{
+		{To: board.InProgress, Branch: "feature/a"},
+		{To: board.InReview, PRURL: "https://example.invalid/pr/3"},
+		{To: board.Merged, Commit: "abc1234"},
+	} {
+		must[board.Story](t)(b.SetStatus("staged", "tester", s.ID, c))
+	}
+	prod := "Production"
+	must[board.Branch](t)(b.UpdateBranch("staged", "tester", "main", board.BranchPatch{Alias: &prod}))
+
+	page := get(h, "/w/staged", "bp_good").Body.String()
+	for _, want := range []string{
+		`aria-label="Merged (Production)" data-status="merged" data-into="main"`,
+		`<h2>Merged (Production) `,
+		`aria-label="Merged (dev)" data-status="merged" data-into="dev"`,
+		`data-moves="merged:main"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("board lacks %s", want)
+		}
+	}
+	if strings.Contains(page, "Merged (main)") {
+		t.Error("the heading still shows the branch name")
+	}
+	// The story page keeps the real name.
+	if sp := get(h, "/w/staged/stories/"+s.ID, "bp_good").Body.String(); strings.Contains(sp, "Production") {
+		t.Error("the story page shows the alias")
+	}
+
+	empty := ""
+	must[board.Branch](t)(b.UpdateBranch("staged", "tester", "main", board.BranchPatch{Alias: &empty}))
+	page = get(h, "/w/staged", "bp_good").Body.String()
+	if !strings.Contains(page, `aria-label="Merged (main)"`) || strings.Contains(page, "Production") {
+		t.Error("clearing the alias does not restore the heading")
+	}
+}
