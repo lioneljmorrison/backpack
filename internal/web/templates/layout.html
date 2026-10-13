@@ -1,0 +1,55 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Backpack</title>
+<link rel="stylesheet" href="{{static "style.css"}}">
+{{if .Live}}<script src="{{static "live.js"}}" defer></script>{{end}}
+{{block "head" .}}{{end}}
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">Backpack</a>
+  {{with .WS}}
+  <nav aria-label="{{.Name}}">
+    <a href="/w/{{.Slug}}"{{if eq $.Nav "board"}} aria-current="page"{{end}}>{{.Name}}</a>
+    <a href="/w/{{.Slug}}/phases"{{if eq $.Nav "phases"}} aria-current="page"{{end}}>Phases</a>
+    <a href="/w/{{.Slug}}/ideas"{{if eq $.Nav "ideas"}} aria-current="page"{{end}}>Ideas</a>
+    <a href="/w/{{.Slug}}/search"{{if eq $.Nav "search"}} aria-current="page"{{end}}>Search</a>
+  </nav>
+  {{end}}
+  {{if .Actor}}
+  <form class="who" method="post" action="/sign-out">
+    <span>{{.Actor}}</span>
+    <button type="submit" class="quiet">Sign out</button>
+  </form>
+  {{end}}
+</header>
+<main{{if .Live}} data-live="/w/{{.WS.Slug}}/events" data-live-kinds="{{.Live}}"{{end}}>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{template "content" .}}
+</main>
+{{block "after" .}}{{end}}
+</body>
+</html>
+{{end}}
+
+{{/* card is one story on a board or in a list: a card value from cardOf. */}}
+{{define "card"}}
+<article class="card{{if .S.Blocked}} blocked{{end}}" data-id="{{.S.ID}}" data-status="{{.S.Status}}"{{if or .Movable .Moves}} draggable="true" data-status-url="/w/{{.WS}}/stories/{{.S.ID}}/status"{{if .S.Blocked}} data-blocked{{end}} data-moves="{{range $i, $m := .Moves}}{{if $i}} {{end}}{{$m}}{{end}}"{{end}}{{if .Movable}} data-move="/w/{{.WS}}/stories/{{.S.ID}}/move"{{end}}>
+  <a class="card-title" href="/w/{{.WS}}/stories/{{.S.ID}}"><span class="id">{{.S.ID}}</span> {{.S.Title}}</a>
+  <div class="tags">
+    {{if .S.Phase}}<span class="tag">Phase {{.S.Phase}}</span>{{end}}
+    {{if .S.Activity}}<span class="tag activity">{{label .S.Activity}}{{with .S.WaitingOn}}: {{.}}{{end}}</span>{{end}}
+    {{if .S.Blocked}}<span class="tag bad">Blocked by {{range $i, $b := .S.BlockedBy}}{{if $i}}, {{end}}{{$b}}{{end}}</span>{{end}}
+    {{if .S.HoldReason}}<span class="tag warn">{{.S.HoldReason}}</span>{{end}}
+  </div>
+  {{if and .Movable (or .Up .Down)}}
+  <div class="moves">
+    {{with .Up}}<form method="post" action="/w/{{$.WS}}/stories/{{$.S.ID}}/move"><input type="hidden" name="before" value="{{.}}"><button class="quiet" type="submit" aria-label="Move {{$.S.ID}} above {{.}}" title="Move up">↑</button></form>{{end}}
+    {{with .Down}}<form method="post" action="/w/{{$.WS}}/stories/{{$.S.ID}}/move"><input type="hidden" name="after" value="{{.}}"><button class="quiet" type="submit" aria-label="Move {{$.S.ID}} below {{.}}" title="Move down">↓</button></form>{{end}}
+  </div>
+  {{end}}
+</article>
+{{end}}

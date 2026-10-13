@@ -1,0 +1,98 @@
+{{define "content"}}
+{{$ws := .WS.Slug}}
+{{with .Data}}
+{{$titles := .Titles}}
+{{with .Story}}
+<p class="muted"><a href="/w/{{$ws}}">← Board</a></p>
+<h1><span class="id">{{.ID}}</span> {{.Title}}</h1>
+<div class="tags">
+  <span class="tag status">{{label .Status}}</span>
+  {{if .Phase}}<a class="tag" href="/w/{{$ws}}/phases#phase-{{.Phase}}">Phase {{.Phase}}</a>{{end}}
+  {{if .Activity}}<span class="tag activity">{{label .Activity}}{{with .WaitingOn}}: {{.}}{{end}}</span>{{end}}
+  {{if .Blocked}}<span class="tag bad">Blocked</span>{{end}}
+  {{with .HoldReason}}<span class="tag warn">On hold: {{.}}</span>{{end}}
+  {{with .Branch}}<span class="tag"><code>{{.}}</code></span>{{end}}
+  {{with .PRURL}}<a class="tag" href="{{.}}">Pull request</a>{{end}}
+</div>
+<div class="detail">
+  {{with .Description}}<h2>Description</h2><p class="text">{{.}}</p>{{end}}
+  {{with .Goal}}<h2>Goal</h2><p class="text">{{.}}</p>{{end}}
+  {{with .Plan}}<h2>Plan</h2><p class="text">{{.}}</p>{{end}}
+  {{with .Workaround}}<h2>Workaround</h2><p class="text">{{.}}</p>{{end}}
+  {{with .BlockedBy}}
+  <h2>Depends on</h2>
+  <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
+  {{end}}
+  {{with .Blocks}}
+  <h2>Blocks</h2>
+  <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
+  {{end}}
+</div>
+{{end}}
+{{$id := .Story.ID}}
+<section class="act">
+  {{with .Moves}}
+  <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/status">
+    <h2>Move</h2>
+    <div class="choices">
+      {{range .}}<label><input type="radio" name="to" value="{{.}}" required> {{label .}}</label>{{end}}
+    </div>
+    <details>
+      <summary>Details for the move</summary>
+      <label>Branch, when starting <input name="branch"></label>
+      <label>Workaround, when starting while blocked <input name="workaround"></label>
+      <label>Pull request link, when opening review <input name="pr_url" type="url"></label>
+      <label>Merge commit, when merging <input name="commit"></label>
+    </details>
+    <label>Reason, when putting on hold or closing <input name="reason"></label>
+    <button type="submit">Move</button>
+  </form>
+  {{end}}
+  {{if eq .Story.Status "in_progress"}}
+  <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/activity">
+    <h2>Doing</h2>
+    <select name="activity" aria-label="Activity">
+      {{range (list "planning" "building" "testing" "waiting")}}<option value="{{.}}"{{if eq . $.Data.Story.Activity}} selected{{end}}>{{label .}}</option>{{end}}
+    </select>
+    <label>Waiting on <input name="waiting_on" value="{{.Story.WaitingOn}}"></label>
+    <button type="submit">Save</button>
+  </form>
+  {{end}}
+</section>
+
+<h2>Log</h2>
+<ol class="log">
+  {{range .Log}}
+  <li id="{{.ID}}" class="entry {{.Kind}}{{if .CorrectedBy}} corrected{{end}}">
+    <div class="meta"><span class="id">{{.ID}}</span> {{label .Kind}} · {{.Actor}} · <time datetime="{{.At}}">{{when .At}}</time></div>
+    {{with .Corrects}}<div><a href="#{{.}}">Corrects {{.}}</a></div>{{end}}
+    {{if .From}}<div>{{label .From}} → {{label .To}}</div>{{end}}
+    {{with .Text}}<p class="text">{{.}}</p>{{end}}
+    {{with .Reason}}<p class="text muted">Because {{.}}</p>{{end}}
+    {{with .Commit}}<div><code>{{.}}</code></div>{{end}}
+    {{with .Branch}}<div><code>{{.}}</code></div>{{end}}
+    {{with .PRURL}}<div><a href="{{.}}">{{.}}</a></div>{{end}}
+    {{with .CorrectedBy}}<div class="warn-text">Corrected by {{range $i, $c := .}}{{if $i}}, {{end}}<a href="#{{$c}}">{{$c}}</a>{{end}}</div>{{end}}
+  </li>
+  {{else}}
+  <li class="empty">No entries yet.</li>
+  {{end}}
+</ol>
+<form class="panel log-form" method="post" action="/w/{{$ws}}/stories/{{$id}}/log">
+  <h2>Add to the log</h2>
+  <select name="kind" aria-label="Kind">
+    <option value="note">Note</option>
+    <option value="decision">Decision</option>
+    <option value="correction">Correction</option>
+    <option value="commit">Commit</option>
+    <option value="pr">Pull request</option>
+  </select>
+  <textarea name="text" rows="3" aria-label="Text" placeholder="What to record"></textarea>
+  <input name="reason" placeholder="Reason, for a decision" aria-label="Reason">
+  <input name="corrects" placeholder="Entry it corrects, such as L-3" aria-label="Corrects">
+  <input name="commit" placeholder="Commit, for a commit" aria-label="Commit">
+  <input name="pr_url" type="url" placeholder="Link, for a pull request" aria-label="Pull request link">
+  <button type="submit">Add</button>
+</form>
+{{end}}
+{{end}}

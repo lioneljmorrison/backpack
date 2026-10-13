@@ -21,7 +21,7 @@ const (
 )
 
 // statuses is every status, in board order.
-var statuses = []string{Proposed, Backlog, InProgress, InReview, Merged, Released, Deployed, OnHold, Closed}
+var statuses = []string{Proposed, OnHold, Backlog, InProgress, InReview, Merged, Released, Deployed, Closed}
 
 // complete is every status in which a story's work has landed.
 var complete = []string{Merged, Released, Deployed}
@@ -30,12 +30,28 @@ var complete = []string{Merged, Released, Deployed}
 // or its workspace: a story on hold resumes in the column it left, and
 // Merged goes to Released or Deployed by the workspace's release stage.
 var moves = []string{
-	Proposed + ">" + Backlog, Proposed + ">" + Closed,
+	Proposed + ">" + Backlog, Proposed + ">" + OnHold, Proposed + ">" + Closed,
 	Backlog + ">" + InProgress, InProgress + ">" + InReview, InReview + ">" + Merged,
 	Merged + ">" + Released, Merged + ">" + Deployed, Released + ">" + Deployed,
 	InProgress + ">" + Backlog, InReview + ">" + InProgress,
 	Backlog + ">" + OnHold, InProgress + ">" + OnHold, InReview + ">" + OnHold,
 	Backlog + ">" + Closed, InProgress + ">" + Closed, InReview + ">" + Closed, OnHold + ">" + Closed,
+}
+
+// Moves lists the statuses s can change to, in board order, for a workspace
+// with or without a release stage. SetStatus still checks the rest.
+func Moves(s Story, release bool) []string {
+	var to []string
+	for _, st := range statuses {
+		ok := slices.Contains(moves, s.Status+">"+st) || (s.Status == OnHold && st == s.HeldFrom)
+		if s.Status == Merged && (st == Released && !release || st == Deployed && release) {
+			ok = false
+		}
+		if ok {
+			to = append(to, st)
+		}
+	}
+	return to
 }
 
 // StatusChange moves a story to another column. Branch is given only when

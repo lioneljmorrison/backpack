@@ -22,8 +22,9 @@ current state is hard to find. Backpack replaces that document: agents ask it
 - Dependencies are explicit, and a story always ranks below what it depends on.
 - Agents can **search** stories, ideas and phases by keyword or by meaning,
   to check whether something is already covered before adding it.
-- Agents use it through an **MCP server**; a UI can use the **HTTP API**
-  (`api/openapi.yaml`). Every request needs a token.
+- Agents use it through an **MCP server**, people through **web pages** at
+  `/`, and scripts through the **HTTP API** (`api/openapi.yaml`). Every
+  request needs a token; in a browser you paste it once to sign in.
 
 The full design is in [docs/PLAN.md](docs/PLAN.md).
 
@@ -33,9 +34,10 @@ You need Docker. The stack is Backpack, FalkorDB (the store) and Typesense (the
 search index).
 
 ```bash
-make up                  # build and start the stack on localhost
+make up                  # build and start the stack
 make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
+make forward             # bring a remote stack's ports here over SSH
 make token ACTOR=<name>  # issue a token for a person or agent (shown once)
 make reindex             # rebuild the search index from the board
 make gates               # gofmt, vet, tests, build
@@ -48,12 +50,49 @@ anywhere. If Typesense is down when the board changes, the change still saves
 and the log says a reindex is needed; `make reindex`, or the next start,
 catches search up.
 
-Locally, Backpack answers on `http://127.0.0.1:8780`. To reach it from other
-machines, `make tunnel` starts `cloudflared` with a token-managed Cloudflare
+Locally, Backpack answers on `http://127.0.0.1:8780`.
+
+The stack can also run on another machine. Make it a Docker context, for
+example `docker context create box --docker "host=ssh://box"`, and set
+`BACKPACK_DOCKER_CONTEXT=box` in your shell profile: every `make` command
+then builds and runs the stack there. Its ports stay bound to that machine's
+`127.0.0.1`; `make forward` brings them to this machine over SSH, which the
+tests (`make gates`) and a local browser need.
+
+To reach Backpack from other machines, `make tunnel` starts `cloudflared` with a token-managed Cloudflare
 tunnel. In the Cloudflare dashboard, route the tunnel's public hostname to the
 service **HTTP**, URL **`backpack:8780`**. That URL is the Backpack container's
 name inside Docker. `localhost` won't work there, because inside the tunnel's
-container it means the tunnel itself.
+container it means the tunnel itself. Before starting, `make tunnel` checks
+the public address in `.backpack.json`: if Backpack already answers there and
+the tunnel isn't running on the Docker host being started, it refuses, since
+two copies on one tunnel would split requests between two boards.
+
+## Using the pages
+
+Open Backpack's address in a browser (`http://127.0.0.1:8780` locally) and
+paste a token from `make token ACTOR=<your name>`. The browser keeps it until
+you sign out or the token is revoked. Each workspace has its board, with where
+it stands above, and pages for each story, its phases, its ideas and search.
+From the pages you can approve or decline proposed stories, re-rank the
+backlog (drag a card, or use its arrows), move a story across the board, say
+what it is doing, add to its log, add stories and ideas, and refine or drop
+ideas. Every change is recorded under the token's actor, and the board's
+rules apply exactly as they do for agents.
+
+On the board with a mouse, a card can be dragged to the columns it may go to,
+which light up while you drag: drop a proposed story in the backlog where it
+should rank to approve it, send an in-progress story back to the backlog,
+resume a held story, step a story in review back to in progress, or move a
+merged story on to released or deployed. A move that needs details asks for
+them in a small prompt before it goes through: a reason to hold or close
+(including declining a proposal), a branch to start (and a workaround when the
+story is blocked), a pull request link for review, a merge commit for merged.
+Only the reason and the workaround are required. Cancel, Escape or a click
+outside leaves the card where it was. Your own moves on the board, by drag,
+prompt or arrows, are sent in the background and the board redraws in place
+without reloading the page. Dragging does not work on touch
+screens; the forms and arrows do.
 
 ## Connecting a project
 

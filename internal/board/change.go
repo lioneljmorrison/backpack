@@ -10,8 +10,8 @@ const (
 	KindWorkspace = "workspace"
 )
 
-// Change names an item whose searchable text or state a write changed: a
-// story (its log included), an idea, a phase (its goals included), or a new
+// Change names an item a write changed: a story (its log, rank and
+// dependencies included), an idea, a phase (its goals included), or a new
 // workspace, which has no ID.
 type Change struct {
 	Workspace string

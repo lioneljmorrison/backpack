@@ -9,6 +9,7 @@ import "fmt"
 // no dependencies.
 // Recording a dependency that already exists changes nothing.
 func (b *Board) AddDependency(ws, actor, id, on string) (Story, error) {
+	// Both stories' pages show a dependency, so both are reported.
 	if id == on {
 		return Story{}, refuse(Invalid, "a story cannot depend on itself")
 	}
@@ -43,7 +44,11 @@ func (b *Board) AddDependency(ws, actor, id, on string) (Story, error) {
 	}
 	r := res.Record()
 	switch str(r, "violation") {
-	case "", "exists":
+	case "":
+		b.changed(nil, Change{ws, KindStory, id})
+		b.changed(nil, Change{ws, KindStory, on})
+		return story(g, id)
+	case "exists":
 		return story(g, id)
 	case "missing":
 		return Story{}, refuse(NotFound, "no story %q", on)
@@ -64,7 +69,11 @@ func (b *Board) AddDependency(ws, actor, id, on string) (Story, error) {
 
 // RemoveDependency deletes the dependency of story id on story on, and
 // records who removed it on story id.
-func (b *Board) RemoveDependency(ws, actor, id, on string) error {
+func (b *Board) RemoveDependency(ws, actor, id, on string) (err error) {
+	defer func() {
+		b.changed(err, Change{ws, KindStory, id})
+		b.changed(err, Change{ws, KindStory, on})
+	}()
 	g, err := b.workspace(ws)
 	if err != nil {
 		return err

@@ -1,0 +1,12 @@
+{{define "content"}}
+<h1>Workspaces</h1>
+{{with .Data}}
+<ul class="workspaces">
+  {{range .}}
+  <li><a href="/w/{{.Slug}}"><strong>{{.Name}}</strong> <span class="muted">{{.Slug}}</span></a></li>
+  {{end}}
+</ul>
+{{else}}
+<p class="muted">No workspaces yet.</p>
+{{end}}
+{{end}}

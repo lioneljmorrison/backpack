@@ -11,16 +11,20 @@ import (
 	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
 	"github.com/lioneljmorrison/backpack/internal/health"
+	"github.com/lioneljmorrison/backpack/internal/live"
 	"github.com/lioneljmorrison/backpack/internal/mcpserver"
 	"github.com/lioneljmorrison/backpack/internal/search"
+	"github.com/lioneljmorrison/backpack/internal/web"
 )
 
 const healthTimeout = 2 * time.Second
 
 // New returns the API handler. /healthz is the only route open without a
 // token; everything under /v1/, and the MCP server at /mcp, requires one.
-// Searches go to x, the index of b.
-func New(checks map[string]health.Check, lookup auth.LookupFunc, b *board.Board, x *search.Index) http.Handler {
+// Every other path is the pages for people, which sign in with a cookie.
+// Searches go to x, the index of b, and the pages hear of b's changes from
+// hub.
+func New(checks map[string]health.Check, lookup auth.LookupFunc, b *board.Board, x *search.Index, hub *live.Hub) http.Handler {
 	v1 := http.NewServeMux()
 	v1.HandleFunc("GET /v1/whoami", whoami)
 	routeBoard(v1, b)
@@ -31,6 +35,7 @@ func New(checks map[string]health.Check, lookup auth.LookupFunc, b *board.Board,
 	mux.HandleFunc("GET /healthz", healthz(checks))
 	mux.Handle("/v1/", auth.Require(lookup)(v1))
 	mux.Handle("/mcp", auth.Require(lookup)(mcpserver.New(b, x)))
+	mux.Handle("/", web.New(lookup, b, x, hub))
 	return mux
 }
 

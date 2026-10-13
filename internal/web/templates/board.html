@@ -1,0 +1,78 @@
+{{define "head"}}<script src="{{static "board.js"}}" defer></script>{{end}}
+{{define "content"}}
+{{$ws := .WS.Slug}}
+{{with .Data}}
+<section class="where" aria-label="Where are we">
+  {{with .Where.Phase}}
+  <div>
+    <div class="muted">Current phase</div>
+    <a href="/w/{{$ws}}/phases#phase-{{.Number}}"><strong>{{.Number}}. {{.Title}}</strong></a>
+    <div class="progress" aria-hidden="true"><span style="width: {{percent .StoriesComplete .StoriesTotal}}%"></span></div>
+    <div class="muted">{{.StoriesComplete}} of {{.StoriesTotal}} complete</div>
+  </div>
+  {{else}}
+  <div><div class="muted">Current phase</div><strong>None open</strong></div>
+  {{end}}
+  <div>
+    <div class="muted">Next</div>
+    {{with .Next}}<a href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}}</a>{{else}}<span>Nothing ready</span>{{end}}
+  </div>
+  <div><div class="muted">In progress</div><strong>{{len .Where.InProgress}}</strong></div>
+  <div><div class="muted">In review</div><strong>{{len .Where.InReview}}</strong></div>
+  <div><div class="muted">Waiting for approval</div><strong>{{len .Where.Proposed}}</strong></div>
+</section>
+
+{{with .Where.Proposed}}
+<form class="approve" method="post" action="/w/{{$ws}}/approve">
+  {{/* Enter in the reason box must not approve: this first, disabled button takes it. */}}
+  <button type="submit" disabled hidden aria-hidden="true"></button>
+  <h2>Waiting for approval</h2>
+  {{range .}}
+  <label class="row"><input type="checkbox" name="id" value="{{.ID}}" checked> <span class="id">{{.ID}}</span> {{.Title}}
+    <a href="/w/{{$ws}}/stories/{{.ID}}">details</a></label>
+  {{end}}
+  <div class="actions">
+    <button type="submit" name="decision" value="approve">Approve selected</button>
+    <input name="reason" placeholder="Reason, to decline" aria-label="Reason to decline">
+    <button type="submit" name="decision" value="decline" class="secondary">Decline selected</button>
+  </div>
+</form>
+{{end}}
+
+<div class="toolbar"><a class="button" href="/w/{{$ws}}/stories/new">New story</a></div>
+
+<div class="board">
+  <section class="column" aria-label="Ideas">
+    <h2>Ideas <span class="count">{{len .Ideas}}</span></h2>
+    {{range .Ideas}}
+    <article class="card" data-id="{{.ID}}"><a class="card-title" href="/w/{{$ws}}/ideas#{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}}</a></article>
+    {{else}}<p class="empty">Nothing here</p>{{end}}
+  </section>
+  {{range .Columns}}
+  <section class="column" aria-label="{{label .Status}}" data-status="{{.Status}}">
+    <h2>{{label .Status}} <span class="count">{{len .Cards}}</span></h2>
+    {{range .Cards}}{{template "card" .}}{{else}}<p class="empty">Nothing here</p>{{end}}
+  </section>
+  {{end}}
+</div>
+
+{{end}}
+{{end}}
+
+{{define "after"}}
+{{/* The move prompt sits outside main: a live refresh swaps main's content. */}}
+<dialog id="move-prompt" aria-labelledby="move-title">
+  <form id="move-form" method="dialog">
+    <h2 id="move-title"></h2>
+    <p class="field" data-field="reason" hidden><label>Reason <input name="reason" required disabled></label></p>
+    <p class="field" data-field="workaround" hidden><label>Workaround, since it is blocked <input name="workaround" required disabled></label></p>
+    <p class="field" data-field="branch" hidden><label>Branch (optional) <input name="branch" disabled></label></p>
+    <p class="field" data-field="pr_url" hidden><label>Pull request link (optional) <input name="pr_url" type="url" disabled></label></p>
+    <p class="field" data-field="commit" hidden><label>Merge commit (optional) <input name="commit" disabled></label></p>
+    <div class="actions">
+      <button type="submit">Move</button>
+      <button type="button" class="secondary" data-cancel>Cancel</button>
+    </div>
+  </form>
+</dialog>
+{{end}}

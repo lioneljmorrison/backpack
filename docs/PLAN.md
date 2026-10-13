@@ -121,10 +121,27 @@ agent see what was done in which commit, and what was later found wrong.
 **Search.** Ideas, phases, stories and logs can be searched by meaning as well
 as by keyword, for example "do we already have a story about this?"
 
+**Live updates.** The board page and a story's page update on their own when
+the board changes, whoever changed it, so a person watching sees an agent's
+move within a moment. Every board change sends a notice naming only what
+changed. A hub inside Backpack passes it to each page watching that
+workspace, and the page fetches itself again. Nothing is sent through an
+outside service: Backpack is one process, and board content stays on the
+host. A page never replaces something a person is typing or choosing; it
+says the page has changed instead. It also waits for a drag to finish. On
+the board, a card that moves slides to its new place, a new card fades in and
+a card that leaves fades out, all over the same half second; with reduced
+motion asked for, the board redraws without animation. A person's own moves
+on the board (a drop, the move prompt, a card's arrows) redraw in place too:
+the page sends the move in the background and swaps in the board the server
+returns, so the page does not reload. If something is typed on the page, or
+the reply is not the board (signed out), it falls back to a plain form post.
+
 ## How it will be built
 
-- **A Go service with two ways in:** an **MCP server** for AI agents and an
-  **HTTP API** for building a UI. Both call the same operations underneath.
+- **A Go service with three ways in:** an **MCP server** for AI agents, an
+  **HTTP API** for scripts and other tools, and **web pages** for people. All
+  three call the same operations underneath.
 - **FalkorDB** is the board's store, as a graph: workspace, phase, story, idea,
   dependency and log entry. Each workspace is its own graph, so workspaces never
   hold each other up. Every board action is one query, so it either happens
@@ -138,8 +155,8 @@ as by keyword, for example "do we already have a story about this?"
   person or an agent, and every change records its actor. There is one person
   today. Logins for more people can be added later without changing the
   record.
-- **Where it runs:** in Docker, on any host. The dev instance runs on
-  localhost and is reached through a Cloudflare tunnel.
+- **Where it runs:** in Docker, on any host. The dev instance runs on a
+  separate Docker host on the LAN and is reached through a Cloudflare tunnel.
 
 ## Delivery, in slices
 
@@ -163,9 +180,10 @@ Each slice is its own branch and pull request into `dev`.
    stories. Until this lands, a person places new stories directly. Split in
    Backpack into S-2 (placement proposals) and S-4 (ideas).
 7. **Search.** Typesense indexing and hybrid search by meaning and keyword.
+8. **The UI.** Web pages served by Backpack itself: sign in with a token,
+   see the board, then act on it. Tracked in Backpack as the Visual UI phase.
 
 **Out of scope, each needing its own approval:**
-- The UI. The API is shaped for it; building it is separate work.
 - Moving any existing project onto Backpack. Each move is its own task in that
   project.
 - Logins for more than one person.
@@ -175,7 +193,9 @@ Each slice is its own branch and pull request into `dev`.
 **Settled:**
 1. **Authentication** (2026-10-10). The MCP and the API use bearer tokens that
    Backpack issues itself, one actor per token, created and revoked from the
-   command line. OAuth arrives with the UI, which is out of scope for now.
+   command line. The UI uses the same tokens: a person pastes one once and the
+   browser keeps it in a cookie. OAuth waits until a second person needs a
+   login.
 2. **Phase order and rank** (2026-10-10). A later phase's story may rank above
    an earlier phase's stories when it doesn't depend on them. Only
    dependencies constrain order, so a quick unrelated fix can jump ahead.
@@ -203,7 +223,7 @@ Each slice is its own branch and pull request into `dev`.
 - **Status flow.** A story moves forward one column, or back one before
   Merged (In review → In progress, In progress → Backlog). Nothing moves back
   from Merged on. Merged, Released and Deployed all count as **complete**.
-- **On hold.** A story in Backlog, In progress or In review can be put on
+- **On hold.** A story in Proposed, Backlog, In progress or In review can be put on
   hold with a reason (for example, needs more info). Resuming returns it to
   the column it left. "Blocked" stays reserved for dependencies.
 - **Closed.** A story no longer needed is closed with a reason. Closing is
@@ -249,6 +269,13 @@ Each slice is its own branch and pull request into `dev`.
    localhost and is reached at `backpack.eldernerds.us` through the Cloudflare
    tunnel, using the development tunnel token. The stack runs on any Docker
    host; no particular host is part of the design.
+   **2026-10-12:** the dev instance moved to a separate Linux Docker host on
+   the LAN. The WSL 6.18 kernel is built without per-process I/O accounting,
+   so `/proc/<pid>/io` is missing, and Typesense's bundled metrics library
+   crashes at startup without it. The commands drive the remote host through
+   a Docker context named by `BACKPACK_DOCKER_CONTEXT`; `make forward` brings
+   its ports here over SSH for the tests. The whole stack moved together, so
+   board content still never leaves the host it runs on.
 
 **Slice 6 details, placement proposals** (settled 2026-10-11, S-2):
 - **A proposal is a story** in a new status, **Proposed**, before Backlog. It
@@ -261,7 +288,8 @@ Each slice is its own branch and pull request into `dev`.
   (slice 3's "only status changes" rule). `POST /stories` over HTTP still places directly into Backlog.
 - **Anyone approves**, over MCP or HTTP: Proposed → Backlog. Picking another
   spot is a move, then approval. Declining is Proposed → Closed, with a
-  reason. A story never goes back to Proposed.
+  reason. A story never goes back to Proposed, except a held proposal
+  resuming (2026-10-13 decision below).
 - **Where are we** lists what is waiting for approval. A proposed story in a
   phase counts as open work.
 
@@ -309,6 +337,14 @@ Each slice is its own branch and pull request into `dev`.
   drops and recreates the collection, so a change to the search schema
   applies at the next start whatever was there before: that is its
   migration.
+
+**Drag cards between columns** (settled 2026-10-13, S-18):
+- **A proposal can be put on hold.** Proposed → On hold, with a reason like
+  any hold, through MCP, API and web. It resumes to Proposed and is then
+  approved as usual; while held it is not listed as waiting for approval.
+  Why: dragging cards on the board needs to be able to park a proposal
+  without approving or declining it. This is the only way a story returns to
+  Proposed.
 
 Questions about remaining work are logged on their stories in Backpack.
 
@@ -475,7 +511,14 @@ project's CLAUDE.md.
 - `cloudflared` (`cloudflare/cloudflared:2026.9.3`), under the `tunnel`
   profile: `make up` leaves it off, `make tunnel` starts it with
   `CLOUDFLARE_TOKEN`. The tunnel is token-managed; its public hostname routes
-  to `http://backpack:8780` in the Cloudflare dashboard.
+  to `http://backpack:8780` in the Cloudflare dashboard. `make tunnel` first
+  runs `deploy/tunnel-guard.sh`, which refuses when the public address already
+  answers and the tunnel isn't running on this Docker host: two copies on one
+  tunnel would split requests between two boards.
+
+The commands drive whichever Docker host `BACKPACK_DOCKER_CONTEXT` names (the
+local one when unset). For a remote host reached over SSH, `make forward`
+(`deploy/forward.sh`) forwards its ports to this machine's `127.0.0.1`.
 
 Only the tunnel reaches `backpack` from outside. FalkorDB and Typesense are on the internal
 network only.
@@ -498,5 +541,5 @@ internal/search/     Typesense indexing and queries
 internal/httpapi/    handlers
 internal/mcpserver/  tool definitions
 api/openapi.yaml
-deploy/              Dockerfile, docker-compose.yml, hook script
+deploy/              Dockerfile, docker-compose.yml, hook, tunnel guard and forward scripts
 ```

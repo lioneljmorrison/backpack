@@ -161,7 +161,7 @@ func TestTheBoardGroupsStoriesByColumnInDeliveryOrder(t *testing.T) {
 		names = append(names, c.Status)
 		got[c.Status] = ids(c.Stories)
 	}
-	if !slices.Equal(names, []string{"proposed", "backlog", "in_progress", "in_review", "merged", "deployed", "on_hold", "closed"}) {
+	if !slices.Equal(names, []string{"proposed", "on_hold", "backlog", "in_progress", "in_review", "merged", "deployed", "closed"}) {
 		t.Fatalf("columns %v", names)
 	}
 	if !slices.Equal(got["backlog"], []string{"S-6", "S-7", "S-8", "S-9"}) || !slices.Equal(got["merged"], []string{"S-1"}) ||
@@ -176,7 +176,7 @@ func TestTheBoardHasAReleasedColumnOnlyWithAReleaseStage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cols) != 9 || cols[5].Status != "released" || cols[5].Stories == nil {
+	if len(cols) != 9 || cols[6].Status != "released" || cols[6].Stories == nil {
 		t.Fatalf("columns %+v", cols)
 	}
 }
