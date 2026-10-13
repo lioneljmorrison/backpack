@@ -135,6 +135,7 @@ func TestRenamingABranchNoticesEveryStoryThatReachedIt(t *testing.T) {
 	want := []board.Change{
 		{Workspace: "demo", Kind: board.KindStory, ID: "S-2"},
 		{Workspace: "demo", Kind: board.KindStory, ID: "S-3"},
+		{Workspace: "demo", Kind: board.KindBranch}, // the branches changed too
 	}
 	if !slices.Equal(*got, want) {
 		t.Fatalf("notices %v, want %v", *got, want)

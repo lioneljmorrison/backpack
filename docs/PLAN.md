@@ -128,7 +128,9 @@ as by keyword, for example "do we already have a story about this?"
 **Live updates.** The board page and a story's page update on their own when
 the board changes, whoever changed it, so a person watching sees an agent's
 move within a moment. Every board change sends a notice naming only what
-changed. A hub inside Backpack passes it to each page watching that
+changed; a change to the branches (added, renamed, aliased, re-pointed or
+removed) sends a branch notice, which the board and a story's page redraw
+on and search ignores. A hub inside Backpack passes it to each page watching that
 workspace, and the page fetches itself again. Nothing is sent through an
 outside service: Backpack is one process, and board content stays on the
 host. A page never replaces something a person is typing or choosing; it
