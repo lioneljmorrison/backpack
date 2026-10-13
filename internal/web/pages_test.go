@@ -272,6 +272,28 @@ func TestDeployedClosedAndIdeaCardsAreNotDraggable(t *testing.T) {
 	}
 }
 
+func TestEveryCardOnTheBoardCarriesItsID(t *testing.T) {
+	h, b := withDemo(t)
+	set := func(id string, c board.StatusChange) {
+		must[board.Story](t)(b.SetStatus("demo", "tester", id, c))
+	}
+	done := story(t, b, board.NewStory{Title: "Shipped"})
+	set(done.ID, board.StatusChange{To: board.InProgress, Branch: "feature/d"})
+	set(done.ID, board.StatusChange{To: board.InReview, PRURL: "https://example.invalid/pr/3"})
+	set(done.ID, board.StatusChange{To: board.Merged, Commit: "abc1234"})
+	set(done.ID, board.StatusChange{To: board.Deployed})
+	shut := story(t, b, board.NewStory{Title: "Dropped"})
+	set(shut.ID, board.StatusChange{To: board.Closed, Reason: "no"})
+	idea := must[board.Idea](t)(b.AddIdea("demo", "tester", board.NewIdea{Title: "Vague"}))
+
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	for _, id := range []string{done.ID, shut.ID, idea.ID} {
+		if tag := cardTag(t, page, id); !strings.Contains(tag, `data-id="`+id+`"`) {
+			t.Errorf("%s card does not carry its id: %s", id, tag)
+		}
+	}
+}
+
 func TestTheBoardCarriesTheMovePrompt(t *testing.T) {
 	h, _ := withDemo(t)
 	page := get(h, "/w/demo", "bp_good").Body.String()
