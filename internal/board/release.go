@@ -107,7 +107,8 @@ type ReleaseDetail struct {
 	Entries []Story `json:"stories"`
 }
 
-// ListReleases reads every release, newest first. Each lists the ids of its
+// ListReleases reads every release, newest first, with R-0 (released before
+// releases existed) last. Each lists the ids of its
 // stories; GetRelease reads them in full. The order is by number, so R-10
 // comes before R-9.
 func (b *Board) ListReleases(ws string) ([]Release, error) {
@@ -144,7 +145,7 @@ func (b *Board) GetRelease(ws, id string) (ReleaseDetail, error) {
 	return d, nil
 }
 
-// releases reads every release, newest first, or only release id when set.
+// releases reads every release, newest first, R-0 last, or only release id when set.
 func releases(g *falkordb.Graph, id string) ([]Release, error) {
 	res, err := g.ROQuery(`
 		MATCH (r:Release) WHERE $id = '' OR r.id = $id
@@ -163,6 +164,15 @@ func releases(g *falkordb.Graph, id string) ([]Release, error) {
 			Commit: str(r, "commit"), Notes: str(r, "notes"), CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
 			Stories: strs(r, "ids")})
 	}
-	slices.SortFunc(out, func(a, b Release) int { return seq(b.ID) - seq(a.ID) })
+	// R-0 holds what was released before releases existed, so it lists last.
+	slices.SortFunc(out, func(a, b Release) int {
+		if (seq(a.ID) == 0) != (seq(b.ID) == 0) {
+			if seq(a.ID) == 0 {
+				return 1
+			}
+			return -1
+		}
+		return seq(b.ID) - seq(a.ID)
+	})
 	return out, nil
 }
