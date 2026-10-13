@@ -131,7 +131,11 @@ host. A page never replaces something a person is typing or choosing; it
 says the page has changed instead. It also waits for a drag to finish. On
 the board, a card that moves slides to its new place, a new card fades in and
 a card that leaves fades out, all over the same half second; with reduced
-motion asked for, the board redraws without animation.
+motion asked for, the board redraws without animation. A person's own moves
+on the board (a drop, the move prompt, a card's arrows) redraw in place too:
+the page sends the move in the background and swaps in the board the server
+returns, so the page does not reload. If something is typed on the page, or
+the reply is not the board (signed out), it falls back to a plain form post.
 
 ## How it will be built
 

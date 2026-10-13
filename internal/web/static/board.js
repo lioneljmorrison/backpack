@@ -1,7 +1,7 @@
 // Drag a card to a column to move it there. The page only lights up the
 // columns the server says the card may go to (its data-moves) and takes a
 // drop there; the board still checks the move, and a refusal is shown on the
-// reloaded board. Backlog cards also drag within the backlog to re-rank, and
+// redrawn board. Backlog cards also drag within the backlog to re-rank, and
 // a card dropped into the backlog lands where it was dropped: the top half of
 // a card puts it before that card, the bottom half after it.
 //
@@ -71,7 +71,14 @@
     if (at.card) at.card.classList.add(at.above ? "drop-above" : "drop-below");
   }
 
+  // submit sends a move. live.js claims it to send in the background and
+  // redraw the board in place; unclaimed, a plain form post reloads the page.
   function submit(action, fields) {
+    const send = new CustomEvent("backpack:send", {
+      cancelable: true,
+      detail: { action, body: new URLSearchParams(fields) },
+    });
+    if (!document.dispatchEvent(send)) return;
     const form = document.createElement("form");
     form.method = "post";
     form.action = action;
@@ -85,6 +92,18 @@
     document.body.append(form);
     form.submit();
   }
+
+  // A card's arrow buttons are forms inside main, which live.js swaps, so
+  // the listener sits on the document. Every other form is left alone.
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    if (!form.matches || !form.matches("main .moves form")) return;
+    const send = new CustomEvent("backpack:send", {
+      cancelable: true,
+      detail: { action: form.getAttribute("action"), body: new URLSearchParams(new FormData(form)) },
+    });
+    if (!document.dispatchEvent(send)) e.preventDefault();
+  });
 
   document.addEventListener("dragstart", (e) => {
     const card = e.target.closest && e.target.closest(".card[draggable='true']");
@@ -166,6 +185,7 @@
       for (const input of form.querySelectorAll("input:not(:disabled)")) {
         if (input.value.trim() !== "") fields[input.name] = input.value.trim();
       }
+      dialog.close();
       submit(url, fields);
     };
     dialog.onclick = (e) => { if (e.target === dialog) dialog.close(); };
