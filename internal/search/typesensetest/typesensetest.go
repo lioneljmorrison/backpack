@@ -25,6 +25,9 @@ func Prefix(t *testing.T) (baseURL, key, prefix string) {
 	if key == "" {
 		t.Fatal("BACKPACK_TEST_TYPESENSE is set but BACKPACK_TEST_TYPESENSE_KEY is not")
 	}
+	if err := ensureKeeper(baseURL, key); err != nil {
+		t.Fatal(err)
+	}
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
 		t.Fatal(err)
