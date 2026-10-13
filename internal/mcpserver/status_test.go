@@ -234,3 +234,46 @@ func TestUpdateBranchRunsInsideABatch(t *testing.T) {
 		t.Fatalf("S-1: %+v, %v", s, err)
 	}
 }
+
+func TestAddBranchAndRepointViaUpdateBranchMoveNoStory(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	mergedIntoDev(t, b, "First")
+	got := use(t, cs, "add_branch", map[string]any{"workspace": "staged", "name": "staging", "into": "main"})
+	if got["name"] != "staging" || got["into"] != "main" {
+		t.Fatalf("answer %v", got)
+	}
+	re := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "dev", "into": "staging"})
+	if re["into"] != "staging" {
+		t.Fatalf("answer %v", re)
+	}
+	if s, err := b.Story("staged", "S-1"); err != nil || s.Status != "merged" || s.Into != "dev" {
+		t.Fatalf("S-1: %+v, %v", s, err)
+	}
+	moved := use(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "dev", "commit": "x9"})
+	if st, _ := moved["stories"].([]any); len(st) != 1 || st[0].(map[string]any)["into"] != "staging" {
+		t.Fatalf("merge answered %v", moved)
+	}
+	// Refusals: a second branch that merges nowhere, a taken name, an unknown target, a cycle.
+	refused(t, cs, "add_branch", map[string]any{"workspace": "staged", "name": "other"})
+	refused(t, cs, "add_branch", map[string]any{"workspace": "staged", "name": "dev", "into": "main"})
+	refused(t, cs, "add_branch", map[string]any{"workspace": "staged", "name": "x", "into": "nope"})
+	if why := refused(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "staging", "into": "dev"}); !strings.Contains(why, "leads back") {
+		t.Fatalf("refusal %q", why)
+	}
+}
+
+func TestAddBranchRunsInsideABatch(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	rs := resultsIn(t, cs, "staged",
+		action("add_branch", map[string]any{"name": "staging", "into": "main", "alias": "Staging"}),
+		action("add_branch", map[string]any{"name": "bad"}))
+	if rs[0]["ok"] != true || rs[1]["ok"] != false {
+		t.Fatalf("batch: %v", rs)
+	}
+	bs, err := b.Branches("staged")
+	if err != nil || len(bs) != 3 {
+		t.Fatalf("branches %+v, %v", bs, err)
+	}
+}

@@ -207,6 +207,39 @@ paths:
                     items: { $ref: "#/components/schemas/Branch" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add a branch
+      description: >-
+        Adds a branch that merges into an existing one, such as staging into
+        main. No story moves, because stories name their branch. `into` is
+        required: a workspace has one release branch, the one that merges
+        nowhere, and it is already there. A name that is empty, has whitespace
+        or is over 100 characters is refused (400), as is one already in use
+        (409) and an `into` that names no branch (404). While several branches
+        nothing merges into exist (dev and staging, both into main), a story in
+        review is merged into one by naming it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, into]
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 100, description: The new branch's name, plain text with no whitespace }
+                into: { type: string, description: The existing branch it merges into }
+                alias: { type: string, maxLength: 100, description: The web column heading's name for the branch, plain text }
+      responses:
+        "201":
+          description: The new branch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Branch" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/workspaces/{ws}/branches/{name}:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -226,6 +259,14 @@ paths:
         use. Giving the branch's own name changes nothing. An alias is the name the
         web board's column heading shows for the branch ("Merged (Production)");
         the API, tools and logs keep using the name. An empty alias clears it.
+        `into` changes the branch it merges into, with no story moving; a
+        story merged into this branch goes on to the new one at its next
+        merge. It is refused with 409 for the branch itself, a branch that
+        leads back to this one, the release branch (which merges nowhere) and
+        an empty `into` on any other branch (a second release branch), and
+        with 404 when it names no branch. Merging into where it already merges
+        changes nothing. All the fields given are applied together or not at
+        all.
       requestBody:
         required: true
         content:
@@ -236,6 +277,7 @@ paths:
               properties:
                 name: { type: string, maxLength: 100, description: The new name, plain text with no whitespace }
                 alias: { type: string, maxLength: 100, description: "The web column heading's name for the branch, plain text; an empty string clears it" }
+                into: { type: string, description: The existing branch it merges into from now on }
       responses:
         "200":
           description: The branch as it is now
@@ -539,7 +581,9 @@ paths:
       description: >-
         Forward one column, or back one before Merged: Backlog, In progress,
         In review, Merged, Deployed. Merging records the branch reached (`into`;
-        none means the first branch, the one no branch merges into) and a story
+        none means the branch no other merges into; when several are like that, such
+        as dev and staging both into main, a merge from review must name one, and
+        is refused with the choices if it does not) and a story
         moves on only to the branch its current one merges into, one step at a
         time, as a merged-to-merged move with that branch and its merge commit.
         Deployed is allowed only from the release branch. The old `released`
@@ -564,7 +608,7 @@ paths:
                 workaround: { type: string, description: "Only when starting a blocked story", example: build against mock data }
                 pr_url: { type: string, description: "Only when opening review" }
                 commit: { type: string, description: "Only when merging" }
-                into: { type: string, description: "Only when merging: the branch merged into; none means the first branch" }
+                into: { type: string, description: "Only when merging: the branch merged into; none means the only branch nothing merges into; with several, name one" }
                 reason: { type: string, description: "Required when holding or closing, and only then" }
       responses:
         "200":

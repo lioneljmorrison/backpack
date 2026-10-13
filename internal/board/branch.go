@@ -142,11 +142,97 @@ func (b *Board) MergeBranch(ws, actor, branch, commit string) (_ []Story, err er
 // maxBranchName bounds a branch's name, in characters.
 const maxBranchName = 100
 
+// checkBranchName holds a new branch's name, or a renamed one's, to the rules:
+// plain text, no whitespace, at most 100 characters.
+func checkBranchName(n string) error {
+	switch {
+	case n == "":
+		return refuse(Invalid, "a branch's name cannot be empty")
+	case utf8.RuneCountInString(n) > maxBranchName:
+		return refuse(Invalid, "a branch's name is at most %d characters", maxBranchName)
+	case strings.ContainsFunc(n, unicode.IsSpace):
+		return refuse(Invalid, "a branch's name cannot contain whitespace")
+	}
+	return plainText(n)
+}
+
+func checkBranchAlias(a string) error {
+	if utf8.RuneCountInString(a) > maxBranchName {
+		return refuse(Invalid, "a branch's alias is at most %d characters", maxBranchName)
+	}
+	return plainText(a)
+}
+
+// branchNamed reads one branch as it is now.
+func branchNamed(g *falkordb.Graph, op, name string) (Branch, error) {
+	bs, err := branches(g)
+	if err != nil {
+		return Branch{}, err
+	}
+	for _, br := range bs {
+		if br.Name == name {
+			return br, nil
+		}
+	}
+	return Branch{}, fmt.Errorf("%s: %q is gone after the change", op, name)
+}
+
+// AddBranch adds a branch that merges into an existing one. Into is required:
+// a workspace has one release branch, the one that merges nowhere, so a second
+// branch that merges nowhere is refused. A name already in use, or one that is
+// empty, has whitespace or runs past 100 characters, is a refusal, and so is an
+// unknown branch to merge into (NotFound, as update_branch answers for a branch
+// it does not know). No story moves, because stories name their branch, not a
+// place in the order. Alias is optional. It is one query, so the branch exists
+// with everything or not at all. It answers with the branch.
+func (b *Board) AddBranch(ws, actor string, br Branch) (Branch, error) {
+	if err := checkBranchName(br.Name); err != nil {
+		return Branch{}, err
+	}
+	if err := checkBranchAlias(br.Alias); err != nil {
+		return Branch{}, err
+	}
+	if br.Into == "" {
+		return Branch{}, refuse(Invalid, "a branch must merge into another; a workspace has one release branch, and it is already there")
+	}
+	if err := plainText(br.Into); err != nil {
+		return Branch{}, err
+	}
+	g, err := b.workspace(ws)
+	if err != nil {
+		return Branch{}, err
+	}
+	res, err := g.Query(`
+		MATCH (w:Workspace)
+		OPTIONAL MATCH (x:Branch) WHERE x.name = $name
+		OPTIONAL MATCH (y:Branch) WHERE y.name = $into
+		WITH x, y, CASE WHEN x IS NOT NULL THEN 'taken' WHEN y IS NULL THEN 'no target' END AS violation
+		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
+			CREATE (:Branch {name: $name, into: $into, alias: $alias, created_by: $actor, created_at: $now}))
+		RETURN violation`,
+		map[string]any{"name": br.Name, "into": br.Into, "alias": orNull(br.Alias), "actor": actor, "now": now()}, nil)
+	if err != nil {
+		return Branch{}, fmt.Errorf("add branch: %w", err)
+	}
+	if !res.Next() {
+		return Branch{}, refuse(NotFound, "no workspace %q", ws)
+	}
+	switch str(res.Record(), "violation") {
+	case "":
+	case "taken":
+		return Branch{}, refuse(Conflict, "%s already has a branch named %q", ws, br.Name)
+	default: // no target
+		return Branch{}, refuse(NotFound, "%s has no branch %q to merge into", ws, br.Into)
+	}
+	return branchNamed(g, "add branch", br.Name)
+}
+
 // BranchPatch changes a branch; a field left nil is left as it is. An empty
-// Alias clears the alias.
+// Alias clears the alias. Into names the branch it merges into.
 type BranchPatch struct {
 	Name  *string `json:"name"`
 	Alias *string `json:"alias"`
+	Into  *string `json:"into"`
 }
 
 // UpdateBranch changes a branch. Renaming it changes its name everywhere the
@@ -156,29 +242,28 @@ type BranchPatch struct {
 // whitespace or runs past 100 characters, is refused; renaming a branch to its
 // own name, like an empty patch, is accepted and changes nothing. An alias is
 // the name its column heading shows on the web, and nothing else uses it; it
-// is plain text of at most 100 characters, and an empty one clears it. It is one
-// query, so every reference follows or none does. It answers with the branch
-// as it is now, and tells the board's watchers about each story it renamed.
+// is plain text of at most 100 characters, and an empty one clears it. Into
+// changes where the branch merges: nothing moves, and a story merged into it
+// follows on to the new branch at its next merge. It is refused for an unknown
+// branch (NotFound), for the branch itself or one that leads back to it (a
+// cycle), for the release branch (it would leave none), and when empty for any
+// other branch (it would make a second release branch); merging into where it
+// already merges, or clearing the release branch's, changes nothing. It is one
+// query, so every reference follows or none does. It answers with the branch as
+// it is now, and tells the board's watchers about each story it renamed.
 func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Branch, err error) {
 	if patch.Name != nil {
-		n := *patch.Name
-		switch {
-		case n == "":
-			return Branch{}, refuse(Invalid, "a branch's name cannot be empty")
-		case utf8.RuneCountInString(n) > maxBranchName:
-			return Branch{}, refuse(Invalid, "a branch's name is at most %d characters", maxBranchName)
-		case strings.ContainsFunc(n, unicode.IsSpace):
-			return Branch{}, refuse(Invalid, "a branch's name cannot contain whitespace")
-		}
-		if err := plainText(n); err != nil {
+		if err := checkBranchName(*patch.Name); err != nil {
 			return Branch{}, err
 		}
 	}
 	if patch.Alias != nil {
-		if utf8.RuneCountInString(*patch.Alias) > maxBranchName {
-			return Branch{}, refuse(Invalid, "a branch's alias is at most %d characters", maxBranchName)
+		if err := checkBranchAlias(*patch.Alias); err != nil {
+			return Branch{}, err
 		}
-		if err := plainText(*patch.Alias); err != nil {
+	}
+	if patch.Into != nil {
+		if err := plainText(*patch.Into); err != nil {
 			return Branch{}, err
 		}
 	}
@@ -186,13 +271,27 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 	if err != nil {
 		return Branch{}, err
 	}
+	// The cycle check walks the branches' into names from the one to merge
+	// into, one step per branch at most (the branches never loop, so that is
+	// enough), and asks whether the walk meets this branch. Into is a property,
+	// not an edge, so a variable-length path match is not available; the walk
+	// is a reduce over the branches collected in the same query.
 	res, err := g.Query(`
 		MATCH (w:Workspace)
 		OPTIONAL MATCH (b:Branch {name: $branch})
 		OPTIONAL MATCH (x:Branch) WHERE x.name = $name
-		WITH b, x,
+		OPTIONAL MATCH (y:Branch) WHERE y.name = $into
+		OPTIONAL MATCH (a:Branch)
+		WITH b, x, y, collect(a) AS every
+		WITH b, x, y, reduce(p = [$into], i IN range(1, size(every)) |
+			p + [head([a IN every WHERE a.name = p[size(p) - 1] | a.into])]) AS walk
+		WITH b, x, y,
 			CASE WHEN b IS NULL THEN 'no branch'
-				WHEN x IS NOT NULL AND x.name <> b.name THEN 'taken' END AS violation,
+				WHEN x IS NOT NULL AND x.name <> b.name THEN 'taken'
+				WHEN $into IS NOT NULL AND $into <> '' AND y IS NULL THEN 'no target'
+				WHEN $into IS NOT NULL AND $into <> '' AND b.into IS NULL THEN 'release'
+				WHEN $into = '' AND b.into IS NOT NULL THEN 'second release'
+				WHEN $into IS NOT NULL AND $into <> '' AND $branch IN walk THEN 'cycle' END AS violation,
 			b IS NOT NULL AND $name IS NOT NULL AND $name <> b.name AS renames
 		OPTIONAL MATCH (s:Story {into: $branch}) WHERE violation IS NULL AND renames
 		WITH b, violation, renames, collect(s) AS ss
@@ -204,8 +303,10 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 			FOREACH (c IN cs | SET c.into = $name))
 		FOREACH (_ IN CASE WHEN violation IS NULL AND $alias IS NOT NULL THEN [1] ELSE [] END |
 			SET b.alias = CASE WHEN $alias = '' THEN null ELSE $alias END)
+		FOREACH (_ IN CASE WHEN violation IS NULL AND $into IS NOT NULL AND $into <> '' THEN [1] ELSE [] END |
+			SET b.into = $into)
 		RETURN violation, [s IN ss | s.id] AS ids`,
-		map[string]any{"branch": branch, "name": opt(patch.Name), "alias": opt(patch.Alias)}, nil)
+		map[string]any{"branch": branch, "name": opt(patch.Name), "alias": opt(patch.Alias), "into": opt(patch.Into)}, nil)
 	if err != nil {
 		return Branch{}, fmt.Errorf("update branch: %w", err)
 	}
@@ -217,8 +318,19 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 	case "":
 	case "no branch":
 		return Branch{}, refuse(NotFound, "%s has no branch %q", ws, branch)
-	default: // taken
+	case "taken":
 		return Branch{}, refuse(Conflict, "%s already has a branch named %q", ws, deref(patch.Name))
+	case "no target":
+		return Branch{}, refuse(NotFound, "%s has no branch %q to merge into", ws, deref(patch.Into))
+	case "release":
+		return Branch{}, refuse(Conflict, "%s is the release branch and merges nowhere; it cannot merge into %s, which would leave no release branch", branch, deref(patch.Into))
+	case "second release":
+		return Branch{}, refuse(Conflict, "%s must merge into another branch; clearing it would make a second release branch", branch)
+	default: // cycle
+		if deref(patch.Into) == branch {
+			return Branch{}, refuse(Conflict, "%s cannot merge into itself", branch)
+		}
+		return Branch{}, refuse(Conflict, "%s cannot merge into %s: %s leads back to %s", branch, deref(patch.Into), deref(patch.Into), branch)
 	}
 	ids := strs(r, "ids")
 	sort.Strings(ids)
@@ -229,14 +341,5 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 	for _, id := range ids {
 		b.changed(nil, Change{ws, KindStory, id})
 	}
-	bs, err := branches(g)
-	if err != nil {
-		return Branch{}, err
-	}
-	for _, br := range bs {
-		if br.Name == name {
-			return br, nil
-		}
-	}
-	return Branch{}, fmt.Errorf("update branch: %q is gone after the change", name)
+	return branchNamed(g, "update branch", name)
 }

@@ -110,7 +110,7 @@ curl -fsS -X POST https://backpack.example.com/v1/workspaces \
 
 `slug` and `name` are required. `repo_url` is optional. `has_release_stage` is
 the person's answer from step 1; it seeds the workspace's branches (`main` alone,
-or `dev` merging into `main`), which `list_branches` shows. If the repository's branches are called something else (`master`, `develop`), rename them with `update_branch`: every story stays in its column. To show a column under another name on the web board ("Merged (Production)" for `main`), give the branch an `alias` with the same tool; everything else keeps the branch name. A `409` means the slug is already taken, so
+or `dev` merging into `main`), which `list_branches` shows. If the repository's branches are called something else (`master`, `develop`), rename them with `update_branch`: every story stays in its column. To show a column under another name on the web board ("Merged (Production)" for `main`), give the branch an `alias` with the same tool; everything else keeps the branch name. A project with another branch, such as `staging` between `dev` and `main`, adds it with `add_branch` (naming the branch it merges `into`) and re-points the one before it with `update_branch` and `into`; no story moves, and a merge from `dev` then goes to `staging`. While two branches both merge into `main`, a story from review is merged into one of them by naming it (`into`). A `409` means the slug is already taken, so
 check with the person whether that workspace is this project's.
 
 ## 4. Connect the MCP server
@@ -238,7 +238,8 @@ is never committed.
   - start work: `in_progress`, with the task branch;
   - open the pull request: `in_review`, with its link;
   - merged: `merged`, with the merge commit (it goes into the first branch,
-    such as `dev`; name another with `into`);
+    such as `dev`; name another with `into`, which is required when several
+    branches start the line, for example `dev` and `staging` both merging into `main`);
   - a branch merged into the next (such as `dev` into `main`): one
     `merge_branch` call, naming the branch and the merge commit, moves every
     story merged into it to the next branch, each logged with the commit, in

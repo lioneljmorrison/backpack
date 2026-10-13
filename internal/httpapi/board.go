@@ -21,6 +21,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("GET /v1/workspaces", a.listWorkspaces)
 	mux.HandleFunc("POST /v1/workspaces", a.createWorkspace)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/branches", a.listBranches)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/branches", a.addBranch)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/branches/{name}", a.updateBranch)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/branches/{name}/merged", a.mergeBranch)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
@@ -75,6 +76,19 @@ func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 func (a boardAPI) listBranches(w http.ResponseWriter, r *http.Request) {
 	bs, err := a.b.Branches(r.PathValue("ws"))
 	respond(w, http.StatusOK, map[string]any{"branches": bs}, err)
+}
+
+func (a boardAPI) addBranch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name  string `json:"name"`
+		Into  string `json:"into"`
+		Alias string `json:"alias"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	br, err := a.b.AddBranch(r.PathValue("ws"), actor(r), board.Branch{Name: in.Name, Into: in.Into, Alias: in.Alias})
+	respond(w, http.StatusCreated, br, err)
 }
 
 func (a boardAPI) updateBranch(w http.ResponseWriter, r *http.Request) {
