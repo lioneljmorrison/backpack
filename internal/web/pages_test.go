@@ -50,9 +50,9 @@ func TestTheBoardShowsEachColumnWithItsStoriesInDeliveryOrder(t *testing.T) {
 	must[board.Story](t)(b.SetStatus("demo", "tester", started.ID, board.StatusChange{To: board.InProgress, Branch: "feature/x"}))
 
 	w := get(h, "/w/demo", "bp_good")
-	wantPage(t, w, "Demo", "Backlog", "In progress", "Merged (main)", "Released", `href="/w/demo/stories/S-1"`)
+	wantPage(t, w, "Demo", "Backlog", "In progress", "Merged (main)", `href="/w/demo/stories/S-1"`)
 	page := w.Body.String()
-	if !before(page, `aria-label="Backlog"`, `aria-label="In progress"`) || !before(page, `aria-label="In progress"`, `aria-label="Released"`) {
+	if !before(page, `aria-label="Backlog"`, `aria-label="In progress"`) || !before(page, `aria-label="In progress"`, `aria-label="Merged (main)"`) {
 		t.Error("columns are not in board order")
 	}
 	if !before(page, "First in line", "Second in line") {
@@ -66,7 +66,7 @@ func TestTheBoardShowsEachColumnWithItsStoriesInDeliveryOrder(t *testing.T) {
 func TestTheBoardRunsFromIdeasThroughOnHoldAndBacklogToClosed(t *testing.T) {
 	h, _ := withDemo(t)
 	page := get(h, "/w/demo", "bp_good").Body.String()
-	order := []string{"Ideas", "Proposed", "On hold", "Backlog", "In progress", "Released", "Closed"}
+	order := []string{"Ideas", "Proposed", "On hold", "Backlog", "In progress", "Merged (main)", "Closed"}
 	for i := 1; i < len(order); i++ {
 		if !before(page, `aria-label="`+order[i-1]+`"`, `aria-label="`+order[i]+`"`) {
 			t.Errorf("%s is not before %s", order[i-1], order[i])
@@ -246,10 +246,10 @@ func TestEachCardSaysWhichColumnsItMayBeDroppedOn(t *testing.T) {
 			t.Errorf("staged board lacks %s", want)
 		}
 	}
-	if !before(sp, `aria-label="Merged (dev)"`, `aria-label="Merged (main)"`) || !before(sp, `aria-label="Merged (main)"`, `aria-label="Released"`) {
-		t.Error("merged columns are not in merge order, or Released does not follow them")
+	if !before(sp, `aria-label="Merged (dev)"`, `aria-label="Merged (main)"`) || !before(sp, `aria-label="Merged (main)"`, `aria-label="Closed"`) {
+		t.Error("merged columns are not in merge order, or Closed does not follow them")
 	}
-	for _, status := range []string{"proposed", "backlog", "on_hold", "in_progress", "in_review", "merged", "released", "closed"} {
+	for _, status := range []string{"proposed", "backlog", "on_hold", "in_progress", "in_review", "merged", "closed"} {
 		if !strings.Contains(page, `data-status="`+status+`"`) {
 			t.Errorf("no column marked %s", status)
 		}
@@ -277,16 +277,41 @@ func TestMergedIntoTheReleaseBranchReleasedClosedAndIdeaCardsAreNotDraggable(t *
 	set(waiting.ID, board.StatusChange{To: board.Merged, Commit: "abc1235"})
 
 	page := get(h, "/w/demo", "bp_good").Body.String()
-	if tag := cardTag(t, page, done.ID); !strings.Contains(tag, `data-status="released"`) {
-		t.Errorf("a released card is not marked released: %s", tag)
-	}
-	for _, id := range []string{done.ID, shut.ID, "I-1", waiting.ID} {
+	for _, id := range []string{shut.ID, "I-1", waiting.ID} {
 		if tag := cardTag(t, page, id); strings.Contains(tag, "draggable") || strings.Contains(tag, "data-moves") {
 			t.Errorf("%s is draggable: %s", id, tag)
 		}
 	}
 	if strings.Contains(page, `aria-label="Ideas" data-status`) {
 		t.Error("Ideas column takes drops")
+	}
+}
+
+// The web board ends at the last Merged column, then Closed: a released
+// story is read on the Releases pages, not as a card.
+func TestTheBoardShowsNoReleasedColumnAndNoReleasedCards(t *testing.T) {
+	h, b := withDemo(t)
+	set := func(id string, c board.StatusChange) {
+		must[board.Story](t)(b.SetStatus("demo", "tester", id, c))
+	}
+	done := story(t, b, board.NewStory{Title: "Shipped in a release"})
+	set(done.ID, board.StatusChange{To: board.InProgress, Branch: "feature/d"})
+	set(done.ID, board.StatusChange{To: board.InReview, PRURL: "https://example.invalid/pr/3"})
+	set(done.ID, board.StatusChange{To: board.Merged, Commit: "abc1234"})
+	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Version: "v1", Tag: "v1"}))
+
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	if strings.Contains(page, `aria-label="Released"`) || strings.Contains(page, `data-status="released"`) {
+		t.Error("the board has a Released column")
+	}
+	if strings.Contains(page, "Shipped in a release") || strings.Contains(page, `href="/w/demo/stories/`+done.ID+`"`) {
+		t.Error("the board shows a released card")
+	}
+	if !before(page, `aria-label="Merged (main)"`, `aria-label="Closed"`) {
+		t.Error("Closed does not follow the last Merged column")
+	}
+	if rel := get(h, "/w/demo/releases/R-1", "bp_good").Body.String(); !strings.Contains(rel, "Shipped in a release") {
+		t.Error("the release page does not list the released story")
 	}
 }
 
@@ -305,7 +330,7 @@ func TestEveryCardOnTheBoardCarriesItsID(t *testing.T) {
 	idea := must[board.Idea](t)(b.AddIdea("demo", "tester", board.NewIdea{Title: "Vague"}))
 
 	page := get(h, "/w/demo", "bp_good").Body.String()
-	for _, id := range []string{done.ID, shut.ID, idea.ID} {
+	for _, id := range []string{shut.ID, idea.ID} {
 		if tag := cardTag(t, page, id); !strings.Contains(tag, `data-id="`+id+`"`) {
 			t.Errorf("%s card does not carry its id: %s", id, tag)
 		}

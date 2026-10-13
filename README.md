@@ -20,7 +20,9 @@ current state is hard to find. Backpack replaces that document: agents ask it
   Released, where Merged is one column per branch (such as Merged (dev) and
   Merged (main)), Released means the story is in an official release (cut with
   `cut_release`, which records a version and its git tag), and each keeps an
-  append-only log. A story an agent
+  append-only log. The web board ends at the last Merged column, then Closed;
+  released stories are read on the Releases pages, one release at a time (the
+  API and MCP board listings still carry them). A story an agent
   adds is Proposed until a person approves it.
 - Dependencies are explicit, and a story always ranks below what it depends on.
 - Agents can **search** stories, ideas and phases by keyword or by meaning,
