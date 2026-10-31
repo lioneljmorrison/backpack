@@ -325,7 +325,11 @@ Each slice is its own branch and pull request into `dev`.
   actually changed, plus `marked` (the ids) when the change marked dependents
   as upstream changed; `move_story` answers `{id}`; `add_dependency` answers
   `{id, blocked}`; `log` answers the new entry's `{id}`; `merge_branch` answers
-  `{stories}`, the ids moved. The shape is made in each tool's handler, so the
+  `{stories}`, the ids moved. Idea changes (`add_idea`, `update_idea`,
+  `move_idea`, `refine_idea`, `drop_idea`) answer `{id, state}`; `add_phase`
+  answers `{number}` (as `update_phase` does); `add_goal` and `mark_goal_met`
+  answer `{id, met}` (`update_goal` answers `{id}`). `get_idea` and
+  `list_phases` read the rest back. The shape is made in each tool's handler, so the
   action nested in a `batch` is the same short form. Anything fuller is a
   `get_story` away; HTTP keeps the full records.
   A refusal comes back as a tool error

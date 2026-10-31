@@ -118,3 +118,19 @@ func TestShortAnswersAreSmallerThanTheStory(t *testing.T) {
 	}
 	t.Logf("set_status answer: %d bytes %s; the story read back: %d bytes", len(short), short, len(full))
 }
+
+func TestABatchOfAddIdeaAndAddGoalNestsTheShortAnswers(t *testing.T) {
+	_, cs := connect(t)
+	use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Foundations"})
+	rs := results(t, cs,
+		action("add_idea", map[string]any{"title": "A", "context": "c"}),
+		action("add_goal", map[string]any{"phase": 1, "text": "it runs"}))
+	idea, _ := rs[0]["result"].(map[string]any)
+	goal, _ := rs[1]["result"].(map[string]any)
+	if !reflect.DeepEqual(idea, map[string]any{"id": "I-1", "state": "open"}) {
+		t.Fatalf("add_idea %v", rs[0])
+	}
+	if !reflect.DeepEqual(goal, map[string]any{"id": "G-1", "met": false}) {
+		t.Fatalf("add_goal %v", rs[1])
+	}
+}
