@@ -11,11 +11,13 @@
   {{if .Activity}}<span class="tag activity">{{label .Activity}}{{with .WaitingOn}}: {{.}}{{end}}</span>{{end}}
   {{if .Blocked}}<span class="tag bad">Blocked</span>{{end}}
   {{with .HoldReason}}<span class="tag warn">On hold: {{.}}</span>{{end}}
+  {{with .UpstreamChanged}}<span class="tag warn">Upstream changed</span>{{end}}
   {{with .Branch}}<span class="tag"><code>{{.}}</code></span>{{end}}
   {{with .PRURL}}<a class="tag" href="{{.}}">Pull request</a>{{end}}
   {{with .Release}}<a class="tag" href="/w/{{$ws}}/releases/{{.ID}}">Release {{.Version}}</a>{{end}}
 </div>
 <div class="detail">
+  {{with .UpstreamChanged}}<p class="text warn-text">Upstream changed: the goal or plan of <a href="/w/{{$ws}}/stories/{{.Story}}"><span class="id">{{.Story}}</span> {{index $titles .Story}}</a> changed <time datetime="{{.At}}">{{when .At}}</time>. Check this story's plan still holds.</p>{{end}}
   {{with .Description}}<h2>Description</h2><p class="text">{{.}}</p>{{end}}
   {{with .Goal}}<h2>Goal</h2><p class="text">{{.}}</p>{{end}}
   {{with .Plan}}<h2>Plan</h2><p class="text">{{.}}</p>{{end}}
