@@ -3,6 +3,7 @@ package mcpserver_test
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -149,5 +150,15 @@ func TestBatchEditsAPhaseAndAGoal(t *testing.T) {
 	ps, _ := b.Phases("demo")
 	if ps[0].Description != "d" || ps[0].Goals[0].Text != "new" {
 		t.Fatalf("phase %+v", ps[0])
+	}
+}
+
+func TestReadLogSaysWhyItRefusesBothOrNeitherOfIDAndPhase(t *testing.T) {
+	_, cs := connect(t)
+	if why := refused(t, cs, "read_log", map[string]any{"workspace": "demo", "id": "G-1", "phase": 1}); !strings.Contains(why, "not both") {
+		t.Fatalf("both: %q", why)
+	}
+	if why := refused(t, cs, "read_log", map[string]any{"workspace": "demo"}); !strings.Contains(why, "number of a phase") {
+		t.Fatalf("neither: %q", why)
 	}
 }

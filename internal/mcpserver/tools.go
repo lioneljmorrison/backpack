@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -349,7 +348,7 @@ func (t tools) readLog(_ context.Context, a readLogIn) (any, error) {
 	var err error
 	switch {
 	case a.ID != "" && a.Phase != 0:
-		return nil, errors.New("give id or phase, not both")
+		return nil, &board.Error{Kind: board.Invalid, Msg: "give id or phase, not both"}
 	case a.Phase != 0:
 		l, err = t.b.PhaseLog(a.Workspace, a.Phase)
 	case strings.HasPrefix(a.ID, "G-"):
@@ -357,7 +356,7 @@ func (t tools) readLog(_ context.Context, a readLogIn) (any, error) {
 	case a.ID != "":
 		l, err = t.b.Log(a.Workspace, a.ID)
 	default:
-		return nil, errors.New("give the id of a story or goal, or the number of a phase")
+		return nil, &board.Error{Kind: board.Invalid, Msg: "give the id of a story or goal, or the number of a phase"}
 	}
 	return map[string]any{"entries": l}, err
 }
