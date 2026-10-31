@@ -17,12 +17,12 @@ const maxBatch = 100
 
 type batchIn struct {
 	in
-	Actions []batchAction `json:"actions" jsonschema:"the changes to make, in order"`
+	Actions []batchAction `json:"actions" jsonschema:"changes, in order"`
 }
 
 type batchAction struct {
-	Tool string         `json:"tool" jsonschema:"a tool that changes the board, such as set_status or add_dependency"`
-	Args map[string]any `json:"args,omitempty" jsonschema:"that tool's arguments, without the workspace"`
+	Tool string         `json:"tool" jsonschema:"a changing tool, such as set_status"`
+	Args map[string]any `json:"args,omitempty" jsonschema:"its arguments, without workspace"`
 }
 
 // outcome is one action's answer: the tool's own answer, or why it failed.
