@@ -652,3 +652,17 @@ func TestAStoryKindRoundTripsOverHTTP(t *testing.T) {
 	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"kind": "chore"}`), http.StatusBadRequest)
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "X", "kind": "chore"}`), http.StatusBadRequest)
 }
+
+func TestAStoryFoundInRoundTripsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "B", "found_in": "S-1"}`), http.StatusCreated)
+	if s["found_in"] != "S-1" {
+		t.Fatalf("added %v", s)
+	}
+	a := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
+	if f, _ := a["found"].([]any); len(f) != 1 || f[0] != "S-2" {
+		t.Fatalf("read %v", a)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "C", "found_in": "S-99"}`), http.StatusNotFound)
+}

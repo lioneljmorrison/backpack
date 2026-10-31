@@ -201,3 +201,17 @@ func TestAStoryIsAddedAsABugAndTheMarkIsChangedAndCleared(t *testing.T) {
 	refused(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1", "kind": "chore"})
 	refused(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "X", "kind": "chore", "reasoning": "r"})
 }
+
+func TestAStoryFoundInReadsBothWaysOverMCP(t *testing.T) {
+	_, cs := connect(t)
+	use(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "A", "reasoning": "r"})
+	use(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "B", "found_in": "S-1", "reasoning": "r"})
+	if s := readStory(t, cs, "S-2"); s["found_in"] != "S-1" {
+		t.Fatalf("B %v", s)
+	}
+	a := readStory(t, cs, "S-1")
+	if f, _ := a["found"].([]any); len(f) != 1 || f[0] != "S-2" || a["found_in"] != nil {
+		t.Fatalf("A %v", a)
+	}
+	refused(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "C", "found_in": "S-99", "reasoning": "r"})
+}

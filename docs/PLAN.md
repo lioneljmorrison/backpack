@@ -89,6 +89,12 @@ a story of no kind is an ordinary story. The mark shows on the story's reads,
 in search and as a badge on the web card. It changes nothing about rank or
 status.
 
+**Found in.** When building one story turns up another, the new story can
+name the story it was found in (stories only, not ideas), as `found_in` on
+add. The link is made when the story is created, an unknown story is refused,
+and so is a closed one. A story read shows both ways: where it was found, and
+what was found while building it. The link is never edited.
+
 **Statuses.**
 
 | Column | Meaning | In this repo |
@@ -590,6 +596,7 @@ the data volume. Backup copies the RDB file off the host.
 | `(Phase)-[:HAS_GOAL]->(Goal)` | |
 | `(Phase)-[:CONTAINS]->(Story)` | optional; a story without one sits directly in the backlog |
 | `(Story)-[:DEPENDS_ON {created_by, created_at}]->(Story)` | read in reverse as "blocks" |
+| `(Story)-[:FOUND_IN]->(Story)` | the story this one was found while building; read in reverse as what was found while building it |
 | `(Story\|Phase\|Goal)-[:LOGGED]->(LogEntry)` | phases and goals log edits only (see "Editing phases and goals") |
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |

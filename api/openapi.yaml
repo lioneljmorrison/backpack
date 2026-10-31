@@ -634,6 +634,7 @@ paths:
                 goal: { type: string }
                 plan: { type: string }
                 kind: { type: string, enum: [bug], description: "Mark the story as a bug; omit for any other story" }
+                found_in: { type: string, example: S-3, description: "The story this one was found while building; 404 if unknown, 409 if closed" }
                 phase: { type: integer, minimum: 1, description: "Omit for a story with no phase" }
                 before: { type: string, example: S-3 }
                 after: { type: string, example: S-2 }
@@ -1295,6 +1296,11 @@ components:
         blocks:
           type: array
           description: Stories that depend on this one
+          items: { type: string }
+        found_in: { type: string, description: "The story this one was found while building; absent if none" }
+        found:
+          type: array
+          description: Stories found while building this one
           items: { type: string }
         created_by: { type: string }
         created_at: { type: string, format: date-time }

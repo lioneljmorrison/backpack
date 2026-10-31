@@ -46,6 +46,7 @@ type addStoryIn struct {
 	Goal        string `json:"goal,omitempty"`
 	Plan        string `json:"plan,omitempty"`
 	Kind        string `json:"kind,omitempty" jsonschema:"bug"`
+	FoundIn     string `json:"found_in,omitempty" jsonschema:"story it was found in"`
 	Phase       int    `json:"phase,omitempty" jsonschema:"fixed once set"`
 	Reasoning   string `json:"reasoning" jsonschema:"why this spot"`
 	position
@@ -225,30 +226,30 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "list_workspaces", "Every workspace: slug, name, repository.", t.listWorkspaces)
 	tool(s, "list_branches", "The branches in merge order, each with the branch it merges into.", t.listBranches)
 	tool(s, "whats_next", "The highest-ranked backlog story whose dependencies are complete, in full. Null when none is ready.", t.whatsNext)
-	tool(s, "where_are_we", "Where the project stands in a few lines: phase, in progress, in review, on hold, awaiting release, next up, proposals.", t.whereAreWe)
+	tool(s, "where_are_we", "Where the project stands in brief: phase, in progress, in review, on hold, awaiting release, next up, proposals.", t.whereAreWe)
 	tool(s, "get_story", "One story: status, what blocks it and what it blocks.", t.getStory)
 	write(s, steps, "add_story", "Propose a story, ranked before or after another (default: bottom). It stays proposed until a person approves it. Answers with id and status.", t.addStory)
 	write(s, steps, "update_story", "Change a story's fields; others stay. A new goal or plan marks dependents upstream changed. Answers with id, fields changed and stories marked.", t.updateStory)
-	write(s, steps, "mark_reviewed", "Clear a story's upstream-changed mark once you have checked it. Needs a reason. Answers with the id.", t.markReviewed)
-	write(s, steps, "move_story", "Move a story before or after another, or to the bottom. Answers with the id.", t.moveStory)
+	write(s, steps, "mark_reviewed", "Clear a story's upstream-changed mark once checked. Needs a reason. Answers with id.", t.markReviewed)
+	write(s, steps, "move_story", "Move a story before or after another, or to the bottom. Answers with id.", t.moveStory)
 	write(s, steps, "set_status", "Move a story one column forward, or back before merged; or on_hold, or closed (final). Approve a proposal with backlog. Released comes only from cut_release. Answers with id and status.", t.setStatus)
 	write(s, steps, "merge_branch", "Record that a branch was merged into its target at a commit; its merged stories move on. Answers with the story ids moved.", t.mergeBranch)
-	write(s, steps, "cut_release", "Record a release (version, git tag, optional commit and notes): every story merged into the release branch becomes Released. Answers with id, version and story count.", t.cutRelease)
+	write(s, steps, "cut_release", "Record a release (version, git tag, optional commit and notes): stories merged into the release branch become Released. Answers with id, version and story count.", t.cutRelease)
 	tool(s, "list_releases", "Every release, newest first: id, version, tag, story count.", t.listReleases)
 	tool(s, "get_release", "One release by id (R-n), with its stories in delivery order.", t.getRelease)
-	write(s, steps, "add_branch", "Add a branch that merges into an existing one, such as staging into main. Answers with name and target.", t.addBranch)
+	write(s, steps, "add_branch", "Add a branch merging into an existing one, such as staging into main. Answers with name and target.", t.addBranch)
 	write(s, steps, "update_branch", "Change a branch's name, alias (web column heading) or merge target; others stay. Answers with name and fields changed.", t.updateBranch)
-	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited: fix one with a correction. Answers with the entry id.", t.log)
+	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited; fix with a correction. Answers with entry id.", t.log)
 	tool(s, "read_log", "The log of a story or goal (id) or a phase (phase), oldest first.", t.readLog)
-	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. Answers with the id and whether it is blocked.", t.addDependency)
+	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. Answers with id and whether it is blocked.", t.addDependency)
 	write(s, steps, "remove_branch", "Remove a branch nothing refers to. The refusal names what still does.", t.removeBranch)
 	write(s, steps, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
 	tool(s, "list_phases", "Every phase in order: title, description, completion and its goals.", t.listPhases)
 	write(s, steps, "add_phase", "Add a phase after the last. Answers with its number.", t.addPhase)
-	write(s, steps, "add_goal", "Add a goal to a phase. Answers with its id and whether it is met.", t.addGoal)
+	write(s, steps, "add_goal", "Add a goal to a phase. Answers with id and whether met.", t.addGoal)
 	write(s, steps, "update_phase", "Change a phase's title or description; others stay. Answers with its number.", t.updatePhase)
-	write(s, steps, "update_goal", "Change a goal's text. Answers with its id.", t.updateGoal)
-	write(s, steps, "mark_goal_met", "Mark a goal met, or not met. Answers with its id and whether it is met.", t.markGoalMet)
+	write(s, steps, "update_goal", "Change a goal's text. Answers with id.", t.updateGoal)
+	write(s, steps, "mark_goal_met", "Mark a goal met, or not met. Answers with id and whether met.", t.markGoalMet)
 	write(s, steps, "add_idea", "Add an idea: a rough thought, not yet work, outside the backlog. Give it context. Answers with id and state.", t.addIdea)
 	tool(s, "list_ideas", "The open ideas, top first: id, title, state.", t.listIdeas)
 	tool(s, "get_idea", "One idea, with its context and what it became or why it was dropped.", t.getIdea)
@@ -256,7 +257,7 @@ func addTools(s *mcp.Server, t tools) {
 	write(s, steps, "move_idea", "Move an open idea before or after another, or to the bottom. Answers with id and state.", t.moveIdea)
 	write(s, steps, "refine_idea", "Close an idea, linking the stories and phase it became (add them first). Answers with id and state.", t.refineIdea)
 	write(s, steps, "drop_idea", "Close an idea that became nothing, with a reason. Answers with id and state.", t.dropIdea)
-	tool(s, "search", "Check whether a story, idea or phase already covers something, by keyword and meaning; closed ones included. Up to ten, best first.", t.search)
+	tool(s, "search", "Check whether a story, idea or phase already covers something, by keyword and meaning, closed included. Up to ten, best first.", t.search)
 	tool(s, "batch", "Many board changes in one call: each action names a changing tool and its arguments. Run in order; a failure doesn't stop the rest. Up to 100; no reads.", batch(steps))
 }
 
@@ -303,7 +304,7 @@ func (t tools) getStory(_ context.Context, a storyIn) (any, error) {
 
 func (t tools) addStory(ctx context.Context, a addStoryIn) (any, error) {
 	s, err := t.b.AddStory(a.Workspace, actor(ctx), board.NewStory{Title: a.Title, Description: a.Description,
-		Goal: a.Goal, Plan: a.Plan, Kind: a.Kind, Phase: a.Phase, Proposed: true, Reasoning: a.Reasoning,
+		Goal: a.Goal, Plan: a.Plan, Kind: a.Kind, FoundIn: a.FoundIn, Phase: a.Phase, Proposed: true, Reasoning: a.Reasoning,
 		Position: board.Position(a.position)})
 	if err != nil {
 		return nil, err
