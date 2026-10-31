@@ -277,9 +277,13 @@ Each slice is its own branch and pull request into `dev`.
   `.backpack.json`, such as chat, had no way to learn a workspace's slug.
 - **Workspace.** Every tool takes the workspace's slug, so one MCP address
   serves every project.
-- **Answers.** Every tool answers with the same JSON as the HTTP API, "where
-  are we" included. A refusal comes back as a tool error with the board's
-  reason.
+- **Answers.** Every tool answers with one text block of compact JSON and no
+  structured copy, so no content reaches the agent twice (2026-10-31, S-38).
+  This reverses the slice-4 decision that every tool answers with the same
+  JSON as the HTTP API: MCP answers may now differ from HTTP answers, to keep
+  them short for agents. The owner approved this on 2026-10-31. The HTTP API
+  and the web keep their full shapes. A refusal comes back as a tool error
+  with the board's reason, as one text block.
 - **No sessions.** Every call carries its token and stands alone.
 
 5. **Where it runs** (2026-10-10). This is dev: the instance runs on

@@ -1,9 +1,11 @@
 // Package mcpserver serves the board to agents as MCP tools. Each tool calls
-// the same board operation as its HTTP route, and answers with the same JSON.
+// the same board operation as its HTTP route, and answers with one text block
+// of compact JSON (not always the HTTP route's shape; see docs/PLAN.md).
 package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -23,12 +25,18 @@ func New(b *board.Board, x *search.Index) http.Handler {
 		&mcp.StreamableHTTPOptions{Stateless: true})
 }
 
-// answer turns a board result into a tool result.
+// answer turns a board result into a tool result: one text block of compact
+// JSON. It never hands the library a value to return, because the library
+// would then add a structured copy of the same content.
 func answer(v any, err error) (*mcp.CallToolResult, any, error) {
-	if err == nil {
-		return nil, v, nil
+	if err != nil {
+		return nil, nil, public(err)
 	}
-	return nil, nil, public(err)
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, nil, public(err)
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}, nil, nil
 }
 
 // public is what the caller is told of err: a refusal comes back with its
