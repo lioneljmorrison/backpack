@@ -128,6 +128,10 @@ The branches are in `list_branches`; change them with `add_branch`,
     is final, and there is no `deployed` status.
 - **While in progress,** keep the story's activity current with
   `update_story`: planning, building, testing, or waiting (and on what).
+- **Upstream changed.** Changing a story's goal or plan marks the stories that
+  depend on it. "Where are we" lists them (`Upstream changed`). Check each
+  against the new plan; update its plan, or call `mark_reviewed` with a reason
+  if nothing needs to change.
 - **Log as you go** with `log`: decisions with their reason, notable commits,
   notes. Entries are never edited; fix a mistake with a `correction` that names
   the entry it corrects.

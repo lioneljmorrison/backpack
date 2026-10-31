@@ -766,6 +766,37 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/reviewed:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    post:
+      summary: Clear the story's upstream-changed mark
+      description: >-
+        Says the story was looked at after a story it depends on changed its
+        goal or plan. The reason is logged on the story as a note. Updating the
+        story's own goal or plan also clears the mark. A story that is not
+        marked is refused with 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, description: "What was checked or changed; plain text" }
+      responses:
+        "200":
+          description: The story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/workspaces/{ws}/stories/{id}/log:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -1276,6 +1307,17 @@ components:
         into: { type: string, description: "A merged story: the furthest branch it reached" }
         pr_url: { type: string }
         workaround: { type: string, description: "How it was started while blocked" }
+        upstream_changed:
+          type: object
+          description: >-
+            Set when a story this one depends on, directly or further down, had
+            its goal or plan changed; the most recent such change. Absent when
+            there is none. Cleared by updating this story's goal or plan, or by
+            the reviewed action.
+          required: [story, at]
+          properties:
+            story: { type: string, example: S-4 }
+            at: { type: string, format: date-time }
         release:
           type: object
           description: >-
@@ -1325,7 +1367,7 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, proposed, in_progress, in_review, on_hold, next, unreleased]
+      required: [phase, proposed, in_progress, in_review, on_hold, next, unreleased, upstream_changed]
       properties:
         phase:
           description: The first phase that is not complete; null when there is none
@@ -1352,6 +1394,10 @@ components:
         unreleased:
           type: array
           description: Merged into the release branch and not yet in a release, in delivery order
+          items: { $ref: "#/components/schemas/Story" }
+        upstream_changed:
+          type: array
+          description: Stories not yet complete or closed whose upstream story changed its goal or plan, in delivery order
           items: { $ref: "#/components/schemas/Story" }
     Idea:
       type: object

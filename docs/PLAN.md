@@ -130,7 +130,28 @@ agent see what was done in which commit, and what was later found wrong.
     S-10 …, S-11 …)`, so the line stays short however long the wait. The
     JSON keeps the full `unreleased` list.
 
+  - the stories marked "upstream changed", one line each, for example
+    `S-9 Title — after S-4`. The JSON keeps them as `upstream_changed`.
+
   The session-start hook shows this.
+
+**A changed plan flags what depends on it (2026-10-31, S-56).** A story's plan
+or goal is what the stories below it were planned against. When `update_story`
+sets a goal or plan to a value different from the stored one, every open story
+that depends on it, directly or further down, is marked "upstream changed".
+A story is open when it is not Merged, Released or Closed; the chain stops at a
+story that is complete or closed, so what lies only behind it is not marked.
+Changing only the title, description, activity, branch or pull request marks
+nothing, and neither does setting the same text again. A mark records the
+upstream story's id and the time; a story already marked takes the newer
+change (the most recent upstream story and time), and each change leaves a
+`note` on the marked story's log naming the story and whether its goal or
+plan changed. The mark shows in every story read (`upstream_changed`: `story`
+and `at`, absent when there is none) and in where are we. It clears when the
+marked story's own goal or plan is updated (which, being a plan change, marks
+its own dependents in turn), or when `mark_reviewed` says it was looked at:
+a reason is required, logged as a note, and a story that is not marked is
+refused (409). Everything happens in the same query as the update or review.
 
 **Search.** Ideas, phases, stories and logs can be searched by meaning as well
 as by keyword, for example "do we already have a story about this?"
@@ -504,7 +525,7 @@ the data volume. Backup copies the RDB file off the host.
 | `Branch` | `name`, `into` (the name of the branch it merges into, a property rather than an edge; none for the release branch), `alias` (display only), `created_by`, `created_at` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
-| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) |
+| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) `upstream_id`, `upstream_at` (the upstream-changed mark, absent when none) |
 | `Release` | `id` (`R-n`), `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` |
 | `Idea` | `id` (`I-n`), `title`, `context`, `rank`, `state` (`open`/`closed`), `drop_reason`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
 | `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `field` (an edit entry: the field changed), `from`, `to` (a status entry's statuses, or an edit entry's old and new value) |
@@ -518,6 +539,9 @@ the data volume. Backup copies the RDB file off the host.
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
 | `(Story)-[:IN_RELEASE]->(Release)` | |
+
+The upstream-changed mark is two properties on `Story`, not a node or an edge,
+and nothing looks stories up by it, so it needs no index or migration.
 
 A separate `backpack` graph holds actors with hashed tokens and the workspace
 registry: `WorkspaceEntry {slug, name, repo_url, has_release_stage,
@@ -583,6 +607,7 @@ GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
 GET  /v1/workspaces/{ws}/releases                    POST (cut); GET /releases/{id}
 GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{n} (title, description)
+POST /v1/workspaces/{ws}/stories/{id}/reviewed          clear the upstream-changed mark ({reason}; 409 when not marked)
 GET  /v1/workspaces/{ws}/phases/{n}/log              a phase's log
 POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met, or text)
 GET  /v1/workspaces/{ws}/goals/{id}/log              a goal's log

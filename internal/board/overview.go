@@ -43,6 +43,9 @@ type Where struct {
 	// Unreleased is what is merged into the release branch and not yet in a
 	// release, in delivery order.
 	Unreleased []Story `json:"unreleased"`
+	// UpstreamChanged is the stories not yet complete whose upstream story
+	// had its goal or plan changed, in delivery order.
+	UpstreamChanged []Story `json:"upstream_changed"`
 }
 
 // Where reads the current phase, the work under way and what comes next.
@@ -70,11 +73,14 @@ func (b *Board) Where(ws string) (Where, error) {
 			break
 		}
 	}
-	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, Unreleased: []Story{}}
+	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, Unreleased: []Story{}, UpstreamChanged: []Story{}}
 	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete }); i >= 0 {
 		w.Phase = &ps[i]
 	}
 	for _, s := range ss {
+		if s.UpstreamChanged != nil && !slices.Contains(complete, s.Status) && s.Status != Closed {
+			w.UpstreamChanged = append(w.UpstreamChanged, s)
+		}
 		switch s.Status {
 		case Proposed:
 			w.Proposed = append(w.Proposed, s)
@@ -99,7 +105,7 @@ func (b *Board) Where(ws string) (Where, error) {
 
 // Text is "where are we" as a few lines for a session hook.
 func (w Where) Text() string {
-	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next)+len(w.Unreleased) == 0 {
+	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next)+len(w.Unreleased)+len(w.UpstreamChanged) == 0 {
 		return "Nothing in progress, in review or in the backlog.\n"
 	}
 	var b strings.Builder
@@ -156,6 +162,9 @@ func (w Where) Text() string {
 		}
 		fmt.Fprintf(&b, "Merged, waiting for a release: %d (latest: %s)\n", n, strings.Join(latest, ", "))
 	}
+	section("Upstream changed", w.UpstreamChanged, func(s Story) []string {
+		return []string{"after " + s.UpstreamChanged.Story}
+	})
 	section("Next", w.Next, none)
 	section("Waiting for approval", w.Proposed, none)
 	return b.String()
