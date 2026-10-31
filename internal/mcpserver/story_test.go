@@ -24,7 +24,7 @@ func TestAddStoryProposesTheStoryWithTheTokensActor(t *testing.T) {
 	b, cs := connect(t)
 	s := use(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "First",
 		"description": "d", "goal": "g", "plan": "p", "reasoning": "nothing else yet"})
-	if s["id"] != "S-1" || s["status"] != "proposed" || s["created_by"] != "tester" || s["goal"] != "g" || s["plan"] != "p" {
+	if s["id"] != "S-1" || s["status"] != "proposed" || s["goal"] != "g" || s["plan"] != "p" || s["created_by"] != nil {
 		t.Fatalf("story %v", s)
 	}
 	l, err := b.Log("demo", "S-1")
@@ -61,7 +61,7 @@ func TestUpdateStoryChangesOnlyTheFieldsGiven(t *testing.T) {
 	addStory(t, b, "First")
 	s := use(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1",
 		"plan": "new plan", "branch": "feature/x"})
-	if s["title"] != "First" || s["plan"] != "new plan" || s["branch"] != "feature/x" || s["updated_by"] != "tester" {
+	if s["title"] != "First" || s["plan"] != "new plan" || s["branch"] != "feature/x" || s["updated_by"] != nil {
 		t.Fatalf("story %v", s)
 	}
 }
@@ -90,7 +90,7 @@ func TestMoveStoryChangesItsPlaceInTheBacklog(t *testing.T) {
 	addStory(t, b, "First")
 	addStory(t, b, "Second")
 	s := use(t, cs, "move_story", map[string]any{"workspace": "demo", "id": "S-2", "before": "S-1"})
-	if s["moved_by"] != "tester" {
+	if s["id"] != "S-2" || s["moved_by"] != nil {
 		t.Fatalf("story %v", s)
 	}
 	next := use(t, cs, "whats_next", map[string]any{"workspace": "demo"})
@@ -119,4 +119,66 @@ func TestGetStoryOfAReleasedStoryIncludesItsRelease(t *testing.T) {
 	if u := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-1"}); u["release"] != nil {
 		t.Fatalf("unreleased story %v", u)
 	}
+}
+
+func absent(t *testing.T, s map[string]any, keys ...string) {
+	t.Helper()
+	for _, k := range keys {
+		if _, ok := s[k]; ok {
+			t.Errorf("story has %q: %v", k, s)
+		}
+	}
+}
+
+func TestGetStoryLeavesOutBookkeepingAndEmptyFields(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "First")
+	s := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-1"})
+	absent(t, s, "created_at", "created_by", "moved_at", "moved_by", "updated_at", "updated_by",
+		"description", "goal", "plan", "phase", "blocked", "blocks", "blocked_by")
+	if s["id"] != "S-1" || s["title"] != "First" || s["status"] != "backlog" {
+		t.Fatalf("story %v", s)
+	}
+}
+
+func TestGetStoryShowsBlockedOnlyWhenBlocked(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "First")
+	addStory(t, b, "Second")
+	if _, err := b.AddDependency("demo", "tester", "S-2", "S-1"); err != nil {
+		t.Fatal(err)
+	}
+	s := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-2"})
+	by, _ := s["blocked_by"].([]any)
+	if s["blocked"] != true || len(by) != 1 || by[0] != "S-1" {
+		t.Fatalf("story %v", s)
+	}
+	first := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-1"})
+	bl, _ := first["blocks"].([]any)
+	if len(bl) != 1 || bl[0] != "S-2" {
+		t.Fatalf("story %v", first)
+	}
+	absent(t, first, "blocked", "blocked_by")
+}
+
+func TestGetStoryKeepsFieldsThatSaySomething(t *testing.T) {
+	b, cs := connect(t)
+	if _, err := b.AddStory("demo", "tester", board.NewStory{Title: "First", Description: "d", Goal: "g", Plan: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	s := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-1"})
+	if s["description"] != "d" || s["goal"] != "g" || s["plan"] != "p" {
+		t.Fatalf("story %v", s)
+	}
+}
+
+func TestAStoryInABatchResultIsLean(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "First")
+	r := results(t, cs, action("set_status", map[string]any{"id": "S-1", "to": "in_progress", "branch": "feature/x"}))
+	s, _ := r[0]["result"].(map[string]any)
+	if s["status"] != "in_progress" || s["branch"] != "feature/x" {
+		t.Fatalf("result %v", r[0])
+	}
+	absent(t, s, "created_at", "created_by", "moved_by", "moved_at", "blocked", "plan")
 }

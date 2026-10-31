@@ -312,6 +312,10 @@ Each slice is its own branch and pull request into `dev`.
   to JSON: it answers with the session hook's plain text (the same as
   `GET .../status` with `Accept: text/plain`), one text block, under 2,000
   bytes on a large board; detail comes from `get_story` (2026-10-31, S-40).
+  A story read over MCP (`get_story`, `whats_next`, and the write tools that
+  still return a story) is lean: no who-and-when fields (they stay in the log,
+  `read_log`), nothing empty, and `blocked` only when true; fields that carry
+  meaning when set stay. HTTP keeps the full story record (2026-10-31, S-41).
   A refusal comes back as a tool error
   with the board's reason, as one text block.
 - **No sessions.** Every call carries its token and stands alone.
