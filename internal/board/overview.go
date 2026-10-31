@@ -147,7 +147,15 @@ func (w Where) Text() string {
 	section("On hold", w.OnHold, func(s Story) []string {
 		return []string{fmt.Sprintf("%s (was in %s)", s.HoldReason, label(s.HeldFrom))}
 	})
-	section("Merged, waiting for a release", w.Unreleased, none)
+	if n := len(w.Unreleased); n > 0 {
+		// A count and the latest few, so the line stays one line however
+		// long the wait for a release gets. The full list is in the JSON.
+		latest := make([]string, 0, upcoming)
+		for _, s := range w.Unreleased[max(0, n-upcoming):] {
+			latest = append(latest, s.ID+" "+s.Title)
+		}
+		fmt.Fprintf(&b, "Merged, waiting for a release: %d (latest: %s)\n", n, strings.Join(latest, ", "))
+	}
 	section("Next", w.Next, none)
 	section("Waiting for approval", w.Proposed, none)
 	return b.String()

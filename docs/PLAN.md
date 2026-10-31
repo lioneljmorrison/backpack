@@ -123,7 +123,12 @@ agent see what was done in which commit, and what was later found wrong.
   - the current phase and how far along it is;
   - what is in progress and what each story is doing;
   - what is in review;
-  - the next three in the backlog.
+  - the next three in the backlog;
+  - what is merged into the release branch and waiting for a release. The
+    text shows one line, the count and the latest three (last in delivery
+    order), for example `Merged, waiting for a release: 12 (latest: S-9 …,
+    S-10 …, S-11 …)`, so the line stays short however long the wait. The
+    JSON keeps the full `unreleased` list.
 
   The session-start hook shows this.
 
