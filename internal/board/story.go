@@ -16,9 +16,14 @@ type Story struct {
 	Goal        string `json:"goal"`
 	Plan        string `json:"plan"`
 	// Kind is "bug" for a bug; none for any other story.
-	Kind   string `json:"kind,omitempty"`
-	Phase  int    `json:"phase,omitempty"`
-	Status string `json:"status"`
+	Kind string `json:"kind,omitempty"`
+	// FoundIn is the story this one turned up while building; none if it
+	// was not found that way. Found is the reverse: the stories found
+	// while building this one.
+	FoundIn string   `json:"found_in,omitempty"`
+	Found   []string `json:"found"`
+	Phase   int      `json:"phase,omitempty"`
+	Status  string   `json:"status"`
 	// Blocked is worked out, never set: a dependency is not yet complete.
 	Blocked    bool     `json:"blocked"`
 	BlockedBy  []string `json:"blocked_by"`
@@ -80,9 +85,11 @@ type NewStory struct {
 	Goal        string `json:"goal"`
 	Plan        string `json:"plan"`
 	Kind        string `json:"kind"`
-	Phase       int    `json:"phase"`
-	Proposed    bool   `json:"-"`
-	Reasoning   string `json:"-"`
+	// FoundIn names the story this one was found while building.
+	FoundIn   string `json:"found_in"`
+	Phase     int    `json:"phase"`
+	Proposed  bool   `json:"-"`
+	Reasoning string `json:"-"`
 	Position
 }
 
@@ -163,10 +170,13 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			MATCH (w:Workspace)
 			OPTIONAL MATCH (p:Phase {number: $phase})
 			OPTIONAL MATCH (anchor:Story {id: $anchor})
+			OPTIONAL MATCH (f:Story {id: $found})
 			OPTIONAL MATCH (o:Story) WHERE ($lo = '' OR o.rank > $lo) AND ($hi = '' OR o.rank < $hi)
-			WITH w, p, anchor, count(o) AS between
-			WITH w, p, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
+			WITH w, p, anchor, f, count(o) AS between
+			WITH w, p, f, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
 				WHEN $phase <> 0 AND p IS NULL THEN 'phase'
+				WHEN $found <> '' AND f IS NULL THEN 'found_in'
+				WHEN f.status = 'closed' THEN 'found_closed'
 				WHEN between > 0 OR ($anchor <> '' AND (anchor IS NULL OR anchor.rank <> $anchorRank)) THEN 'gap'
 			END AS violation
 			FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
@@ -174,6 +184,7 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 				CREATE (s:Story {id: id, title: $title, description: $description, goal: $goal,
 					plan: $plan, kind: $kind, rank: $rank, status: $status, created_by: $actor, created_at: $now})
 				FOREACH (q IN CASE WHEN p IS NULL THEN [] ELSE [p] END | CREATE (q)-[:CONTAINS]->(s))
+				FOREACH (q IN CASE WHEN f IS NULL THEN [] ELSE [f] END | CREATE (s)-[:FOUND_IN]->(q))
 				FOREACH (__ IN CASE WHEN $reasoning IS NULL THEN [] ELSE [1] END |
 					SET w.next_log = n + 1
 					CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n), at: $now, actor: $actor,
@@ -182,7 +193,7 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			map[string]any{
 				"phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
 				"rank": Between(at.lo, at.hi), "title": s.Title, "description": s.Description,
-				"goal": s.Goal, "plan": s.Plan, "kind": orNull(s.Kind), "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
+				"goal": s.Goal, "plan": s.Plan, "kind": orNull(s.Kind), "found": s.FoundIn, "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
 				"actor": actor, "now": now(),
 			}, nil)
 		if err != nil {
@@ -195,6 +206,10 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			return story(g, str(r, "id"))
 		case "phase":
 			return Story{}, refuse(NotFound, "no phase %d", s.Phase)
+		case "found_in":
+			return Story{}, refuse(NotFound, "no story %q to have been found in", s.FoundIn)
+		case "found_closed":
+			return Story{}, refuse(Conflict, "%s is closed; a story cannot be found in a closed story", s.FoundIn)
 		}
 	}
 	return Story{}, refuse(Conflict, "the backlog kept changing while the story was being placed; try again")
@@ -459,8 +474,12 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 			collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS waiting
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
 		WITH s, p, rel, blocked_by, waiting, collect(d.id) AS blocks
+		OPTIONAL MATCH (s)-[:FOUND_IN]->(fi:Story)
+		WITH s, p, rel, blocked_by, waiting, blocks, fi
+		OPTIONAL MATCH (fd:Story)-[:FOUND_IN]->(s)
+		WITH s, p, rel, blocked_by, waiting, blocks, fi, collect(fd.id) AS found
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.kind AS kind, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
+			s.plan AS plan, s.kind AS kind, fi.id AS found_in, found, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
 			rel.id AS release_id, rel.version AS release_version,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
 			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
@@ -487,7 +506,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		}
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
-			Goal: str(r, "goal"), Plan: str(r, "plan"), Kind: str(r, "kind"), Status: str(r, "status"), Phase: num(r, "phase"),
+			Goal: str(r, "goal"), Plan: str(r, "plan"), Kind: str(r, "kind"), FoundIn: str(r, "found_in"), Found: byNumber(strs(r, "found")), Status: str(r, "status"), Phase: num(r, "phase"),
 			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
 			Blocked: len(waiting) > 0, waiting: waiting,
 			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
