@@ -338,9 +338,10 @@ Each slice is its own branch and pull request into `dev`.
   `get_story` away; HTTP keeps the full records.
   Lists answer summaries (2026-10-31, S-44): `list_ideas` items are
   `{id, title, state}` (`get_idea` has the context); `list_phases` items are
-  `{number, title, complete, stories_complete, stories_total, goals}` with each
-  goal `{id, text, met}`, plus `goals_met_early` only when true, and no
-  description (there is no single-phase read over MCP); `list_releases` items
+  `{number, title, description, complete, stories_complete, stories_total,
+  goals}` with each goal `{id, text, met}`, plus `goals_met_early` only when
+  true; the description stays (omitted when empty) because there is no
+  single-phase read over MCP and it carries decisions; `list_releases` items
   are `{id, version, tag, stories}` (the count; `get_release` has the commit,
   notes and stories); `list_workspaces` and `list_branches` drop who and when.
   `get_release` stays full in content but its stories are the lean story form

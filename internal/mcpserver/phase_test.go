@@ -15,13 +15,13 @@ func TestAddPhaseNumbersItAfterTheLast(t *testing.T) {
 	if !reflect.DeepEqual(got, map[string]any{"number": 2.0}) {
 		t.Fatalf("answer %v", got)
 	}
-	// The list is a summary without the author, and there is no single-phase
-	// read over MCP, so read the author back from the board.
+	// The list carries the description but not the author, so read the
+	// author back from the board.
 	ps := use(t, cs, "list_phases", map[string]any{"workspace": "demo"})["phases"].([]any)
-	if p := ps[1].(map[string]any); p["number"] != 2.0 || p["title"] != "Features" {
+	if p := ps[1].(map[string]any); p["number"] != 2.0 || p["title"] != "Features" || p["description"] != "d" {
 		t.Fatalf("phase %v", p)
 	}
-	if full, err := b.Phases("demo"); err != nil || full[1].CreatedBy != "tester" || full[1].Description != "d" {
+	if full, err := b.Phases("demo"); err != nil || full[1].CreatedBy != "tester" {
 		t.Fatalf("phases %+v, %v", full, err)
 	}
 }

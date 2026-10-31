@@ -19,17 +19,20 @@ func TestListIdeasAnswersIdTitleAndStateOnly(t *testing.T) {
 	absent(t, i, "context", "created_by", "created_at", "became_stories")
 }
 
-func TestListPhasesAnswersGoalsWithMetButNoDescriptionOrAuthors(t *testing.T) {
+func TestListPhasesAnswersGoalsWithMetAndTheDescriptionButNoAuthors(t *testing.T) {
 	_, cs := connect(t)
 	use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Foundations", "description": "long text"})
 	use(t, cs, "add_goal", map[string]any{"workspace": "demo", "phase": 1, "text": "it runs"})
 	use(t, cs, "add_goal", map[string]any{"workspace": "demo", "phase": 1, "text": "it ships"})
 	use(t, cs, "mark_goal_met", map[string]any{"workspace": "demo", "id": "G-1", "met": true})
 	p := use(t, cs, "list_phases", map[string]any{"workspace": "demo"})["phases"].([]any)[0].(map[string]any)
-	absent(t, p, "description", "created_by", "created_at", "updated_by", "goals_met_early")
+	absent(t, p, "created_by", "created_at", "updated_by", "goals_met_early")
 	if p["number"] != 1.0 || p["title"] != "Foundations" || p["complete"] != false ||
 		p["stories_total"] != 0.0 || p["stories_complete"] != 0.0 {
 		t.Fatalf("phase %v", p)
+	}
+	if p["description"] != "long text" {
+		t.Fatalf("phase %v, want its description", p)
 	}
 	goals := p["goals"].([]any)
 	g1, g2 := goals[0].(map[string]any), goals[1].(map[string]any)
@@ -37,6 +40,13 @@ func TestListPhasesAnswersGoalsWithMetButNoDescriptionOrAuthors(t *testing.T) {
 		t.Fatalf("goals %v", goals)
 	}
 	absent(t, g1, "created_by", "created_at", "met_by", "met_at")
+}
+
+func TestListPhasesOmitsAnEmptyDescription(t *testing.T) {
+	_, cs := connect(t)
+	use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Bare"})
+	p := use(t, cs, "list_phases", map[string]any{"workspace": "demo"})["phases"].([]any)[0].(map[string]any)
+	absent(t, p, "description")
 }
 
 func TestListPhasesFlagsGoalsMetEarlyWhenTrue(t *testing.T) {

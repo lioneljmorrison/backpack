@@ -73,10 +73,12 @@ type goalSummary struct {
 	Met  bool   `json:"met"`
 }
 
-// phaseSummary leaves out the description, which is long, and who and when.
+// phaseSummary leaves out who and when. The description stays, when there is
+// one: there is no single-phase read over MCP, and it carries decisions.
 type phaseSummary struct {
 	Number          int           `json:"number"`
 	Title           string        `json:"title"`
+	Description     string        `json:"description,omitempty"`
 	Complete        bool          `json:"complete"`
 	StoriesComplete int           `json:"stories_complete"`
 	StoriesTotal    int           `json:"stories_total"`
@@ -92,7 +94,7 @@ func phaseSummaries(ps []board.Phase) []phaseSummary {
 		for _, g := range p.Goals {
 			gs = append(gs, goalSummary{ID: g.ID, Text: g.Text, Met: g.Met})
 		}
-		out = append(out, phaseSummary{Number: p.Number, Title: p.Title, Complete: p.Complete,
+		out = append(out, phaseSummary{Number: p.Number, Title: p.Title, Description: p.Description, Complete: p.Complete,
 			StoriesComplete: p.StoriesComplete, StoriesTotal: p.StoriesTotal, Goals: gs, GoalsMetEarly: p.GoalsMetEarly})
 	}
 	return out
