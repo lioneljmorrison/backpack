@@ -242,18 +242,18 @@ func addTools(s *mcp.Server, t tools) {
 	write(s, steps, "remove_branch", "Remove a branch, only when nothing refers to it: no story is merged into it (whatever its status) and no branch merges into it. The refusal names the stories and branches that still do. The release branch is never removed, nor the first branch (the only branch nothing merges into); with several branches nothing merges into, an empty one can go. An unknown branch is refused. Past log entries keep the removed name.", t.removeBranch)
 	write(s, steps, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
 	tool(s, "list_phases", "Every phase in order, with its goals, how many stories are complete, whether it is complete, and whether its goals were all met while stories are still open.", t.listPhases)
-	write(s, steps, "add_phase", "Add a phase, numbered after the last one.", t.addPhase)
-	write(s, steps, "add_goal", "Add a goal to a phase.", t.addGoal)
+	write(s, steps, "add_phase", "Add a phase, numbered after the last one. Answers with the phase's number.", t.addPhase)
+	write(s, steps, "add_goal", "Add a goal to a phase. Answers with the goal's id and whether it is met.", t.addGoal)
 	write(s, steps, "update_phase", "Change a phase's title or description; fields not given are left as they are, and the title can't be empty. Each field that changes is logged on the phase with its old and new value (read_log with phase). Answers with the phase's number.", t.updatePhase)
 	write(s, steps, "update_goal", "Change a goal's text, which can't be empty. The change is logged on the goal with the old and new text (read_log with the goal's id). Answers with the goal's id.", t.updateGoal)
-	write(s, steps, "mark_goal_met", "Mark a goal met, or not met.", t.markGoalMet)
-	write(s, steps, "add_idea", "Add an idea: a rough thought, not yet work. It goes into the ideas list, apart from the backlog, directly before or after another idea or at the bottom, and is open at once; no approval is needed. Give it context: anything that helps understand the idea and turn it into work, such as notes, links, documents or background. An idea without context is only as good as its title.", t.addIdea)
+	write(s, steps, "mark_goal_met", "Mark a goal met, or not met. Answers with the goal's id and whether it is met.", t.markGoalMet)
+	write(s, steps, "add_idea", "Add an idea: a rough thought, not yet work. It goes into the ideas list, apart from the backlog, directly before or after another idea or at the bottom, and is open at once; no approval is needed. Give it context: anything that helps understand the idea and turn it into work, such as notes, links, documents or background. An idea without context is only as good as its title. Answers with the idea's id and state.", t.addIdea)
 	tool(s, "list_ideas", "The ideas that are not closed, in order, top first.", t.listIdeas)
 	tool(s, "get_idea", "One idea, closed or not, with what it became or why it was dropped.", t.getIdea)
-	write(s, steps, "update_idea", "Change an idea's title or context while it is not closed; fields not given are left as they are.", t.updateIdea)
-	write(s, steps, "move_idea", "Move an idea that is not closed directly before or after another, or to the bottom of the ideas list.", t.moveIdea)
-	write(s, steps, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Build those from the idea's context first, the usual way; none may be closed.", t.refineIdea)
-	write(s, steps, "drop_idea", "Close an idea that became nothing, with the reason.", t.dropIdea)
+	write(s, steps, "update_idea", "Change an idea's title or context while it is not closed; fields not given are left as they are. Answers with the idea's id and state.", t.updateIdea)
+	write(s, steps, "move_idea", "Move an idea that is not closed directly before or after another, or to the bottom of the ideas list. Answers with the idea's id and state.", t.moveIdea)
+	write(s, steps, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Build those from the idea's context first, the usual way; none may be closed. Answers with the idea's id and state; what it became is in get_idea.", t.refineIdea)
+	write(s, steps, "drop_idea", "Close an idea that became nothing, with the reason. Answers with the idea's id and state.", t.dropIdea)
 	tool(s, "search", "Check whether a story, idea or phase already covers something, before adding one. Matches by keyword and by meaning, best first, up to ten; closed stories and dropped ideas are included, with their state.", t.search)
 	tool(s, "batch", "Make many board changes in one call. Each action names a tool that changes the board and gives that tool's arguments without the workspace, which is given once for the batch. Actions run in order, each as if called alone; one that fails is answered with its reason and doesn't stop the rest. An action can name only items that already exist, not one an earlier action in the batch adds. Up to 100 actions; reads can't be batched.", batch(steps))
 }
@@ -433,11 +433,19 @@ func (t tools) listPhases(_ context.Context, a in) (any, error) {
 }
 
 func (t tools) addPhase(ctx context.Context, a addPhaseIn) (any, error) {
-	return t.b.AddPhase(a.Workspace, actor(ctx), a.Title, a.Description)
+	p, err := t.b.AddPhase(a.Workspace, actor(ctx), a.Title, a.Description)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"number": p.Number}, nil
 }
 
 func (t tools) addGoal(ctx context.Context, a addGoalIn) (any, error) {
-	return t.b.AddGoal(a.Workspace, actor(ctx), a.Phase, a.Text)
+	g, err := t.b.AddGoal(a.Workspace, actor(ctx), a.Phase, a.Text)
+	if err != nil {
+		return nil, err
+	}
+	return goalAnswer(g), nil
 }
 
 func (t tools) updatePhase(ctx context.Context, a updatePhaseIn) (any, error) {
@@ -451,11 +459,28 @@ func (t tools) updateGoal(ctx context.Context, a updateGoalIn) (any, error) {
 }
 
 func (t tools) markGoalMet(ctx context.Context, a markGoalMetIn) (any, error) {
-	return t.b.SetGoalMet(a.Workspace, actor(ctx), a.ID, a.Met)
+	g, err := t.b.SetGoalMet(a.Workspace, actor(ctx), a.ID, a.Met)
+	if err != nil {
+		return nil, err
+	}
+	return goalAnswer(g), nil
+}
+
+// goalAnswer is the short answer to a goal change: its id and whether it is met.
+func goalAnswer(g board.Goal) map[string]any {
+	return map[string]any{"id": g.ID, "met": g.Met}
+}
+
+// ideaAnswer is the short answer to an idea change: its id and state.
+func ideaAnswer(i board.Idea, err error) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": i.ID, "state": i.State}, nil
 }
 
 func (t tools) addIdea(ctx context.Context, a addIdeaIn) (any, error) {
-	return t.b.AddIdea(a.Workspace, actor(ctx), board.NewIdea{Title: a.Title, Context: a.Context, Position: board.Position(a.ideaPosition)})
+	return ideaAnswer(t.b.AddIdea(a.Workspace, actor(ctx), board.NewIdea{Title: a.Title, Context: a.Context, Position: board.Position(a.ideaPosition)}))
 }
 
 func (t tools) listIdeas(_ context.Context, a in) (any, error) {
@@ -468,17 +493,17 @@ func (t tools) getIdea(_ context.Context, a ideaIn) (any, error) {
 }
 
 func (t tools) updateIdea(ctx context.Context, a updateIdeaIn) (any, error) {
-	return t.b.UpdateIdea(a.Workspace, actor(ctx), a.ID, board.IdeaPatch{Title: a.Title, Context: a.Context})
+	return ideaAnswer(t.b.UpdateIdea(a.Workspace, actor(ctx), a.ID, board.IdeaPatch{Title: a.Title, Context: a.Context}))
 }
 
 func (t tools) moveIdea(ctx context.Context, a moveIdeaIn) (any, error) {
-	return t.b.MoveIdea(a.Workspace, actor(ctx), a.ID, board.Position(a.ideaPosition))
+	return ideaAnswer(t.b.MoveIdea(a.Workspace, actor(ctx), a.ID, board.Position(a.ideaPosition)))
 }
 
 func (t tools) refineIdea(ctx context.Context, a refineIdeaIn) (any, error) {
-	return t.b.RefineIdea(a.Workspace, actor(ctx), a.ID, board.Refinement{Stories: a.Stories, Phase: a.Phase})
+	return ideaAnswer(t.b.RefineIdea(a.Workspace, actor(ctx), a.ID, board.Refinement{Stories: a.Stories, Phase: a.Phase}))
 }
 
 func (t tools) dropIdea(ctx context.Context, a dropIdeaIn) (any, error) {
-	return t.b.DropIdea(a.Workspace, actor(ctx), a.ID, a.Reason)
+	return ideaAnswer(t.b.DropIdea(a.Workspace, actor(ctx), a.ID, a.Reason))
 }
