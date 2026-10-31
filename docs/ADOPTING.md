@@ -295,54 +295,26 @@ goes onto the board with `add_story`, and the document stops being updated.
 
 Delivery is tracked in Backpack, workspace `my-app` (see `.backpack.json`),
 through the `backpack` MCP tools. There is no tracking document, and tracking
-is never committed. The branches are in `list_branches`; change them with
-`add_branch`, `update_branch` and `remove_branch`.
+is never committed. The branches are in `list_branches`.
 
-- **Orientation.** The session starts with "where are we". Ask `whats_next`
-  for the next story and `get_story` for its detail. Don't guess the next task.
-- **Record each move as it happens**, with `set_status`:
-  - start work: `in_progress`, with the task branch;
-  - open the pull request: `in_review`, with its link;
-  - merged into `dev`: `merged`, with the merge commit (`dev` is the first
-    branch, so no `into` is needed; when several branches start the line,
-    name the one with `into`);
-  - `dev` merged into `main`: one `merge_branch` call (branch `dev`, with the
-    merge commit) moves every story merged into `dev` to `main`, each logged
-    with that commit, in place of a `set_status` per story. Stories still in
-    progress or in review stay put.
-  - a release cut: one `cut_release` call (the `version`, its git `tag`, and the
-    release `commit` if you have it) takes every story merged into `main` that
-    isn't in a release yet, marks it Released under the new release (R-n) and
-    logs it. Create the git tag yourself; Backpack only records it. Released
-    is final, and there is no `deployed` status.
-- **While in progress,** keep the story's activity current with
-  `update_story`: planning, building, testing, or waiting (and on what).
-- **Upstream changed.** Changing a story's goal or plan marks the stories that
-  depend on it. "Where are we" lists them (`Upstream changed`). Check each
-  against the new plan; update its plan, or call `mark_reviewed` with a reason
-  if nothing needs to change.
-- **Log as you go** with `log`: decisions with their reason, notable commits,
-  notes. Entries are never edited; fix a mistake with a `correction` that names
-  the entry it corrects.
-- **Stuck or no longer needed:** `on_hold` or `closed`, with a reason.
-- **Search first.** Before adding a story or an idea, ask `search` whether
-  one already covers it, by keyword or by meaning. Closed and dropped ones
-  come back too, with their state.
-- **New work** goes in with `add_story`, placed with `before` or `after`, with
-  the `reasoning` for that spot. It waits as **proposed** until a person
-  approves it (`set_status` to `backlog`, after `move_story` if they pick
-  another spot) or declines it (`closed`, with a reason). Then add its
-  dependencies with `add_dependency`. Backpack refuses an order that breaks a
-  dependency; read its reason and place the story again.
-- **Many changes at once,** such as approving several proposed stories, go in
-  one `batch` call: a list of actions, each a tool and its arguments without
-  the workspace. Each is answered on its own; one that fails doesn't stop the
-  rest, so read every answer.
-- **Rough thoughts** that aren't work yet go in with `add_idea`. They need no
-  approval. Give each a `context`: anything that helps understand the idea and
-  turn it into work, such as notes, links, documents or background. Build the
-  stories or phase from that context, then `refine_idea` links them and
-  closes the idea; `drop_idea` closes one that became nothing, with a reason.
+- **Orientation.** The session hook has already shown "where are we"; trust it.
+  Call `where_are_we` only if the hook didn't run. `whats_next` gives the next
+  story and `get_story` its detail. Don't guess the next task.
+- **Record each move as it happens** with `set_status`: `in_progress` with the
+  task branch, `in_review` with the pull request link, `merged` with the merge
+  commit. `merge_branch` moves `dev`'s stories to `main`; `cut_release` records a
+  release (you create the git tag).
+- **While in progress,** keep `update_story` activity current.
+- **Log as you go** with `log`: decisions with their reason. Entries are never
+  edited; fix one with a `correction`. Stuck or not needed: `on_hold` or
+  `closed`, with a reason.
+- **Upstream changed.** Check each marked story against the new plan; update its
+  plan, or `mark_reviewed` with a reason.
+- **Search first,** before `add_story` or `add_idea`. New work goes in with
+  `add_story` and its `reasoning`, waits as proposed for a person, then
+  `add_dependency`. Rough thoughts go in with `add_idea` and a `context`;
+  `refine_idea` or `drop_idea` closes them.
+- **Many changes at once** go in one `batch`; read every answer.
 ```
 
 ## 8. Finish
