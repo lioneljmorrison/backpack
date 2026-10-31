@@ -15,8 +15,10 @@ type Story struct {
 	Description string `json:"description"`
 	Goal        string `json:"goal"`
 	Plan        string `json:"plan"`
-	Phase       int    `json:"phase,omitempty"`
-	Status      string `json:"status"`
+	// Kind is "bug" for a bug; none for any other story.
+	Kind   string `json:"kind,omitempty"`
+	Phase  int    `json:"phase,omitempty"`
+	Status string `json:"status"`
 	// Blocked is worked out, never set: a dependency is not yet complete.
 	Blocked    bool     `json:"blocked"`
 	BlockedBy  []string `json:"blocked_by"`
@@ -77,6 +79,7 @@ type NewStory struct {
 	Description string `json:"description"`
 	Goal        string `json:"goal"`
 	Plan        string `json:"plan"`
+	Kind        string `json:"kind"`
 	Phase       int    `json:"phase"`
 	Proposed    bool   `json:"-"`
 	Reasoning   string `json:"-"`
@@ -95,6 +98,19 @@ type StoryPatch struct {
 	WaitingOn   *string `json:"waiting_on"`
 	Branch      *string `json:"branch"`
 	PRURL       *string `json:"pr_url"`
+	// Kind "bug" marks the story as a bug; "" clears the mark.
+	Kind *string `json:"kind"`
+}
+
+// kindBug is the one story kind there is. A story of no kind is just a story.
+const kindBug = "bug"
+
+// checkKind refuses any kind but bug, or none ("").
+func checkKind(k string) error {
+	if k != "" && k != kindBug {
+		return refuse(Invalid, "kind is %q, or empty for none", kindBug)
+	}
+	return nil
 }
 
 // activities are what an in-progress story can be doing.
@@ -117,6 +133,9 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 	}
 	if !s.Proposed && s.Reasoning != "" {
 		return Story{}, refuse(Invalid, "reasoning is given only when proposing a story")
+	}
+	if err := checkKind(s.Kind); err != nil {
+		return Story{}, err
 	}
 	if err := plainText(s.Title, s.Description, s.Goal, s.Plan, s.Reasoning); err != nil {
 		return Story{}, err
@@ -153,7 +172,7 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 				SET w.next_story = w.next_story + 1
 				CREATE (s:Story {id: id, title: $title, description: $description, goal: $goal,
-					plan: $plan, rank: $rank, status: $status, created_by: $actor, created_at: $now})
+					plan: $plan, kind: $kind, rank: $rank, status: $status, created_by: $actor, created_at: $now})
 				FOREACH (q IN CASE WHEN p IS NULL THEN [] ELSE [p] END | CREATE (q)-[:CONTAINS]->(s))
 				FOREACH (__ IN CASE WHEN $reasoning IS NULL THEN [] ELSE [1] END |
 					SET w.next_log = n + 1
@@ -163,7 +182,7 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			map[string]any{
 				"phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
 				"rank": Between(at.lo, at.hi), "title": s.Title, "description": s.Description,
-				"goal": s.Goal, "plan": s.Plan, "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
+				"goal": s.Goal, "plan": s.Plan, "kind": orNull(s.Kind), "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
 				"actor": actor, "now": now(),
 			}, nil)
 		if err != nil {
@@ -332,6 +351,9 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 	if patch.Activity != nil && !slices.Contains(activities, *patch.Activity) {
 		return StoryUpdate{}, refuse(Invalid, "activity is one of %s", strings.Join(activities, ", "))
 	}
+	if err := checkKind(deref(patch.Kind)); err != nil {
+		return StoryUpdate{}, err
+	}
 	if err := plainText(deref(patch.Title), deref(patch.Description), deref(patch.Goal), deref(patch.Plan),
 		deref(patch.WaitingOn), deref(patch.Branch), deref(patch.PRURL)); err != nil {
 		return StoryUpdate{}, err
@@ -344,7 +366,7 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 		MATCH (w:Workspace), (s:Story {id: $id})
 		WITH w, s, coalesce($activity, s.activity) AS activity, coalesce(w.next_log, 1) AS n,
 			[coalesce(s.title, ''), coalesce(s.description, ''), coalesce(s.goal, ''), coalesce(s.plan, ''),
-				coalesce(s.activity, ''), coalesce(s.waiting_on, ''), coalesce(s.branch, ''), coalesce(s.pr_url, '')] AS old
+				coalesce(s.activity, ''), coalesce(s.waiting_on, ''), coalesce(s.branch, ''), coalesce(s.pr_url, ''), coalesce(s.kind, '')] AS old
 		WITH w, s, activity, n, old, CASE
 			WHEN $activity IS NOT NULL AND s.status <> 'in_progress' THEN 'not started'
 			WHEN $waiting IS NOT NULL AND coalesce(activity, '') <> 'waiting' THEN 'not waiting'
@@ -365,6 +387,7 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 				s.waiting_on = CASE WHEN activity = 'waiting' THEN coalesce($waiting, s.waiting_on) END,
 				s.branch = coalesce($branch, s.branch),
 				s.pr_url = coalesce($pr, s.pr_url),
+				s.kind = CASE WHEN $kind IS NULL THEN s.kind WHEN $kind = '' THEN null ELSE $kind END,
 				s.updated_by = $actor, s.updated_at = $now
 			FOREACH (__ IN CASE WHEN goalChanged OR planChanged THEN [1] ELSE [] END |
 				SET s.upstream_id = null, s.upstream_at = null, w.next_log = n + size(ds))
@@ -375,7 +398,7 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 		RETURN violation, s.status AS status, [d IN ds | d.id] AS marked, old`,
 		map[string]any{"id": id, "title": opt(patch.Title), "description": opt(patch.Description),
 			"goal": opt(patch.Goal), "plan": opt(patch.Plan), "activity": opt(patch.Activity),
-			"waiting": opt(patch.WaitingOn), "branch": opt(patch.Branch), "pr": opt(patch.PRURL),
+			"waiting": opt(patch.WaitingOn), "branch": opt(patch.Branch), "pr": opt(patch.PRURL), "kind": opt(patch.Kind),
 			"done": append(slices.Clone(complete), Closed), "actor": actor, "now": now()}, nil)
 	if err != nil {
 		return StoryUpdate{}, fmt.Errorf("update story: %w", err)
@@ -404,7 +427,7 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 		name string
 		to   *string
 	}{{"title", patch.Title}, {"description", patch.Description}, {"goal", patch.Goal}, {"plan", patch.Plan},
-		{"activity", patch.Activity}, {"waiting_on", patch.WaitingOn}, {"branch", patch.Branch}, {"pr_url", patch.PRURL}}
+		{"activity", patch.Activity}, {"waiting_on", patch.WaitingOn}, {"branch", patch.Branch}, {"pr_url", patch.PRURL}, {"kind", patch.Kind}}
 	changed := []string{}
 	for i, f := range given {
 		if f.to != nil && i < len(old) && *f.to != old[i] {
@@ -437,7 +460,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
 		WITH s, p, rel, blocked_by, waiting, collect(d.id) AS blocks
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
+			s.plan AS plan, s.kind AS kind, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
 			rel.id AS release_id, rel.version AS release_version,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
 			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
@@ -464,7 +487,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		}
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
-			Goal: str(r, "goal"), Plan: str(r, "plan"), Status: str(r, "status"), Phase: num(r, "phase"),
+			Goal: str(r, "goal"), Plan: str(r, "plan"), Kind: str(r, "kind"), Status: str(r, "status"), Phase: num(r, "phase"),
 			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
 			Blocked: len(waiting) > 0, waiting: waiting,
 			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),

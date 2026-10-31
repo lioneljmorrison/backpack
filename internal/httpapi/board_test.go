@@ -630,3 +630,25 @@ func TestHTTPListsKeepTheirFullFields(t *testing.T) {
 		t.Fatalf("phase %v", p)
 	}
 }
+
+func TestAStoryKindRoundTripsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "Crash", "kind": "bug"}`), http.StatusCreated)
+	if s["kind"] != "bug" {
+		t.Fatalf("added %v", s)
+	}
+	s = want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
+	if s["kind"] != "bug" {
+		t.Fatalf("read %v", s)
+	}
+	s = want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"kind": ""}`), http.StatusOK)
+	if _, there := s["kind"]; there {
+		t.Fatalf("cleared %v", s)
+	}
+	s = want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"kind": "bug"}`), http.StatusOK)
+	if s["kind"] != "bug" {
+		t.Fatalf("set %v", s)
+	}
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"kind": "chore"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "X", "kind": "chore"}`), http.StatusBadRequest)
+}

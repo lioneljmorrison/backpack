@@ -83,6 +83,12 @@ everything that depends on it. A proposed story sits in **Proposed**, ahead of
 Backlog, at the spot the agent chose, with the reasoning as the first entry in
 its log. Approving moves it to Backlog; declining closes it with a reason.
 
+**Bugs.** A story can be marked as a bug (`kind: bug`) when it is added, and
+the mark can be changed or cleared later with an edit. Bug is the only kind;
+a story of no kind is an ordinary story. The mark shows on the story's reads,
+in search and as a badge on the web card. It changes nothing about rank or
+status.
+
 **Statuses.**
 
 | Column | Meaning | In this repo |
@@ -574,7 +580,7 @@ the data volume. Backup copies the RDB file off the host.
 | `Branch` | `name`, `into` (the name of the branch it merges into, a property rather than an edge; none for the release branch), `alias` (display only), `created_by`, `created_at` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
-| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) `upstream_id`, `upstream_at` (the upstream-changed mark, absent when none) |
+| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `kind` (`bug`, absent for any other story), `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) `upstream_id`, `upstream_at` (the upstream-changed mark, absent when none) |
 | `Release` | `id` (`R-n`), `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` |
 | `Idea` | `id` (`I-n`), `title`, `context`, `rank`, `state` (`open`/`closed`), `drop_reason`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
 | `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `field` (an edit entry: the field changed), `from`, `to` (a status entry's statuses, or an edit entry's old and new value) |
@@ -661,7 +667,7 @@ GET  /v1/workspaces/{ws}/phases/{n}/log              a phase's log
 POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met, or text)
 GET  /v1/workspaces/{ws}/goals/{id}/log              a goal's log
 GET  /v1/workspaces/{ws}/stories                     POST (with position)
-PATCH /v1/workspaces/{ws}/stories/{id}               fields, activity, branch, pr_url
+PATCH /v1/workspaces/{ws}/stories/{id}               fields, kind, activity, branch, pr_url
 POST /v1/workspaces/{ws}/stories/{id}/move           new position
 POST /v1/workspaces/{ws}/stories/{id}/status         to (+ branch / pr_url / commit / reason / workaround)
 POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}

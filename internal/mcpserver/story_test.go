@@ -184,3 +184,20 @@ func readStory(t *testing.T, cs *mcp.ClientSession, id string) map[string]any {
 	t.Helper()
 	return use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": id})
 }
+
+func TestAStoryIsAddedAsABugAndTheMarkIsChangedAndCleared(t *testing.T) {
+	_, cs := connect(t)
+	use(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "Crash", "kind": "bug", "reasoning": "r"})
+	if s := readStory(t, cs, "S-1"); s["kind"] != "bug" {
+		t.Fatalf("story %v", s)
+	}
+	got := use(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1", "kind": ""})
+	if c, _ := got["changed"].([]any); len(c) != 1 || c[0] != "kind" {
+		t.Fatalf("answer %v", got)
+	}
+	if s := readStory(t, cs, "S-1"); s["kind"] != nil {
+		t.Fatalf("story %v", s)
+	}
+	refused(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1", "kind": "chore"})
+	refused(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "X", "kind": "chore", "reasoning": "r"})
+}
