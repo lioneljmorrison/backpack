@@ -606,3 +606,12 @@ func TestUpstreamChangesAndReviewsOverHTTP(t *testing.T) {
 		t.Fatalf("log %v", log)
 	}
 }
+
+func TestHTTPStoryKeepsTheFullRecord(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	got := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
+	if got["created_at"] == nil || got["created_by"] != "tester" || got["blocked"] != false {
+		t.Fatalf("read %v", got)
+	}
+}

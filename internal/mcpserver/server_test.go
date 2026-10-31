@@ -156,6 +156,14 @@ func TestWhatsNextAnswersWithTheNextStory(t *testing.T) {
 	}
 }
 
+func TestWhatsNextAnswersWithTheLeanStory(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "First")
+	next := use(t, cs, "whats_next", map[string]any{"workspace": "demo"})
+	s, _ := next["story"].(map[string]any)
+	absent(t, s, "created_at", "created_by", "plan", "blocked", "blocks", "blocked_by")
+}
+
 func TestWhatsNextIsNullWhenNothingIsReady(t *testing.T) {
 	_, cs := connect(t)
 	next := use(t, cs, "whats_next", map[string]any{"workspace": "demo"})

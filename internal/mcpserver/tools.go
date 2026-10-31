@@ -281,7 +281,10 @@ func (t tools) listBranches(_ context.Context, a in) (any, error) {
 
 func (t tools) whatsNext(_ context.Context, a in) (any, error) {
 	s, err := t.b.Next(a.Workspace)
-	return map[string]any{"story": s}, err
+	if err != nil || s == nil {
+		return map[string]any{"story": nil}, err
+	}
+	return map[string]any{"story": lean(*s)}, nil
 }
 
 func (t tools) whereAreWe(_ context.Context, a in) (any, error) {
@@ -293,19 +296,19 @@ func (t tools) whereAreWe(_ context.Context, a in) (any, error) {
 }
 
 func (t tools) getStory(_ context.Context, a storyIn) (any, error) {
-	return t.b.Story(a.Workspace, a.ID)
+	return leanResult(t.b.Story(a.Workspace, a.ID))
 }
 
 func (t tools) addStory(ctx context.Context, a addStoryIn) (any, error) {
-	return t.b.AddStory(a.Workspace, actor(ctx), board.NewStory{Title: a.Title, Description: a.Description,
+	return leanResult(t.b.AddStory(a.Workspace, actor(ctx), board.NewStory{Title: a.Title, Description: a.Description,
 		Goal: a.Goal, Plan: a.Plan, Phase: a.Phase, Proposed: true, Reasoning: a.Reasoning,
-		Position: board.Position(a.position)})
+		Position: board.Position(a.position)}))
 }
 
 func (t tools) updateStory(ctx context.Context, a updateStoryIn) (any, error) {
-	return t.b.UpdateStory(a.Workspace, actor(ctx), a.ID, board.StoryPatch{Title: a.Title,
+	return leanResult(t.b.UpdateStory(a.Workspace, actor(ctx), a.ID, board.StoryPatch{Title: a.Title,
 		Description: a.Description, Goal: a.Goal, Plan: a.Plan, Activity: a.Activity, WaitingOn: a.WaitingOn,
-		Branch: a.Branch, PRURL: a.PRURL})
+		Branch: a.Branch, PRURL: a.PRURL}))
 }
 
 func (t tools) markReviewed(ctx context.Context, a markReviewedIn) (any, error) {
@@ -314,12 +317,12 @@ func (t tools) markReviewed(ctx context.Context, a markReviewedIn) (any, error) 
 }
 
 func (t tools) moveStory(ctx context.Context, a moveStoryIn) (any, error) {
-	return t.b.MoveStory(a.Workspace, actor(ctx), a.ID, board.Position(a.position))
+	return leanResult(t.b.MoveStory(a.Workspace, actor(ctx), a.ID, board.Position(a.position)))
 }
 
 func (t tools) setStatus(ctx context.Context, a setStatusIn) (any, error) {
-	return t.b.SetStatus(a.Workspace, actor(ctx), a.ID, board.StatusChange{To: a.To, Branch: a.Branch,
-		PRURL: a.PRURL, Commit: a.Commit, Into: a.Into, Reason: a.Reason, Workaround: a.Workaround})
+	return leanResult(t.b.SetStatus(a.Workspace, actor(ctx), a.ID, board.StatusChange{To: a.To, Branch: a.Branch,
+		PRURL: a.PRURL, Commit: a.Commit, Into: a.Into, Reason: a.Reason, Workaround: a.Workaround}))
 }
 
 func (t tools) mergeBranch(ctx context.Context, a mergeBranchIn) (any, error) {
@@ -377,7 +380,7 @@ func (t tools) readLog(_ context.Context, a readLogIn) (any, error) {
 }
 
 func (t tools) addDependency(ctx context.Context, a dependencyIn) (any, error) {
-	return t.b.AddDependency(a.Workspace, actor(ctx), a.ID, a.On)
+	return leanResult(t.b.AddDependency(a.Workspace, actor(ctx), a.ID, a.On))
 }
 
 func (t tools) removeDependency(ctx context.Context, a dependencyIn) (any, error) {
