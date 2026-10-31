@@ -25,12 +25,19 @@ func New(b *board.Board, x *search.Index) http.Handler {
 		&mcp.StreamableHTTPOptions{Stateless: true})
 }
 
+// plain is a result a handler wants sent as it is, not as JSON: the one text
+// block carries the text itself.
+type plain string
+
 // answer turns a board result into a tool result: one text block of compact
 // JSON. It never hands the library a value to return, because the library
 // would then add a structured copy of the same content.
 func answer(v any, err error) (*mcp.CallToolResult, any, error) {
 	if err != nil {
 		return nil, nil, public(err)
+	}
+	if p, ok := v.(plain); ok {
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(p)}}}, nil, nil
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
