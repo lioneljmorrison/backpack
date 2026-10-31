@@ -18,25 +18,25 @@ type tools struct {
 
 // in is what every tool needs: the workspace it acts on.
 type in struct {
-	Workspace string `json:"workspace" jsonschema:"the workspace's slug, from the project's .backpack.json"`
+	Workspace string `json:"workspace"`
 }
 
 // storyIn names a story.
 type storyIn struct {
 	in
-	ID string `json:"id" jsonschema:"the story's id, such as S-4"`
+	ID string `json:"id"`
 }
 
 // position places a story directly before or after another; with neither,
 // at the bottom of the backlog.
 type releaseIn struct {
 	in
-	ID string `json:"id" jsonschema:"the release's id, such as R-2"`
+	ID string `json:"id"`
 }
 
 type position struct {
-	Before string `json:"before,omitempty" jsonschema:"place directly before this story"`
-	After  string `json:"after,omitempty" jsonschema:"place directly after this story"`
+	Before string `json:"before,omitempty" jsonschema:"before this story"`
+	After  string `json:"after,omitempty" jsonschema:"after this story"`
 }
 
 type addStoryIn struct {
@@ -45,8 +45,8 @@ type addStoryIn struct {
 	Description string `json:"description,omitempty"`
 	Goal        string `json:"goal,omitempty"`
 	Plan        string `json:"plan,omitempty"`
-	Phase       int    `json:"phase,omitempty" jsonschema:"the number of the phase the story belongs to; it can't be changed later"`
-	Reasoning   string `json:"reasoning" jsonschema:"why the story belongs at this spot, for the person who approves it"`
+	Phase       int    `json:"phase,omitempty" jsonschema:"fixed once set"`
+	Reasoning   string `json:"reasoning" jsonschema:"why this spot"`
 	position
 }
 
@@ -56,15 +56,15 @@ type updateStoryIn struct {
 	Description *string `json:"description,omitempty"`
 	Goal        *string `json:"goal,omitempty"`
 	Plan        *string `json:"plan,omitempty"`
-	Activity    *string `json:"activity,omitempty" jsonschema:"only while in progress: planning, building, testing or waiting"`
-	WaitingOn   *string `json:"waiting_on,omitempty" jsonschema:"only while waiting: what the story is waiting on"`
+	Activity    *string `json:"activity,omitempty" jsonschema:"planning, building, testing or waiting"`
+	WaitingOn   *string `json:"waiting_on,omitempty" jsonschema:"what it waits on"`
 	Branch      *string `json:"branch,omitempty"`
 	PRURL       *string `json:"pr_url,omitempty"`
 }
 
 type markReviewedIn struct {
 	storyIn
-	Reason string `json:"reason" jsonschema:"required: what was checked or changed, in plain text; it is logged on the story"`
+	Reason string `json:"reason" jsonschema:"what was checked or changed"`
 }
 
 type moveStoryIn struct {
@@ -74,62 +74,62 @@ type moveStoryIn struct {
 
 type mergeBranchIn struct {
 	in
-	Branch string `json:"branch" jsonschema:"the branch that was merged, such as dev; it must merge into another branch"`
+	Branch string `json:"branch" jsonschema:"the branch that was merged, such as dev"`
 	Commit string `json:"commit" jsonschema:"the merge commit"`
 }
 
 type cutReleaseIn struct {
 	in
-	Version string `json:"version" jsonschema:"the release's version, such as v1.0.0; required, and not one already released"`
-	Tag     string `json:"tag" jsonschema:"the git tag that marks the release; required"`
-	Commit  string `json:"commit,omitempty" jsonschema:"the commit the tag points at"`
+	Version string `json:"version" jsonschema:"version, such as v1.0.0"`
+	Tag     string `json:"tag" jsonschema:"git tag"`
+	Commit  string `json:"commit,omitempty" jsonschema:"commit the tag points at"`
 	Notes   string `json:"notes,omitempty" jsonschema:"release notes"`
 }
 
 type addBranchIn struct {
 	in
-	Name  string `json:"name" jsonschema:"the new branch's name: plain text, no whitespace, at most 100 characters, not already a branch's"`
-	Into  string `json:"into" jsonschema:"the existing branch it merges into; required, because a workspace has one release branch and it is already there"`
-	Alias string `json:"alias,omitempty" jsonschema:"the name the web board's column heading shows instead of the branch name: plain text, at most 100 characters"`
+	Name  string `json:"name" jsonschema:"no whitespace, at most 100 characters"`
+	Into  string `json:"into" jsonschema:"existing branch it merges into"`
+	Alias string `json:"alias,omitempty" jsonschema:"web column heading, at most 100 characters"`
 }
 
 type removeBranchIn struct {
 	in
-	Branch string `json:"branch" jsonschema:"the branch to remove, by name"`
+	Branch string `json:"branch" jsonschema:"branch name"`
 }
 
 type updateBranchIn struct {
 	in
-	Branch string  `json:"branch" jsonschema:"the branch to change, by its current name"`
-	Name   *string `json:"name,omitempty" jsonschema:"the new name: plain text, no whitespace, at most 100 characters, not already a branch's"`
-	Alias  *string `json:"alias,omitempty" jsonschema:"the name the web board's column heading shows instead of the branch name (nothing else uses it): plain text, at most 100 characters; an empty string clears it"`
-	Into   *string `json:"into,omitempty" jsonschema:"the existing branch it merges into from now on; not itself or one that leads back to it, and not given for the release branch"`
+	Branch string  `json:"branch" jsonschema:"current branch name"`
+	Name   *string `json:"name,omitempty" jsonschema:"new name: no whitespace, at most 100 characters"`
+	Alias  *string `json:"alias,omitempty" jsonschema:"column heading on the web board, at most 100 characters; empty clears"`
+	Into   *string `json:"into,omitempty" jsonschema:"existing branch it merges into from now on"`
 }
 
 type setStatusIn struct {
 	storyIn
-	To         string `json:"to" jsonschema:"proposed (only to resume a held proposal), backlog, in_progress, in_review, merged, on_hold or closed (released is reached only by cut_release)"`
-	Branch     string `json:"branch,omitempty" jsonschema:"only when starting: the task branch"`
-	PRURL      string `json:"pr_url,omitempty" jsonschema:"only when opening review: the pull request's link"`
-	Commit     string `json:"commit,omitempty" jsonschema:"only when merging: the merge commit"`
-	Into       string `json:"into,omitempty" jsonschema:"only when merging: the branch merged into; with none, the only branch nothing merges into (such as dev); with several, name it. A story moves on to the branch its current one merges into, one step at a time"`
-	Reason     string `json:"reason,omitempty" jsonschema:"required when putting on hold or closing, and only then"`
-	Workaround string `json:"workaround,omitempty" jsonschema:"only when starting a blocked story: how it goes ahead anyway"`
+	To         string `json:"to" jsonschema:"proposed, backlog, in_progress, in_review, merged, on_hold or closed"`
+	Branch     string `json:"branch,omitempty" jsonschema:"task branch, when starting"`
+	PRURL      string `json:"pr_url,omitempty" jsonschema:"PR link, when opening review"`
+	Commit     string `json:"commit,omitempty" jsonschema:"merge commit, when merging"`
+	Into       string `json:"into,omitempty" jsonschema:"branch merged into, when merging; default: the first (such as dev)"`
+	Reason     string `json:"reason,omitempty" jsonschema:"required for on_hold and closed"`
+	Workaround string `json:"workaround,omitempty" jsonschema:"how a blocked story goes ahead"`
 }
 
 type logIn struct {
 	storyIn
-	Kind     string `json:"kind" jsonschema:"note (text), decision (text and reason), commit (commit), pr (pr_url) or correction (text and corrects)"`
+	Kind     string `json:"kind" jsonschema:"note (text), decision (text, reason), commit (commit), pr (pr_url) or correction (text, corrects)"`
 	Text     string `json:"text,omitempty"`
 	Reason   string `json:"reason,omitempty"`
 	Commit   string `json:"commit,omitempty"`
 	PRURL    string `json:"pr_url,omitempty"`
-	Corrects string `json:"corrects,omitempty" jsonschema:"the id of the entry a correction corrects, such as L-3"`
+	Corrects string `json:"corrects,omitempty" jsonschema:"entry id corrected, such as L-3"`
 }
 
 type dependencyIn struct {
 	storyIn
-	On string `json:"on" jsonschema:"the story this one can't be done without"`
+	On string `json:"on" jsonschema:"story it depends on"`
 }
 
 type addPhaseIn struct {
@@ -140,54 +140,54 @@ type addPhaseIn struct {
 
 type addGoalIn struct {
 	in
-	Phase int    `json:"phase" jsonschema:"the phase's number"`
+	Phase int    `json:"phase"`
 	Text  string `json:"text"`
 }
 
 type markGoalMetIn struct {
 	in
-	ID  string `json:"id" jsonschema:"the goal's id, such as G-2"`
-	Met bool   `json:"met" jsonschema:"true to mark the goal met, false to unmark it"`
+	ID  string `json:"id"`
+	Met bool   `json:"met" jsonschema:"true: met; false: not met"`
 }
 
 type updatePhaseIn struct {
 	in
-	Number      int     `json:"number" jsonschema:"the phase's number"`
-	Title       *string `json:"title,omitempty" jsonschema:"the new title; it can't be empty"`
-	Description *string `json:"description,omitempty" jsonschema:"the new description; an empty string clears it"`
+	Number      int     `json:"number"`
+	Title       *string `json:"title,omitempty" jsonschema:"new title; not empty"`
+	Description *string `json:"description,omitempty" jsonschema:"new description; empty clears"`
 }
 
 type updateGoalIn struct {
 	in
-	ID   string `json:"id" jsonschema:"the goal's id, such as G-2"`
-	Text string `json:"text" jsonschema:"the goal's new text; it can't be empty"`
+	ID   string `json:"id"`
+	Text string `json:"text" jsonschema:"new text; not empty"`
 }
 
 // readLogIn names what to read the log of: a story or a goal by id, or a
 // phase by number.
 type readLogIn struct {
 	in
-	ID    string `json:"id,omitempty" jsonschema:"a story's id, such as S-4, or a goal's, such as G-2"`
-	Phase int    `json:"phase,omitempty" jsonschema:"a phase's number; give this or id, not both"`
+	ID    string `json:"id,omitempty" jsonschema:"story id, or goal id such as G-2"`
+	Phase int    `json:"phase,omitempty" jsonschema:"phase number; not with id"`
 }
 
 // ideaIn names an idea.
 type ideaIn struct {
 	in
-	ID string `json:"id" jsonschema:"the idea's id, such as I-3"`
+	ID string `json:"id"`
 }
 
 // ideaPosition places an idea directly before or after another; with
 // neither, at the bottom of the ideas list.
 type ideaPosition struct {
-	Before string `json:"before,omitempty" jsonschema:"place directly before this idea"`
-	After  string `json:"after,omitempty" jsonschema:"place directly after this idea"`
+	Before string `json:"before,omitempty" jsonschema:"before this idea"`
+	After  string `json:"after,omitempty" jsonschema:"after this idea"`
 }
 
 type addIdeaIn struct {
 	in
 	Title   string `json:"title"`
-	Context string `json:"context,omitempty" jsonschema:"anything that helps understand the idea and turn it into work: notes, links, documents, background. Optional, but an idea without context is only as good as its title"`
+	Context string `json:"context,omitempty" jsonschema:"notes, links, background"`
 	ideaPosition
 }
 
@@ -204,58 +204,58 @@ type moveIdeaIn struct {
 
 type searchIn struct {
 	in
-	Query string `json:"query" jsonschema:"words, or what the work is about in plain language"`
+	Query string `json:"query" jsonschema:"keywords or plain language"`
 }
 
 type refineIdeaIn struct {
 	ideaIn
-	Stories []string `json:"stories,omitempty" jsonschema:"the stories the idea became, already added"`
-	Phase   int      `json:"phase,omitempty" jsonschema:"the number of the phase the idea became, already added"`
+	Stories []string `json:"stories,omitempty" jsonschema:"story ids it became"`
+	Phase   int      `json:"phase,omitempty" jsonschema:"phase number it became"`
 }
 
 type dropIdeaIn struct {
 	ideaIn
-	Reason string `json:"reason" jsonschema:"why the idea is dropped"`
+	Reason string `json:"reason" jsonschema:"why it is dropped"`
 }
 
 func addTools(s *mcp.Server, t tools) {
 	steps := map[string]step{}
-	tool(s, "list_workspaces", "Every workspace as a summary: its slug, name and repository. Use it to find a workspace's slug when the project's .backpack.json isn't at hand.", t.listWorkspaces)
-	tool(s, "list_branches", "A workspace's branches in merge order as a summary, each with the branch it merges into. The release branch merges nowhere and is marked release.", t.listBranches)
-	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
-	tool(s, "where_are_we", "Where the project stands, as a few lines of plain text (the same as the session hook): the current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, the stories whose upstream story changed its goal or plan, how many stories merged into the release branch wait for a release (with the latest three), the next three in the backlog, and how many are waiting for approval. For a story's detail, use get_story.", t.whereAreWe)
-	tool(s, "get_story", "One story, with its status, what blocks it and what it blocks.", t.getStory)
-	write(s, steps, "add_story", "Propose a story: it goes in as proposed, directly before or after another story or at the bottom when neither is given, with the reasoning for that spot logged as a decision. It waits until a person approves it by setting its status to backlog. It must rank below everything it will depend on. Answers with the story's id and status.", t.addStory)
-	write(s, steps, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing. Changing the goal or plan to a different value marks every open story that depends on it, directly or further down, as upstream changed (shown by get_story and where_are_we) and logs a note on each; it also clears this story's own mark. Other fields mark nothing. Answers with the id, the names of the fields that actually changed, and the ids of the stories it marked (when any).", t.updateStory)
-	write(s, steps, "mark_reviewed", "Clear a story's upstream-changed mark: a story it depends on, directly or further down, had its goal or plan changed, and you have checked what that means for this one. The reason (required) is logged on the story as a note. Updating the story's own goal or plan also clears the mark. A story that is not marked is refused. Answers with the story's id.", t.markReviewed)
-	write(s, steps, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it. Answers with the story's id.", t.moveStory)
-	write(s, steps, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog, declined by closing it, or parked with on_hold. Merging records the branch reached (into; none means the only branch nothing merges into, and with several the merge must name one) and moves on one branch at a time, so merged into the release branch is a second merge. Released is not set here: cut_release releases the stories merged into the release branch. Merged and released are complete. on_hold resumes to the column it left (a held proposal resumes to proposed); closed is final. Every change is logged. Answers with the id and the new status (and, for a merge, the branch reached as into).", t.setStatus)
-	write(s, steps, "merge_branch", "Record that a branch was merged into the one it merges into, such as dev into main, at the merge commit. Every story merged into that branch moves to the next one at once, each logged with the commit; stories still in progress or in review stay put. Answers with the ids of the stories it moved, none when the branch holds nothing. The release branch merges nowhere, so it is refused.", t.mergeBranch)
-	write(s, steps, "cut_release", "Record an official release: a version and the git tag that marks it, with the commit and notes if you have them. Every story merged into the release branch that is not in a release yet becomes Released, is linked to the new release (R-n) and gets a log entry naming it; stories merged into other branches, in review or in progress stay put. Answers with the release's id and version and how many stories it released (get_release has the rest). A version already released is refused, and so is a cut with nothing to release. Backpack does not talk to GitHub: create the tag yourself and record it here.", t.cutRelease)
-	tool(s, "list_releases", "Every release, newest first, as a summary: its id, version, tag and how many stories it shipped. get_release reads one in full, with its commit, notes and its stories in delivery order.", t.listReleases)
-	tool(s, "get_release", "One release by id (R-n): its version, tag, commit and notes, and its stories in delivery order with title, goal and plan, as a changelog. An unknown id is refused.", t.getRelease)
-	write(s, steps, "add_branch", "Add a branch that merges into an existing one, such as staging into main. No story moves: stories name their branch. A workspace has one release branch, so into is required. A name already in use, or one that is empty, has whitespace or is over 100 characters, is refused, as is an unknown branch to merge into. Several branches nothing merges into (dev and staging, both into main) are all places a story from review can be merged first; a merge then has to name which. Answers with the branch's name and what it merges into.", t.addBranch)
-	write(s, steps, "update_branch", "Change a branch; fields not given are left as they are. Giving into changes the branch it merges into, such as dev into staging once staging is added: no story moves, and merges from the branch go to the new one. It is refused for the branch itself, one that leads back to it, an unknown branch, the release branch (it merges nowhere) and an empty into on any other branch (that would make a second release branch). Giving a new name renames it everywhere the board refers to it: the branches that merge into it and the stories that reached it. No story moves; past log entries keep the old name. A name already in use, or one that is empty, has whitespace or is over 100 characters, is refused. Giving an alias sets the name the web board's column heading shows for the branch (an empty one clears it); the API, tools and logs keep using the branch name. Answers with the branch's name (the new one after a rename) and changed: the fields among name, alias and into whose value actually changed, none for a repeat.", t.updateBranch)
-	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited or deleted: fix a mistake with a correction that points to the entry. Answers with the new entry's id.", t.log)
-	tool(s, "read_log", "The log of a story or goal (give id) or of a phase (give phase), oldest first. A phase's or goal's log holds one edit entry for each field an update changed, with the field and its old (from) and new (to) value.", t.readLog)
-	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. The other must rank above it, be in the same or an earlier phase, and not close a circle. Answers with the story's id and whether it is now blocked.", t.addDependency)
-	write(s, steps, "remove_branch", "Remove a branch, only when nothing refers to it: no story is merged into it (whatever its status) and no branch merges into it. The refusal names the stories and branches that still do. The release branch is never removed, nor the first branch (the only branch nothing merges into); with several branches nothing merges into, an empty one can go. An unknown branch is refused. Past log entries keep the removed name.", t.removeBranch)
+	tool(s, "list_workspaces", "Every workspace: slug, name, repository.", t.listWorkspaces)
+	tool(s, "list_branches", "The branches in merge order, each with the branch it merges into.", t.listBranches)
+	tool(s, "whats_next", "The highest-ranked backlog story whose dependencies are complete, in full. Null when none is ready.", t.whatsNext)
+	tool(s, "where_are_we", "Where the project stands in a few lines: phase, in progress, in review, on hold, awaiting release, next up, proposals.", t.whereAreWe)
+	tool(s, "get_story", "One story: status, what blocks it and what it blocks.", t.getStory)
+	write(s, steps, "add_story", "Propose a story, ranked before or after another (default: bottom). It waits as proposed until a person approves it. Answers with id and status.", t.addStory)
+	write(s, steps, "update_story", "Change a story's fields; fields not given stay. A new goal or plan marks dependent stories upstream changed. Answers with the id, fields changed and stories marked.", t.updateStory)
+	write(s, steps, "mark_reviewed", "Clear a story's upstream-changed mark once you have checked it. Needs a reason. Answers with the id.", t.markReviewed)
+	write(s, steps, "move_story", "Move a story before or after another, or to the bottom. Answers with the id.", t.moveStory)
+	write(s, steps, "set_status", "Move a story one column forward, or back before merged; or on_hold, or closed (final). Approve a proposal with backlog. Released comes only from cut_release. Answers with id and status.", t.setStatus)
+	write(s, steps, "merge_branch", "Record that a branch was merged into its target at a commit; its merged stories move on. Answers with the story ids moved.", t.mergeBranch)
+	write(s, steps, "cut_release", "Record a release (version, git tag, optional commit and notes): every story merged into the release branch becomes Released. Answers with id, version and story count.", t.cutRelease)
+	tool(s, "list_releases", "Every release, newest first: id, version, tag, story count.", t.listReleases)
+	tool(s, "get_release", "One release by id (R-n), with its stories in delivery order.", t.getRelease)
+	write(s, steps, "add_branch", "Add a branch that merges into an existing one, such as staging into main. Answers with name and target.", t.addBranch)
+	write(s, steps, "update_branch", "Change a branch's name, alias (web column heading) or merge target; fields not given stay. Answers with the name and fields changed.", t.updateBranch)
+	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited: fix one with a correction. Answers with the entry id.", t.log)
+	tool(s, "read_log", "The log of a story or goal (id) or a phase (phase), oldest first.", t.readLog)
+	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. Answers with the id and whether it is blocked.", t.addDependency)
+	write(s, steps, "remove_branch", "Remove a branch nothing refers to. The refusal names what still does.", t.removeBranch)
 	write(s, steps, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
-	tool(s, "list_phases", "Every phase in order as a summary: number, title, description (when it has one), whether it is complete, how many of its stories are complete, and its goals with whether each is met (goals_met_early is sent only when all goals are met while stories are still open).", t.listPhases)
-	write(s, steps, "add_phase", "Add a phase, numbered after the last one. Answers with the phase's number.", t.addPhase)
-	write(s, steps, "add_goal", "Add a goal to a phase. Answers with the goal's id and whether it is met.", t.addGoal)
-	write(s, steps, "update_phase", "Change a phase's title or description; fields not given are left as they are, and the title can't be empty. Each field that changes is logged on the phase with its old and new value (read_log with phase). Answers with the phase's number.", t.updatePhase)
-	write(s, steps, "update_goal", "Change a goal's text, which can't be empty. The change is logged on the goal with the old and new text (read_log with the goal's id). Answers with the goal's id.", t.updateGoal)
-	write(s, steps, "mark_goal_met", "Mark a goal met, or not met. Answers with the goal's id and whether it is met.", t.markGoalMet)
-	write(s, steps, "add_idea", "Add an idea: a rough thought, not yet work. It goes into the ideas list, apart from the backlog, directly before or after another idea or at the bottom, and is open at once; no approval is needed. Give it context: anything that helps understand the idea and turn it into work, such as notes, links, documents or background. An idea without context is only as good as its title. Answers with the idea's id and state.", t.addIdea)
-	tool(s, "list_ideas", "The ideas that are not closed, in order, top first, as a summary: id, title and state. get_idea reads one with its context.", t.listIdeas)
-	tool(s, "get_idea", "One idea, closed or not, with what it became or why it was dropped.", t.getIdea)
-	write(s, steps, "update_idea", "Change an idea's title or context while it is not closed; fields not given are left as they are. Answers with the idea's id and state.", t.updateIdea)
-	write(s, steps, "move_idea", "Move an idea that is not closed directly before or after another, or to the bottom of the ideas list. Answers with the idea's id and state.", t.moveIdea)
-	write(s, steps, "refine_idea", "Close an open idea, linking it to the stories and phase it became. Build those from the idea's context first, the usual way; none may be closed. Answers with the idea's id and state; what it became is in get_idea.", t.refineIdea)
-	write(s, steps, "drop_idea", "Close an idea that became nothing, with the reason. Answers with the idea's id and state.", t.dropIdea)
-	tool(s, "search", "Check whether a story, idea or phase already covers something, before adding one. Matches by keyword and by meaning, best first, up to ten; closed stories and dropped ideas are included, with their state.", t.search)
-	tool(s, "batch", "Make many board changes in one call. Each action names a tool that changes the board and gives that tool's arguments without the workspace, which is given once for the batch. Actions run in order, each as if called alone; one that fails is answered with its reason and doesn't stop the rest. An action can name only items that already exist, not one an earlier action in the batch adds. Up to 100 actions; reads can't be batched.", batch(steps))
+	tool(s, "list_phases", "Every phase in order: title, description, completion and its goals.", t.listPhases)
+	write(s, steps, "add_phase", "Add a phase after the last. Answers with its number.", t.addPhase)
+	write(s, steps, "add_goal", "Add a goal to a phase. Answers with its id and whether it is met.", t.addGoal)
+	write(s, steps, "update_phase", "Change a phase's title or description; fields not given stay. Answers with its number.", t.updatePhase)
+	write(s, steps, "update_goal", "Change a goal's text. Answers with its id.", t.updateGoal)
+	write(s, steps, "mark_goal_met", "Mark a goal met, or not met. Answers with its id and whether it is met.", t.markGoalMet)
+	write(s, steps, "add_idea", "Add an idea: a rough thought, not yet work, outside the backlog. Give it context. Answers with id and state.", t.addIdea)
+	tool(s, "list_ideas", "The open ideas, top first: id, title, state.", t.listIdeas)
+	tool(s, "get_idea", "One idea, with its context and what it became or why it was dropped.", t.getIdea)
+	write(s, steps, "update_idea", "Change an open idea's title or context; fields not given stay. Answers with id and state.", t.updateIdea)
+	write(s, steps, "move_idea", "Move an open idea before or after another, or to the bottom. Answers with id and state.", t.moveIdea)
+	write(s, steps, "refine_idea", "Close an idea, linking the stories and phase it became (add them first). Answers with id and state.", t.refineIdea)
+	write(s, steps, "drop_idea", "Close an idea that became nothing, with a reason. Answers with id and state.", t.dropIdea)
+	tool(s, "search", "Check whether a story, idea or phase already covers something, by keyword and meaning; closed ones included. Up to ten, best first.", t.search)
+	tool(s, "batch", "Many board changes in one call: each action names a changing tool and its arguments. Run in order; a failure doesn't stop the rest. Up to 100; no reads.", batch(steps))
 }
 
 func (t tools) search(ctx context.Context, a searchIn) (any, error) {

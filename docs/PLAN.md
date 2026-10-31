@@ -347,6 +347,20 @@ Each slice is its own branch and pull request into `dev`.
   `get_release` stays full in content but its stories are the lean story form
   and the release carries no who and when, so the changelog keeps each
   story's title, goal and plan.
+  Tool descriptions are short (2026-10-31, S-45): each says what the tool does
+  and what it answers with, at most 300 characters, and the full tool list
+  (names, descriptions, input schemas) stays within two thirds of v0.3.1's
+  21,993 bytes (14,662), guarded by a test. The rules the descriptions used to
+  carry live in the refusals, which name the reason, and in this document: a
+  story ranks below what it depends on, and a dependency points to the same or
+  an earlier phase; a story's phase is fixed at creation; `batch` takes up to
+  100 actions and only names items that already exist, not ones an earlier
+  action adds; a branch name has no whitespace and at most 100 characters;
+  `into` is required on `add_branch` (one release branch exists already) and
+  a merge moves a story one branch on, naming `into` when several branches
+  nothing merges into exist; `cut_release` refuses a version already released
+  and a cut with nothing to release; `released` is reached only by
+  `cut_release`; `proposed` is set only to resume a held proposal.
   A refusal comes back as a tool error
   with the board's reason, as one text block.
 - **No sessions.** Every call carries its token and stands alone.
