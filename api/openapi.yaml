@@ -467,7 +467,9 @@ paths:
       - $ref: "#/components/parameters/PhaseNumber"
     patch:
       summary: Edit a phase's title or description
-      description: Fields left out are unchanged.
+      description: >-
+        Fields left out are unchanged. Each field that changes is logged on
+        the phase with its old and new value (see the phase's log).
       requestBody:
         required: true
         content:
@@ -520,17 +522,23 @@ paths:
         required: true
         schema: { type: string, example: G-1 }
     patch:
-      summary: Mark a goal met, or unmark it
+      summary: Mark a goal met or unmark it, or change its text
+      description: >-
+        Give met or text, one of them. A change of text is logged on the goal
+        with the old and new text; setting the text it already has changes
+        and logs nothing.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [met]
               additionalProperties: false
+              minProperties: 1
+              maxProperties: 1
               properties:
                 met: { type: boolean }
+                text: { type: string, minLength: 1 }
       responses:
         "200":
           description: The goal as it is now
@@ -538,6 +546,52 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Goal" }
         "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/phases/{n}/log:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/PhaseNumber"
+    get:
+      summary: The phase's log, oldest entry first
+      description: One edit entry for each field an edit changed.
+      responses:
+        "200":
+          description: The entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/LogEntry" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/goals/{id}/log:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: G-1 }
+    get:
+      summary: The goal's log, oldest entry first
+      description: One edit entry for each change of its text.
+      responses:
+        "200":
+          description: The entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/LogEntry" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/stories:
@@ -1250,15 +1304,20 @@ components:
         id: { type: string, example: L-4 }
         at: { type: string, format: date-time }
         actor: { type: string }
-        kind: { type: string, enum: [note, decision, commit, pr, status, correction] }
+        kind: { type: string, enum: [note, decision, commit, pr, status, correction, edit] }
+        field: { type: string, enum: [title, description, text], description: "An edit entry: the field changed" }
         text: { type: string }
         reason: { type: string }
         commit: { type: string }
         pr_url: { type: string }
         branch: { type: string }
         into: { type: string, description: "A merge: the branch it reached" }
-        from: { $ref: "#/components/schemas/Status" }
-        to: { $ref: "#/components/schemas/Status" }
+        from:
+          description: A status entry's old status, or an edit entry's old value
+          type: string
+        to:
+          description: A status entry's new status, or an edit entry's new value
+          type: string
         corrects: { type: string, description: "The entry this one corrects" }
         corrected_by:
           type: array

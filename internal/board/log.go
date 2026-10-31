@@ -5,12 +5,15 @@ import (
 	"slices"
 )
 
-// LogEntry is one append-only line in a story's log.
+// LogEntry is one append-only line in the log of a story, a phase or a goal.
+// An "edit" entry (written by a phase or goal edit, never by a caller) names
+// the Field changed, with its old value in From and its new one in To.
 type LogEntry struct {
 	ID          string   `json:"id"`
 	At          string   `json:"at"`
 	Actor       string   `json:"actor"`
 	Kind        string   `json:"kind"`
+	Field       string   `json:"field,omitempty"`
 	Text        string   `json:"text,omitempty"`
 	Reason      string   `json:"reason,omitempty"`
 	Commit      string   `json:"commit,omitempty"`
@@ -119,16 +122,32 @@ func (b *Board) AddLogEntry(ws, actor, id string, e NewLogEntry) (_ LogEntry, er
 
 // Log reads a story's log, oldest entry first.
 func (b *Board) Log(ws, id string) ([]LogEntry, error) {
+	return b.readLog(ws, "(s:Story {id: $id})", id, refuse(NotFound, "no story %q", id))
+}
+
+// PhaseLog reads a phase's log, oldest entry first.
+func (b *Board) PhaseLog(ws string, number int) ([]LogEntry, error) {
+	return b.readLog(ws, "(s:Phase {number: $id})", number, refuse(NotFound, "no phase %d", number))
+}
+
+// GoalLog reads a goal's log, oldest entry first.
+func (b *Board) GoalLog(ws, id string) ([]LogEntry, error) {
+	return b.readLog(ws, "(s:Goal {id: $id})", id, refuse(NotFound, "no goal %q", id))
+}
+
+// readLog reads the log of the one node the pattern names (as s), or
+// returns missing when there is none.
+func (b *Board) readLog(ws, pattern string, id any, missing error) ([]LogEntry, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
 		return nil, err
 	}
 	res, err := g.ROQuery(`
-		MATCH (s:Story {id: $id})
+		MATCH `+pattern+`
 		OPTIONAL MATCH (s)-[:LOGGED]->(e:LogEntry)
 		OPTIONAL MATCH (e)-[:CORRECTS]->(c:LogEntry)
 		OPTIONAL MATCH (by:LogEntry)-[:CORRECTS]->(e)
-		RETURN e.id AS id, e.at AS at, e.actor AS actor, e.kind AS kind, e.text AS text,
+		RETURN e.id AS id, e.at AS at, e.actor AS actor, e.kind AS kind, e.field AS field, e.text AS text,
 			e.reason AS reason, e.commit AS commit, e.pr_url AS pr_url, e.branch AS branch, e.into AS into,
 			e.from AS from, e.to AS to, c.id AS corrects, collect(by.id) AS corrected_by`,
 		map[string]any{"id": id}, nil)
@@ -140,17 +159,17 @@ func (b *Board) Log(ws, id string) ([]LogEntry, error) {
 		r := res.Record()
 		found = true
 		if str(r, "id") == "" {
-			continue // the story has no entries yet
+			continue // nothing logged yet
 		}
 		out = append(out, LogEntry{
-			ID: str(r, "id"), At: str(r, "at"), Actor: str(r, "actor"), Kind: str(r, "kind"),
+			ID: str(r, "id"), At: str(r, "at"), Actor: str(r, "actor"), Kind: str(r, "kind"), Field: str(r, "field"),
 			Text: str(r, "text"), Reason: str(r, "reason"), Commit: str(r, "commit"), PRURL: str(r, "pr_url"),
 			Branch: str(r, "branch"), Into: str(r, "into"), From: str(r, "from"), To: str(r, "to"), Corrects: str(r, "corrects"),
 			CorrectedBy: byNumber(strs(r, "corrected_by")),
 		})
 	}
 	if !found {
-		return nil, refuse(NotFound, "no story %q", id)
+		return nil, missing
 	}
 	slices.SortFunc(out, func(a, b LogEntry) int { return seq(a.ID) - seq(b.ID) })
 	return out, nil

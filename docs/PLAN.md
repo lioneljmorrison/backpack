@@ -498,14 +498,14 @@ the data volume. Backup copies the RDB file off the host.
 | `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) |
 | `Release` | `id` (`R-n`), `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` |
 | `Idea` | `id` (`I-n`), `title`, `context`, `rank`, `state` (`open`/`closed`), `drop_reason`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
-| `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `from`, `to` |
+| `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `field` (an edit entry: the field changed), `from`, `to` (a status entry's statuses, or an edit entry's old and new value) |
 
 | Edge | Meaning |
 |---|---|
 | `(Phase)-[:HAS_GOAL]->(Goal)` | |
 | `(Phase)-[:CONTAINS]->(Story)` | optional; a story without one sits directly in the backlog |
 | `(Story)-[:DEPENDS_ON {created_by, created_at}]->(Story)` | read in reverse as "blocks" |
-| `(Story)-[:LOGGED]->(LogEntry)` | |
+| `(Story\|Phase\|Goal)-[:LOGGED]->(LogEntry)` | phases and goals log edits only (see "Editing phases and goals") |
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
 | `(Story)-[:IN_RELEASE]->(Release)` | |
@@ -573,8 +573,10 @@ GET  /v1/workspaces/{ws}/next                        what's next
 GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook)
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
 GET  /v1/workspaces/{ws}/releases                    POST (cut); GET /releases/{id}
-GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{id}
-POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met)
+GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{n} (title, description)
+GET  /v1/workspaces/{ws}/phases/{n}/log              a phase's log
+POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met, or text)
+GET  /v1/workspaces/{ws}/goals/{id}/log              a goal's log
 GET  /v1/workspaces/{ws}/stories                     POST (with position)
 PATCH /v1/workspaces/{ws}/stories/{id}               fields, activity, branch, pr_url
 POST /v1/workspaces/{ws}/stories/{id}/move           new position
@@ -608,6 +610,26 @@ Ideas add `add_idea` (open at once, with optional `context`),
 `{"stories": [...]}`, the stories it moved; it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `add_branch` (2026-10-13, S-28) takes a `name`, the branch it merges `into` (required) and an optional `alias`, answers with the branch, and is the same action as `POST /v1/workspaces/{ws}/branches` (201); an unknown `into` is a 404, a taken name a 409, a missing `into` or a bad name a 400, and it runs inside `batch`. `update_branch` (2026-10-13, S-26, S-27, S-28) takes a branch and an optional new `name`, `alias` and `into`, answers with the branch, and is the same action as `PATCH /v1/workspaces/{ws}/branches/{name}`; `into` re-points where the branch merges (nothing moves; one query, with the cycle check a bounded walk of the branches' `into` names, since `into` is a property and not an edge), and is refused for the branch itself or one leading back to it, an unknown branch, the release branch, or empty on any other branch (409, or 404 for an unknown one); fields not given are left alone, a name already in use or with whitespace or over 100 characters is refused, and renaming to the branch's own name changes nothing. An `alias` (plain text, at most 100 characters; empty clears it) replaces only the branch name inside its web column heading, "Merged (Production)"; the story page, API, tools and logs keep the name. `remove_branch` (2026-10-13, S-29) takes a branch, answers `{"removed": true}`, and is the same action as `DELETE /v1/workspaces/{ws}/branches/{name}` (204, as removing a dependency); it is one query and runs inside `batch`. It is refused with 409 for the release branch, the only starting branch, and a branch that still has stories merged into it or branches merging into it (the reason names them), and with 404 for an unknown branch. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.
+
+Editing phases and goals (2026-10-31, S-55): `update_phase` (`number`, and
+`title` and `description`, each optional) and `update_goal` (`id`, `text`)
+answer with only the phase's number or the goal's id; over HTTP they are
+`PATCH /phases/{n}` and `PATCH /goals/{id}` (with `text`; one request gives
+`met` or `text`, not both), which answer with the full phase or goal. Fields
+not given are left as they are; an empty title or goal text, or an unknown
+phase or goal, is refused (400, 404). Each runs as one query that also writes
+the log, and both run inside `batch`. Every field that really changes writes
+one `LogEntry` of kind `edit`, linked from the phase or goal with `LOGGED`:
+`field` (`title`, `description` or `text`), `from` (the old value), `to` (the
+new one), with `id` (from the workspace's `next_log` counter, shared with
+stories), `at` and `actor` as a story's entries have. A phase edited in two
+fields writes two entries, from one block of ids; setting a field to the value
+it has writes none. Entries are never edited. They are read with `read_log`
+(`phase` for a phase, `id` of a goal such as `G-3` for a goal; stories as
+before) and `GET /phases/{n}/log`, `GET /goals/{id}/log`. Adding a phase or
+goal is not logged. The web phases page is read-only, so these edits are
+MCP and HTTP only. No migration: the `LogEntry` id index already covers the
+entries.
 
 `batch` makes many board changes in one call: a list of `{tool, args}`,
 1 to 100, each naming a tool that changes the board, with that tool's
