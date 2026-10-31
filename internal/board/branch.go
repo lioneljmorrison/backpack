@@ -253,25 +253,33 @@ type BranchPatch struct {
 // query, so every reference follows or none does. It answers with the branch as
 // it is now, and tells the board's watchers about each story it renamed and,
 // when anything changed, that the branches did.
-func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Branch, err error) {
+func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (Branch, error) {
+	br, _, err := b.UpdateBranchDetail(ws, actor, branch, patch)
+	return br, err
+}
+
+// UpdateBranchDetail is UpdateBranch, also answering which of name, alias and
+// into actually changed (in that order), worked out against the values before
+// the write in the same single query.
+func (b *Board) UpdateBranchDetail(ws, actor, branch string, patch BranchPatch) (_ Branch, _ []string, err error) {
 	if patch.Name != nil {
 		if err := checkBranchName(*patch.Name); err != nil {
-			return Branch{}, err
+			return Branch{}, nil, err
 		}
 	}
 	if patch.Alias != nil {
 		if err := checkBranchAlias(*patch.Alias); err != nil {
-			return Branch{}, err
+			return Branch{}, nil, err
 		}
 	}
 	if patch.Into != nil {
 		if err := plainText(*patch.Into); err != nil {
-			return Branch{}, err
+			return Branch{}, nil, err
 		}
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
-		return Branch{}, err
+		return Branch{}, nil, err
 	}
 	// The cycle check walks the branches' into names from the one to merge
 	// into, one step per branch at most (the branches never loop, so that is
@@ -295,12 +303,12 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 				WHEN $into = '' AND b.into IS NOT NULL THEN 'second release'
 				WHEN $into IS NOT NULL AND $into <> '' AND $branch IN walk THEN 'cycle' END AS violation,
 			b IS NOT NULL AND $name IS NOT NULL AND $name <> b.name AS renames,
-			b IS NOT NULL AND (($alias IS NOT NULL AND coalesce(b.alias, '') <> $alias)
-				OR ($into IS NOT NULL AND $into <> '' AND coalesce(b.into, '') <> $into)) AS edits
+			b IS NOT NULL AND $alias IS NOT NULL AND coalesce(b.alias, '') <> $alias AS aliased,
+			b IS NOT NULL AND $into IS NOT NULL AND $into <> '' AND coalesce(b.into, '') <> $into AS repointed
 		OPTIONAL MATCH (s:Story {into: $branch}) WHERE violation IS NULL AND renames
-		WITH b, violation, renames, edits, collect(s) AS ss
+		WITH b, violation, renames, aliased, repointed, collect(s) AS ss
 		OPTIONAL MATCH (c:Branch {into: $branch}) WHERE violation IS NULL AND renames
-		WITH b, violation, renames, edits, ss, collect(c) AS cs
+		WITH b, violation, renames, aliased, repointed, ss, collect(c) AS cs
 		FOREACH (_ IN CASE WHEN violation IS NULL AND renames THEN [1] ELSE [] END |
 			SET b.name = $name
 			FOREACH (s IN ss | SET s.into = $name)
@@ -309,32 +317,32 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 			SET b.alias = CASE WHEN $alias = '' THEN null ELSE $alias END)
 		FOREACH (_ IN CASE WHEN violation IS NULL AND $into IS NOT NULL AND $into <> '' THEN [1] ELSE [] END |
 			SET b.into = $into)
-		RETURN violation, renames OR edits AS changed, [s IN ss | s.id] AS ids`,
+		RETURN violation, renames, aliased, repointed, [s IN ss | s.id] AS ids`,
 		map[string]any{"branch": branch, "name": opt(patch.Name), "alias": opt(patch.Alias), "into": opt(patch.Into)}, nil)
 	if err != nil {
-		return Branch{}, fmt.Errorf("update branch: %w", err)
+		return Branch{}, nil, fmt.Errorf("update branch: %w", err)
 	}
 	if !res.Next() {
-		return Branch{}, refuse(NotFound, "no workspace %q", ws)
+		return Branch{}, nil, refuse(NotFound, "no workspace %q", ws)
 	}
 	r := res.Record()
 	switch str(r, "violation") {
 	case "":
 	case "no branch":
-		return Branch{}, refuse(NotFound, "%s has no branch %q", ws, branch)
+		return Branch{}, nil, refuse(NotFound, "%s has no branch %q", ws, branch)
 	case "taken":
-		return Branch{}, refuse(Conflict, "%s already has a branch named %q", ws, deref(patch.Name))
+		return Branch{}, nil, refuse(Conflict, "%s already has a branch named %q", ws, deref(patch.Name))
 	case "no target":
-		return Branch{}, refuse(NotFound, "%s has no branch %q to merge into", ws, deref(patch.Into))
+		return Branch{}, nil, refuse(NotFound, "%s has no branch %q to merge into", ws, deref(patch.Into))
 	case "release":
-		return Branch{}, refuse(Conflict, "%s is the release branch and merges nowhere; it cannot merge into %s, which would leave no release branch", branch, deref(patch.Into))
+		return Branch{}, nil, refuse(Conflict, "%s is the release branch and merges nowhere; it cannot merge into %s, which would leave no release branch", branch, deref(patch.Into))
 	case "second release":
-		return Branch{}, refuse(Conflict, "%s must merge into another branch; clearing it would make a second release branch", branch)
+		return Branch{}, nil, refuse(Conflict, "%s must merge into another branch; clearing it would make a second release branch", branch)
 	default: // cycle
 		if deref(patch.Into) == branch {
-			return Branch{}, refuse(Conflict, "%s cannot merge into itself", branch)
+			return Branch{}, nil, refuse(Conflict, "%s cannot merge into itself", branch)
 		}
-		return Branch{}, refuse(Conflict, "%s cannot merge into %s: %s leads back to %s", branch, deref(patch.Into), deref(patch.Into), branch)
+		return Branch{}, nil, refuse(Conflict, "%s cannot merge into %s: %s leads back to %s", branch, deref(patch.Into), deref(patch.Into), branch)
 	}
 	ids := strs(r, "ids")
 	sort.Strings(ids)
@@ -345,11 +353,18 @@ func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (_ Bra
 	for _, id := range ids {
 		b.changed(nil, Change{ws, KindStory, id})
 	}
+	changed := []string{}
+	for _, f := range []string{"renames", "aliased", "repointed"} {
+		if v, _ := r.Get(f); v == true {
+			changed = append(changed, map[string]string{"renames": "name", "aliased": "alias", "repointed": "into"}[f])
+		}
+	}
 	// Nothing changed (the same name, an empty patch) is told to no one.
-	if v, _ := r.Get("changed"); v == true {
+	if len(changed) > 0 {
 		b.changed(nil, Change{Workspace: ws, Kind: KindBranch})
 	}
-	return branchNamed(g, "update branch", name)
+	br, err := branchNamed(g, "update branch", name)
+	return br, changed, err
 }
 
 // RemoveBranch takes a branch off the board, only when nothing refers to it:
