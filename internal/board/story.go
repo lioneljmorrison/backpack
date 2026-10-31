@@ -41,6 +41,11 @@ type Story struct {
 	UpdatedBy string      `json:"updated_by,omitempty"`
 	UpdatedAt string      `json:"updated_at,omitempty"`
 
+	// UpstreamChanged is set when a story this one depends on, directly or
+	// further down, had its goal or plan changed since this story was last
+	// reviewed; none otherwise. It records the most recent such change.
+	UpstreamChanged *UpstreamRef `json:"upstream_changed,omitempty"`
+
 	// waiting is the dependencies that are not yet complete.
 	waiting []string
 }
@@ -49,6 +54,12 @@ type Story struct {
 type ReleaseRef struct {
 	ID      string `json:"id"`
 	Version string `json:"version"`
+}
+
+// UpstreamRef says which story's goal or plan changed, and when.
+type UpstreamRef struct {
+	Story string `json:"story"`
+	At    string `json:"at"`
 }
 
 // Position places a story directly before or directly after another one.
@@ -314,12 +325,19 @@ func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, er
 		return Story{}, err
 	}
 	res, err := g.Query(`
-		MATCH (s:Story {id: $id})
-		WITH s, coalesce($activity, s.activity) AS activity
-		WITH s, activity, CASE
+		MATCH (w:Workspace), (s:Story {id: $id})
+		WITH w, s, coalesce($activity, s.activity) AS activity, coalesce(w.next_log, 1) AS n
+		WITH w, s, activity, n, CASE
 			WHEN $activity IS NOT NULL AND s.status <> 'in_progress' THEN 'not started'
 			WHEN $waiting IS NOT NULL AND coalesce(activity, '') <> 'waiting' THEN 'not waiting'
-		END AS violation
+		END AS violation,
+			$goal IS NOT NULL AND $goal <> coalesce(s.goal, '') AS goalChanged,
+			$plan IS NOT NULL AND $plan <> coalesce(s.plan, '') AS planChanged
+		OPTIONAL MATCH p = (d:Story)-[:DEPENDS_ON*1..]->(s)
+			WHERE violation IS NULL AND (goalChanged OR planChanged)
+				AND all(x IN nodes(p) WHERE x = s OR NOT x.status IN $done)
+		WITH w, s, activity, n, violation, goalChanged, planChanged, collect(DISTINCT d) AS ds,
+			CASE WHEN goalChanged AND planChanged THEN 'goal and plan' WHEN goalChanged THEN 'goal' ELSE 'plan' END AS what
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 			SET s.title = coalesce($title, s.title),
 				s.description = coalesce($description, s.description),
@@ -329,12 +347,18 @@ func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, er
 				s.waiting_on = CASE WHEN activity = 'waiting' THEN coalesce($waiting, s.waiting_on) END,
 				s.branch = coalesce($branch, s.branch),
 				s.pr_url = coalesce($pr, s.pr_url),
-				s.updated_by = $actor, s.updated_at = $now)
-		RETURN violation, s.status AS status`,
+				s.updated_by = $actor, s.updated_at = $now
+			FOREACH (__ IN CASE WHEN goalChanged OR planChanged THEN [1] ELSE [] END |
+				SET s.upstream_id = null, s.upstream_at = null, w.next_log = n + size(ds))
+			FOREACH (i IN range(0, size(ds) - 1) | FOREACH (d IN [ds[i]] |
+				SET d.upstream_id = $id, d.upstream_at = $now
+				CREATE (d)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $now, actor: $actor, kind: 'note',
+					text: 'The ' + what + ' of ' + $id + ' changed; review this story'}))))
+		RETURN violation, s.status AS status, [d IN ds | d.id] AS marked`,
 		map[string]any{"id": id, "title": opt(patch.Title), "description": opt(patch.Description),
 			"goal": opt(patch.Goal), "plan": opt(patch.Plan), "activity": opt(patch.Activity),
 			"waiting": opt(patch.WaitingOn), "branch": opt(patch.Branch), "pr": opt(patch.PRURL),
-			"actor": actor, "now": now()}, nil)
+			"done": append(slices.Clone(complete), Closed), "actor": actor, "now": now()}, nil)
 	if err != nil {
 		return Story{}, fmt.Errorf("update story: %w", err)
 	}
@@ -346,6 +370,10 @@ func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, er
 		return Story{}, refuse(Conflict, "%s is %s; activity is set only while a story is in progress", id, label(str(r, "status")))
 	case "not waiting":
 		return Story{}, refuse(Invalid, "waiting_on is set only while a story's activity is waiting")
+	default:
+		for _, m := range strs(r, "marked") {
+			b.changed(nil, Change{ws, KindStory, m})
+		}
 	}
 	return story(g, id)
 }
@@ -379,7 +407,8 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
 			s.created_by AS created_by, s.created_at AS created_at,
 			s.moved_by AS moved_by, s.moved_at AS moved_at,
-			s.updated_by AS updated_by, s.updated_at AS updated_at
+			s.updated_by AS updated_by, s.updated_at AS updated_at,
+			s.upstream_id AS upstream_id, s.upstream_at AS upstream_at
 		ORDER BY s.rank`,
 		map[string]any{"id": id, "complete": complete}, nil)
 	if err != nil {
@@ -393,6 +422,10 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		if id := str(r, "release_id"); id != "" {
 			rel = &ReleaseRef{ID: id, Version: str(r, "release_version")}
 		}
+		var up *UpstreamRef
+		if id := str(r, "upstream_id"); id != "" {
+			up = &UpstreamRef{Story: id, At: str(r, "upstream_at")}
+		}
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
 			Goal: str(r, "goal"), Plan: str(r, "plan"), Status: str(r, "status"), Phase: num(r, "phase"),
@@ -403,7 +436,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 			Workaround: str(r, "workaround"), Release: rel,
 			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
-			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"),
+			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), UpstreamChanged: up,
 		})
 	}
 	return out, nil
@@ -425,4 +458,41 @@ func list(ids []string) string {
 		out += ", " + id
 	}
 	return out + " and " + ids[len(ids)-1]
+}
+
+// MarkReviewed clears a story's upstream-changed mark, logging a note with the
+// reason: the story was looked at and the changed plan or goal needs nothing
+// from it. A story that is not marked is refused.
+func (b *Board) MarkReviewed(ws, actor, id, reason string) (_ Story, err error) {
+	defer func() { b.changed(err, Change{ws, KindStory, id}) }()
+	if reason == "" {
+		return Story{}, refuse(Invalid, "a reason is required: say what was checked or changed")
+	}
+	if err := plainText(reason); err != nil {
+		return Story{}, err
+	}
+	g, err := b.workspace(ws)
+	if err != nil {
+		return Story{}, err
+	}
+	res, err := g.Query(`
+		MATCH (w:Workspace), (s:Story {id: $id})
+		WITH w, s, coalesce(w.next_log, 1) AS n, s.upstream_id AS up,
+			CASE WHEN s.upstream_id IS NULL THEN 'unmarked' END AS violation
+		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
+			SET w.next_log = n + 1, s.upstream_id = null, s.upstream_at = null
+			CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n), at: $now, actor: $actor, kind: 'note',
+				text: 'Reviewed after ' + up + ' changed: ' + $reason}))
+		RETURN violation`,
+		map[string]any{"id": id, "reason": reason, "actor": actor, "now": now()}, nil)
+	if err != nil {
+		return Story{}, fmt.Errorf("mark reviewed: %w", err)
+	}
+	if !res.Next() {
+		return Story{}, refuse(NotFound, "no story %q", id)
+	}
+	if str(res.Record(), "violation") != "" {
+		return Story{}, refuse(Conflict, "%s is not marked as upstream changed; there is nothing to review", id)
+	}
+	return story(g, id)
 }

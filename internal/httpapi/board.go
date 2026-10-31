@@ -44,6 +44,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/stories/{id}", a.updateStory)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/move", a.moveStory)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/status", a.setStatus)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/reviewed", a.markReviewed)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}/log", a.readLog)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/log", a.addLogEntry)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/dependencies", a.addDependency)
@@ -287,6 +288,17 @@ func (a boardAPI) setStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, err := a.b.SetStatus(r.PathValue("ws"), actor(r), r.PathValue("id"), in)
+	respond(w, http.StatusOK, s, err)
+}
+
+func (a boardAPI) markReviewed(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	s, err := a.b.MarkReviewed(r.PathValue("ws"), actor(r), r.PathValue("id"), in.Reason)
 	respond(w, http.StatusOK, s, err)
 }
 

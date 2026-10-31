@@ -62,6 +62,11 @@ type updateStoryIn struct {
 	PRURL       *string `json:"pr_url,omitempty"`
 }
 
+type markReviewedIn struct {
+	storyIn
+	Reason string `json:"reason" jsonschema:"required: what was checked or changed, in plain text; it is logged on the story"`
+}
+
 type moveStoryIn struct {
 	storyIn
 	position
@@ -218,10 +223,11 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "list_workspaces", "Every workspace, by slug, with its name and repository. Use it to find a workspace's slug when the project's .backpack.json isn't at hand.", t.listWorkspaces)
 	tool(s, "list_branches", "A workspace's branches in merge order, each with the branch it merges into. The release branch merges nowhere and is marked release.", t.listBranches)
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
-	tool(s, "where_are_we", "Where the project stands, as a few lines of plain text (the same as the session hook): the current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, how many stories merged into the release branch wait for a release (with the latest three), the next three in the backlog, and how many are waiting for approval. For a story's detail, use get_story.", t.whereAreWe)
+	tool(s, "where_are_we", "Where the project stands, as a few lines of plain text (the same as the session hook): the current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, the stories whose upstream story changed its goal or plan, how many stories merged into the release branch wait for a release (with the latest three), the next three in the backlog, and how many are waiting for approval. For a story's detail, use get_story.", t.whereAreWe)
 	tool(s, "get_story", "One story, with its status, what blocks it and what it blocks.", t.getStory)
 	write(s, steps, "add_story", "Propose a story: it goes in as proposed, directly before or after another story or at the bottom when neither is given, with the reasoning for that spot logged as a decision. It waits until a person approves it by setting its status to backlog. It must rank below everything it will depend on.", t.addStory)
-	write(s, steps, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing.", t.updateStory)
+	write(s, steps, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing. Changing the goal or plan to a different value marks every open story that depends on it, directly or further down, as upstream changed (shown by get_story and where_are_we) and logs a note on each; it also clears this story's own mark. Other fields mark nothing.", t.updateStory)
+	write(s, steps, "mark_reviewed", "Clear a story's upstream-changed mark: a story it depends on, directly or further down, had its goal or plan changed, and you have checked what that means for this one. The reason (required) is logged on the story as a note. Updating the story's own goal or plan also clears the mark. A story that is not marked is refused. Answers with the story's id.", t.markReviewed)
 	write(s, steps, "move_story", "Move a story directly before or after another, or to the bottom of the backlog. Refused if it would rank above something it depends on, or below something that depends on it.", t.moveStory)
 	write(s, steps, "set_status", "Move a story across the board: forward one column, or back one before merged. A proposed story is approved to backlog, declined by closing it, or parked with on_hold. Merging records the branch reached (into; none means the only branch nothing merges into, and with several the merge must name one) and moves on one branch at a time, so merged into the release branch is a second merge. Released is not set here: cut_release releases the stories merged into the release branch. Merged and released are complete. on_hold resumes to the column it left (a held proposal resumes to proposed); closed is final. Every change is logged.", t.setStatus)
 	write(s, steps, "merge_branch", "Record that a branch was merged into the one it merges into, such as dev into main, at the merge commit. Every story merged into that branch moves to the next one at once, each logged with the commit; stories still in progress or in review stay put. Answers with the stories it moved, none when the branch holds nothing. The release branch merges nowhere, so it is refused.", t.mergeBranch)
@@ -300,6 +306,11 @@ func (t tools) updateStory(ctx context.Context, a updateStoryIn) (any, error) {
 	return t.b.UpdateStory(a.Workspace, actor(ctx), a.ID, board.StoryPatch{Title: a.Title,
 		Description: a.Description, Goal: a.Goal, Plan: a.Plan, Activity: a.Activity, WaitingOn: a.WaitingOn,
 		Branch: a.Branch, PRURL: a.PRURL})
+}
+
+func (t tools) markReviewed(ctx context.Context, a markReviewedIn) (any, error) {
+	s, err := t.b.MarkReviewed(a.Workspace, actor(ctx), a.ID, a.Reason)
+	return map[string]any{"id": s.ID}, err
 }
 
 func (t tools) moveStory(ctx context.Context, a moveStoryIn) (any, error) {

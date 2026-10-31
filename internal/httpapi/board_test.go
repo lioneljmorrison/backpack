@@ -572,3 +572,37 @@ func TestEditingAPhaseAndAGoalOverHTTPIsLogged(t *testing.T) {
 	want(t, call(t, h, "GET", "/v1/workspaces/demo/goals/G-9/log", ""), http.StatusNotFound)
 	want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/x/log", ""), http.StatusBadRequest)
 }
+
+func TestUpstreamChangesAndReviewsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	base := "/v1/workspaces/demo/stories/"
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A", "plan": "p"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "B"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", base+"S-2/dependencies", `{"on": "S-1"}`), http.StatusOK)
+	want(t, call(t, h, "PATCH", base+"S-1", `{"plan": "p"}`), http.StatusOK) // same plan: no mark
+	if s := want(t, call(t, h, "GET", base+"S-2", ""), http.StatusOK); s["upstream_changed"] != nil {
+		t.Fatalf("marked by an unchanged plan: %v", s)
+	}
+	want(t, call(t, h, "PATCH", base+"S-1", `{"plan": "p2"}`), http.StatusOK)
+	s := want(t, call(t, h, "GET", base+"S-2", ""), http.StatusOK)
+	if up, _ := s["upstream_changed"].(map[string]any); up["story"] != "S-1" || up["at"] == "" {
+		t.Fatalf("read %v", s)
+	}
+	status := want(t, call(t, h, "GET", "/v1/workspaces/demo/status", ""), http.StatusOK)
+	if up, _ := status["upstream_changed"].([]any); len(up) != 1 {
+		t.Fatalf("status %v", status)
+	}
+	want(t, call(t, h, "POST", base+"S-2/reviewed", `{}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", base+"S-2/reviewed", `{"reason":`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", base+"S-9/reviewed", `{"reason": "x"}`), http.StatusNotFound)
+	want(t, call(t, h, "POST", base+"S-1/reviewed", `{"reason": "x"}`), http.StatusConflict)
+	s = want(t, call(t, h, "POST", base+"S-2/reviewed", `{"reason": "still fine"}`), http.StatusOK)
+	if s["id"] != "S-2" || s["upstream_changed"] != nil {
+		t.Fatalf("reviewed %v", s)
+	}
+	want(t, call(t, h, "POST", base+"S-2/reviewed", `{"reason": "again"}`), http.StatusConflict)
+	log := want(t, call(t, h, "GET", base+"S-2/log", ""), http.StatusOK)["entries"].([]any)
+	if last := log[len(log)-1].(map[string]any); last["kind"] != "note" || !strings.Contains(last["text"].(string), "still fine") {
+		t.Fatalf("log %v", log)
+	}
+}
