@@ -365,9 +365,9 @@ func TestReleasesAreListedAndReadWithTheirStoriesAndWhereAreWeNamesWhatWaits(t *
 	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
-	where := use(t, cs, "where_are_we", map[string]any{"workspace": "staged"})
-	if un, _ := where["unreleased"].([]any); len(un) != 2 || un[0].(map[string]any)["id"] != "S-1" || un[0].(map[string]any)["title"] != "First" {
-		t.Fatalf("where %v", where)
+	where := say(t, cs, "where_are_we", map[string]any{"workspace": "staged"})
+	if !strings.Contains(where, "waiting for a release: 2 (latest: S-1 First, S-2 Second)") {
+		t.Fatalf("where %q", where)
 	}
 	use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.0.0", "tag": "v1.0.0", "commit": "abc1234", "notes": "First cut"})
 	mergedIntoDev(t, b, "Third")

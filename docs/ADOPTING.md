@@ -352,7 +352,8 @@ so that the `backpack` tools appear. MCP servers are loaded when it starts.
 After the restart:
 
 - `claude mcp list`, or `/mcp` in a session, shows `backpack` as connected;
-- the `where_are_we` tool answers for the workspace (a new one has an empty
+- the `where_are_we` tool answers for the workspace, in plain text (a new one
+  has an empty
   board);
 - with the hook, the session starts with the same answer instead of
   "Backpack unreachable".

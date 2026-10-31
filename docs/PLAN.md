@@ -287,7 +287,11 @@ Each slice is its own branch and pull request into `dev`.
   This reverses the slice-4 decision that every tool answers with the same
   JSON as the HTTP API: MCP answers may now differ from HTTP answers, to keep
   them short for agents. The owner approved this on 2026-10-31. The HTTP API
-  and the web keep their full shapes. A refusal comes back as a tool error
+  and the web keep their full shapes. `where_are_we` is the first exception
+  to JSON: it answers with the session hook's plain text (the same as
+  `GET .../status` with `Accept: text/plain`), one text block, under 2,000
+  bytes on a large board; detail comes from `get_story` (2026-10-31, S-40).
+  A refusal comes back as a tool error
   with the board's reason, as one text block.
 - **No sessions.** Every call carries its token and stands alone.
 

@@ -1,6 +1,7 @@
 package mcpserver_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/lioneljmorrison/backpack/internal/board"
@@ -60,8 +61,8 @@ func TestRefineIdeaLinksWhatItBecameAndDropIdeaNeedsAReason(t *testing.T) {
 func TestWhereAreWeHasNoIdeasWaitingForApproval(t *testing.T) {
 	_, cs := connect(t)
 	use(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "A"})
-	w := use(t, cs, "where_are_we", map[string]any{"workspace": "demo"})
-	if _, has := w["ideas_proposed"]; has {
-		t.Fatalf("where %v", w)
+	w := say(t, cs, "where_are_we", map[string]any{"workspace": "demo"})
+	if strings.Contains(strings.ToLower(w), "idea") {
+		t.Fatalf("where %q", w)
 	}
 }

@@ -218,7 +218,7 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "list_workspaces", "Every workspace, by slug, with its name and repository. Use it to find a workspace's slug when the project's .backpack.json isn't at hand.", t.listWorkspaces)
 	tool(s, "list_branches", "A workspace's branches in merge order, each with the branch it merges into. The release branch merges nowhere and is marked release.", t.listBranches)
 	tool(s, "whats_next", "The next story to deliver: the highest-ranked backlog story whose dependencies are all complete, with its description, goal and plan. The story is null when nothing is ready.", t.whatsNext)
-	tool(s, "where_are_we", "The current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, the next three in the backlog, and the stories merged into the release branch that are waiting for a release (unreleased).", t.whereAreWe)
+	tool(s, "where_are_we", "Where the project stands, as a few lines of plain text (the same as the session hook): the current phase and how far along it is, what is in progress and what each story is doing, what is in review, what is on hold and why, how many stories merged into the release branch wait for a release (with the latest three), the next three in the backlog, and how many are waiting for approval. For a story's detail, use get_story.", t.whereAreWe)
 	tool(s, "get_story", "One story, with its status, what blocks it and what it blocks.", t.getStory)
 	write(s, steps, "add_story", "Propose a story: it goes in as proposed, directly before or after another story or at the bottom when neither is given, with the reasoning for that spot logged as a decision. It waits until a person approves it by setting its status to backlog. It must rank below everything it will depend on.", t.addStory)
 	write(s, steps, "update_story", "Change a story's fields; fields not given are left as they are. Activity is what an in-progress story is doing.", t.updateStory)
@@ -279,7 +279,11 @@ func (t tools) whatsNext(_ context.Context, a in) (any, error) {
 }
 
 func (t tools) whereAreWe(_ context.Context, a in) (any, error) {
-	return t.b.Where(a.Workspace)
+	w, err := t.b.Where(a.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	return plain(w.Text()), nil
 }
 
 func (t tools) getStory(_ context.Context, a storyIn) (any, error) {
