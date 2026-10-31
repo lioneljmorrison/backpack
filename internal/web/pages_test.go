@@ -573,3 +573,53 @@ func TestTheReleasePageForR0ListsItsStoriesAndShowsNoTag(t *testing.T) {
 		t.Error("the story page does not link to R-0")
 	}
 }
+
+// markedPair adds a story that depends on another, then changes the other's
+// plan so the dependent story carries the upstream-changed mark.
+func markedPair(t *testing.T) (h http.Handler, up, marked, free board.Story) {
+	t.Helper()
+	h, b := withDemo(t)
+	up = story(t, b, board.NewStory{Title: "Upstream", Goal: "g", Plan: "p"})
+	marked = story(t, b, board.NewStory{Title: "Dependent", Goal: "g", Plan: "p"})
+	free = story(t, b, board.NewStory{Title: "Free", Goal: "g", Plan: "p"})
+	must[board.Story](t)(b.AddDependency("demo", "tester", marked.ID, up.ID))
+	plan := "a new plan"
+	must[board.Story](t)(b.UpdateStory("demo", "tester", up.ID, board.StoryPatch{Plan: &plan}))
+	return h, up, marked, free
+}
+
+func TestAMarkedCardShowsTheUpstreamChangedBadgeAndAnUnmarkedOneDoesNot(t *testing.T) {
+	h, _, marked, free := markedPair(t)
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	card := func(id string) string {
+		i := strings.Index(page, `data-id="`+id+`"`)
+		if i < 0 {
+			t.Fatalf("no card for %s", id)
+		}
+		return page[i : i+strings.Index(page[i:], "</article>")]
+	}
+	if c := card(marked.ID); !strings.Contains(c, "Upstream changed") {
+		t.Errorf("marked card has no badge: %s", c)
+	}
+	if c := card(free.ID); strings.Contains(c, "Upstream changed") {
+		t.Errorf("unmarked card has the badge: %s", c)
+	}
+}
+
+func TestAMarkedStoryPageNamesTheUpstreamStoryAndWhen(t *testing.T) {
+	h, up, marked, free := markedPair(t)
+	page := get(h, "/w/demo/stories/"+marked.ID, "bp_good").Body.String()
+	if !strings.Contains(page, "Upstream changed") {
+		t.Errorf("page does not say upstream changed: %s", page)
+	}
+	if !strings.Contains(page, `href="/w/demo/stories/`+up.ID+`"`) || !strings.Contains(page, "Upstream") {
+		t.Errorf("page does not link the upstream story")
+	}
+	if !strings.Contains(page, `<time datetime="`) {
+		t.Errorf("page has no time")
+	}
+	other := get(h, "/w/demo/stories/"+free.ID, "bp_good").Body.String()
+	if strings.Contains(other, "Upstream changed") {
+		t.Errorf("unmarked page says upstream changed")
+	}
+}

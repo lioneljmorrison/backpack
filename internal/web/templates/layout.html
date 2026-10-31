@@ -45,6 +45,7 @@
     {{if .S.Activity}}<span class="tag activity">{{label .S.Activity}}{{with .S.WaitingOn}}: {{.}}{{end}}</span>{{end}}
     {{if .S.Blocked}}<span class="tag bad">Blocked by {{range $i, $b := .S.BlockedBy}}{{if $i}}, {{end}}{{$b}}{{end}}</span>{{end}}
     {{if .S.HoldReason}}<span class="tag warn">{{.S.HoldReason}}</span>{{end}}
+    {{with .S.UpstreamChanged}}<span class="tag warn" title="The goal or plan of {{.Story}} changed">Upstream changed</span>{{end}}
   </div>
   {{if and .Movable (or .Up .Down)}}
   <div class="moves">
