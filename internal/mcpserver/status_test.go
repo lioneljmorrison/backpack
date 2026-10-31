@@ -1,10 +1,12 @@
 package mcpserver_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/lioneljmorrison/backpack/internal/board"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestSetStatusStartsAStoryOnItsBranch(t *testing.T) {
@@ -150,10 +152,15 @@ func TestCutReleaseReleasesWhatIsMergedIntoTheReleaseBranch(t *testing.T) {
 	}
 	mergedIntoDev(t, b, "Third")
 	got := use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.0.0", "tag": "v1.0.0", "commit": "abc1234", "notes": "First cut"})
-	stories, _ := got["stories"].([]any)
-	if got["id"] != "R-1" || got["version"] != "v1.0.0" || got["tag"] != "v1.0.0" || got["commit"] != "abc1234" ||
-		len(stories) != 2 || stories[0] != "S-1" || stories[1] != "S-2" {
-		t.Fatalf("answer %v", got)
+	if len(got) != 3 || got["id"] != "R-1" || got["version"] != "v1.0.0" || got["stories"] != float64(2) {
+		t.Fatalf("answer %v, want the id, version and a count of 2 stories", got)
+	}
+	// The answer no longer carries the tag, commit or story ids, so read them back.
+	rel := use(t, cs, "get_release", map[string]any{"workspace": "staged", "id": "R-1"})
+	relStories, _ := rel["stories"].([]any)
+	if rel["tag"] != "v1.0.0" || rel["commit"] != "abc1234" || len(relStories) != 2 ||
+		relStories[0].(map[string]any)["id"] != "S-1" || relStories[1].(map[string]any)["id"] != "S-2" {
+		t.Fatalf("release %v", rel)
 	}
 	if s, err := b.Story("staged", "S-1"); err != nil || s.Status != "released" {
 		t.Fatalf("S-1 %+v, %v", s, err)
@@ -183,7 +190,7 @@ func TestCutReleaseRunsInsideABatch(t *testing.T) {
 		action("cut_release", map[string]any{"version": "v1", "tag": "v1"}),
 		action("cut_release", map[string]any{"version": "v2", "tag": "v2"}))
 	res, _ := rs[0]["result"].(map[string]any)
-	if rs[0]["ok"] != true || res["id"] != "R-1" {
+	if rs[0]["ok"] != true || len(res) != 3 || res["id"] != "R-1" || res["version"] != "v1" || res["stories"] != float64(1) {
 		t.Fatalf("cut in a batch: %v", rs[0])
 	}
 	if why, _ := rs[1]["error"].(string); rs[1]["ok"] != false || !strings.Contains(why, "nothing to release") {
@@ -266,8 +273,13 @@ func TestUpdateBranchRenamesABranchAndRefusesATakenOrBadName(t *testing.T) {
 	stagedWorkspace(t, b)
 	mergedIntoDev(t, b, "First")
 	got := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "dev", "name": "develop"})
-	if got["name"] != "develop" || got["into"] != "main" {
-		t.Fatalf("answer %v", got)
+	changed, _ := got["changed"].([]any)
+	if len(got) != 2 || got["name"] != "develop" || !reflect.DeepEqual(changed, []any{"name"}) {
+		t.Fatalf("answer %v, want the new name and only name changed", got)
+	}
+	// The answer no longer carries into, so read it back from the branches.
+	if br := branchOf(t, cs, "staged", "develop"); br["into"] != "main" {
+		t.Fatalf("branch %v", br)
 	}
 	if s, err := b.Story("staged", "S-1"); err != nil || s.Status != "merged" || s.Into != "develop" {
 		t.Fatalf("S-1: %+v, %v", s, err)
@@ -283,6 +295,44 @@ func TestUpdateBranchRenamesABranchAndRefusesATakenOrBadName(t *testing.T) {
 	}
 }
 
+// branchOf reads one branch back with list_branches.
+func branchOf(t *testing.T, cs *mcp.ClientSession, ws, name string) map[string]any {
+	t.Helper()
+	list, _ := use(t, cs, "list_branches", map[string]any{"workspace": ws})["branches"].([]any)
+	for _, x := range list {
+		if m, _ := x.(map[string]any); m["name"] == name {
+			return m
+		}
+	}
+	t.Fatalf("no branch %q in %v", name, list)
+	return nil
+}
+
+func TestUpdateBranchAnswersWithTheFieldsThatChanged(t *testing.T) {
+	b, cs := connect(t)
+	stagedWorkspace(t, b)
+	use(t, cs, "add_branch", map[string]any{"workspace": "staged", "name": "staging", "into": "main"})
+	got := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "dev",
+		"name": "dev", "alias": "Develop", "into": "staging"})
+	if changed, _ := got["changed"].([]any); got["name"] != "dev" || !reflect.DeepEqual(changed, []any{"alias", "into"}) {
+		t.Fatalf("answer %v, want alias and into changed but not the unchanged name", got)
+	}
+	again := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "dev",
+		"name": "dev", "alias": "Develop", "into": "staging"})
+	if c, ok := again["changed"].([]any); !ok || len(c) != 0 {
+		t.Fatalf("a repeat changed %v, want an empty list", again)
+	}
+	cleared := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "dev", "alias": ""})
+	if !reflect.DeepEqual(cleared["changed"], []any{"alias"}) {
+		t.Fatalf("clearing the alias answered %v", cleared)
+	}
+	all := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "dev",
+		"name": "develop", "alias": "D", "into": "main"})
+	if !reflect.DeepEqual(all["changed"], []any{"name", "alias", "into"}) || all["name"] != "develop" {
+		t.Fatalf("answer %v", all)
+	}
+}
+
 func TestUpdateBranchRunsInsideABatch(t *testing.T) {
 	b, cs := connect(t)
 	stagedWorkspace(t, b)
@@ -290,7 +340,8 @@ func TestUpdateBranchRunsInsideABatch(t *testing.T) {
 	rs := resultsIn(t, cs, "staged",
 		action("update_branch", map[string]any{"branch": "dev", "name": "develop"}),
 		action("update_branch", map[string]any{"branch": "develop", "name": "main"}))
-	if res, _ := rs[0]["result"].(map[string]any); rs[0]["ok"] != true || res["name"] != "develop" {
+	if res, _ := rs[0]["result"].(map[string]any); rs[0]["ok"] != true || len(res) != 2 ||
+		res["name"] != "develop" || !reflect.DeepEqual(res["changed"], []any{"name"}) {
 		t.Fatalf("rename in a batch: %v", rs[0])
 	}
 	if rs[1]["ok"] != false {
@@ -306,12 +357,16 @@ func TestAddBranchAndRepointViaUpdateBranchMoveNoStory(t *testing.T) {
 	stagedWorkspace(t, b)
 	mergedIntoDev(t, b, "First")
 	got := use(t, cs, "add_branch", map[string]any{"workspace": "staged", "name": "staging", "into": "main"})
-	if got["name"] != "staging" || got["into"] != "main" {
+	if len(got) != 2 || got["name"] != "staging" || got["into"] != "main" {
 		t.Fatalf("answer %v", got)
 	}
 	re := use(t, cs, "update_branch", map[string]any{"workspace": "staged", "branch": "dev", "into": "staging"})
-	if re["into"] != "staging" {
+	if len(re) != 2 || !reflect.DeepEqual(re["changed"], []any{"into"}) {
 		t.Fatalf("answer %v", re)
+	}
+	// The answer no longer carries into, so read it back from the branches.
+	if br := branchOf(t, cs, "staged", "dev"); br["into"] != "staging" {
+		t.Fatalf("branch %v", br)
 	}
 	if s, err := b.Story("staged", "S-1"); err != nil || s.Status != "merged" || s.Into != "dev" {
 		t.Fatalf("S-1: %+v, %v", s, err)
@@ -338,7 +393,8 @@ func TestAddBranchRunsInsideABatch(t *testing.T) {
 	rs := resultsIn(t, cs, "staged",
 		action("add_branch", map[string]any{"name": "staging", "into": "main", "alias": "Staging"}),
 		action("add_branch", map[string]any{"name": "bad"}))
-	if rs[0]["ok"] != true || rs[1]["ok"] != false {
+	if res, _ := rs[0]["result"].(map[string]any); rs[0]["ok"] != true || rs[1]["ok"] != false ||
+		len(res) != 2 || res["name"] != "staging" || res["into"] != "main" {
 		t.Fatalf("batch: %v", rs)
 	}
 	bs, err := b.Branches("staged")
