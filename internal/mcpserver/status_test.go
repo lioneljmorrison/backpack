@@ -10,8 +10,9 @@ import (
 func TestSetStatusStartsAStoryOnItsBranch(t *testing.T) {
 	b, cs := connect(t)
 	addStory(t, b, "First")
-	s := use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "in_progress",
+	use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "in_progress",
 		"branch": "feature/20261010-first"})
+	s := readStory(t, cs, "S-1")
 	if s["status"] != "in_progress" || s["branch"] != "feature/20261010-first" || s["activity"] != "planning" {
 		t.Fatalf("story %v", s)
 	}
@@ -25,8 +26,9 @@ func TestSetStatusRefusesToStartABlockedStoryWithoutAWorkaround(t *testing.T) {
 		t.Fatal(err)
 	}
 	refused(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-2", "to": "in_progress"})
-	s := use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-2", "to": "in_progress",
+	use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-2", "to": "in_progress",
 		"workaround": "build against mock data"})
+	s := readStory(t, cs, "S-2")
 	if s["workaround"] != "build against mock data" {
 		t.Fatalf("story %v", s)
 	}
@@ -38,8 +40,9 @@ func TestSetStatusNeedsAReasonToHold(t *testing.T) {
 	if why := refused(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "on_hold"}); !strings.Contains(why, "reason") {
 		t.Fatalf("reason %q", why)
 	}
-	s := use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "on_hold",
+	use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "on_hold",
 		"reason": "needs more info"})
+	s := readStory(t, cs, "S-1")
 	if s["hold_reason"] != "needs more info" {
 		t.Fatalf("story %v", s)
 	}
@@ -50,8 +53,15 @@ func TestLogAddsAnEntryByTheTokensActor(t *testing.T) {
 	addStory(t, b, "First")
 	e := use(t, cs, "log", map[string]any{"workspace": "demo", "id": "S-1", "kind": "decision",
 		"text": "use the standard library", "reason": "fewer dependencies"})
-	if e["kind"] != "decision" || e["actor"] != "tester" || e["reason"] != "fewer dependencies" {
-		t.Fatalf("entry %v", e)
+	if len(e) != 1 || e["id"] != "L-1" {
+		t.Fatalf("answer %v", e)
+	}
+	entries, err := b.Log("demo", "S-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last := entries[len(entries)-1]; last.ID != "L-1" || last.Kind != "decision" || last.Actor != "tester" || last.Reason != "fewer dependencies" {
+		t.Fatalf("entry %+v", last)
 	}
 }
 
@@ -89,8 +99,11 @@ func TestSetStatusHoldsAProposalAndResumesItToProposed(t *testing.T) {
 	}
 	refused(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "on_hold"})
 	s := use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "on_hold", "reason": "wait for the design"})
-	if s["status"] != "on_hold" || s["held_from"] != "proposed" {
+	if s["status"] != "on_hold" {
 		t.Fatalf("held %v", s)
+	}
+	if held := readStory(t, cs, "S-1"); held["held_from"] != "proposed" {
+		t.Fatalf("held %v", held)
 	}
 	s = use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-1", "to": "proposed"})
 	if s["status"] != "proposed" {
@@ -113,7 +126,7 @@ func TestSetStatusMergesIntoANamedBranchOneStepAtATime(t *testing.T) {
 	set(map[string]any{"to": "in_progress"})
 	set(map[string]any{"to": "in_review"})
 	refused(t, cs, "set_status", map[string]any{"workspace": "staged", "id": "S-1", "to": "merged", "into": "main"})
-	if s := set(map[string]any{"to": "merged", "commit": "abc1234"}); s["into"] != "dev" {
+	if s := set(map[string]any{"to": "merged", "commit": "abc1234"}); s["into"] != "dev" || s["id"] != "S-1" || s["status"] != "merged" {
 		t.Fatalf("a merge naming no branch: %v", s)
 	}
 	if s := set(map[string]any{"to": "merged", "into": "main", "commit": "def5678"}); s["into"] != "main" {
@@ -207,12 +220,12 @@ func TestMergeBranchMovesEveryStoryOnItAndRefusesTheReleaseBranch(t *testing.T) 
 	mergedIntoDev(t, b, "Second")
 	got := use(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "dev", "commit": "x9"})
 	stories, _ := got["stories"].([]any)
-	if len(stories) != 2 {
-		t.Fatalf("answer %v", got)
+	if len(got) != 1 || len(stories) != 2 || stories[0] != "S-1" || stories[1] != "S-2" {
+		t.Fatalf("answer %v, want the ids of the two stories moved", got)
 	}
-	for _, s := range stories {
-		if m := s.(map[string]any); m["status"] != "merged" || m["into"] != "main" {
-			t.Fatalf("story %v", m)
+	for _, id := range []string{"S-1", "S-2"} {
+		if s, err := b.Story("staged", id); err != nil || s.Status != "merged" || s.Into != "main" {
+			t.Fatalf("%s: %+v, %v", id, s, err)
 		}
 	}
 	if why := refused(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "main", "commit": "x9"}); !strings.Contains(why, "release branch") {
@@ -304,8 +317,11 @@ func TestAddBranchAndRepointViaUpdateBranchMoveNoStory(t *testing.T) {
 		t.Fatalf("S-1: %+v, %v", s, err)
 	}
 	moved := use(t, cs, "merge_branch", map[string]any{"workspace": "staged", "branch": "dev", "commit": "x9"})
-	if st, _ := moved["stories"].([]any); len(st) != 1 || st[0].(map[string]any)["into"] != "staging" {
+	if st, _ := moved["stories"].([]any); len(st) != 1 || st[0] != "S-1" {
 		t.Fatalf("merge answered %v", moved)
+	}
+	if s, err := b.Story("staged", "S-1"); err != nil || s.Into != "staging" {
+		t.Fatalf("S-1: %+v, %v", s, err)
 	}
 	// Refusals: a second branch that merges nowhere, a taken name, an unknown target, a cycle.
 	refused(t, cs, "add_branch", map[string]any{"workspace": "staged", "name": "other"})
