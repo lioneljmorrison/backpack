@@ -151,7 +151,11 @@ and `at`, absent when there is none) and in where are we. It clears when the
 marked story's own goal or plan is updated (which, being a plan change, marks
 its own dependents in turn), or when `mark_reviewed` says it was looked at:
 a reason is required, logged as a note, and a story that is not marked is
-refused (409). Everything happens in the same query as the update or review.
+refused (409). A story that becomes Merged (by `set_status`, or moved on by
+`merge_branch`), Released (`cut_release`) or Closed drops its mark too, in the
+same query as the move and with no log entry beyond the status entry; a story
+moved to in review or on hold keeps it. Everything happens in the same query as
+the update, review or move.
 
 **Search.** Ideas, phases, stories and logs can be searched by meaning as well
 as by keyword, for example "do we already have a story about this?"

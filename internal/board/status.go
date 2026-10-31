@@ -205,6 +205,8 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 				s.branch = coalesce($branch, s.branch),
 				s.into = CASE WHEN $to = 'merged' THEN target ELSE s.into END,
 				s.pr_url = coalesce($pr, s.pr_url),
+				s.upstream_id = CASE WHEN $to IN ['merged', 'closed'] THEN null ELSE s.upstream_id END,
+				s.upstream_at = CASE WHEN $to IN ['merged', 'closed'] THEN null ELSE s.upstream_at END,
 				s.workaround = CASE WHEN $to = 'backlog' THEN null WHEN $workaround = '' THEN s.workaround ELSE $workaround END,
 				w.next_log = n + CASE WHEN $workaround = '' THEN 1 ELSE 2 END
 			CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n), at: $now, actor: $actor, kind: 'status',
