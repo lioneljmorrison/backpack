@@ -615,3 +615,18 @@ func TestHTTPStoryKeepsTheFullRecord(t *testing.T) {
 		t.Fatalf("read %v", got)
 	}
 }
+
+// The MCP lists answer summaries (S-44); the HTTP lists keep every field.
+func TestHTTPListsKeepTheirFullFields(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas", `{"title": "A", "context": "background"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "One", "description": "first"}`), http.StatusCreated)
+	i := want(t, call(t, h, "GET", "/v1/workspaces/demo/ideas", ""), http.StatusOK)["ideas"].([]any)[0].(map[string]any)
+	if i["context"] != "background" || i["created_by"] != "tester" {
+		t.Fatalf("idea %v", i)
+	}
+	p := want(t, call(t, h, "GET", "/v1/workspaces/demo/phases", ""), http.StatusOK)["phases"].([]any)[0].(map[string]any)
+	if p["description"] != "first" || p["created_by"] != "tester" {
+		t.Fatalf("phase %v", p)
+	}
+}

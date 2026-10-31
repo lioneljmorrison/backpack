@@ -453,13 +453,13 @@ func TestReleasesAreListedAndReadWithTheirStoriesAndWhereAreWeNamesWhatWaits(t *
 		t.Fatalf("list %v", list)
 	}
 	first := list[1].(map[string]any)
-	if first["version"] != "v1.0.0" || first["tag"] != "v1.0.0" || first["commit"] != "abc1234" || first["notes"] != "First cut" ||
-		first["created_by"] == "" || len(first["stories"].([]any)) != 2 {
+	if first["version"] != "v1.0.0" || first["tag"] != "v1.0.0" || first["stories"] != 2.0 {
 		t.Fatalf("R-1 in the list %v", first)
 	}
+	// The commit and notes are not in the list summary; get_release has them.
 	got := use(t, cs, "get_release", map[string]any{"workspace": "staged", "id": "R-1"})
 	ss := got["stories"].([]any)
-	if got["version"] != "v1.0.0" || len(ss) != 2 || ss[0].(map[string]any)["id"] != "S-1" ||
+	if got["commit"] != "abc1234" || got["notes"] != "First cut" || got["version"] != "v1.0.0" || len(ss) != 2 || ss[0].(map[string]any)["id"] != "S-1" ||
 		ss[0].(map[string]any)["title"] != "First" || ss[1].(map[string]any)["id"] != "S-2" {
 		t.Fatalf("release %v", got)
 	}
