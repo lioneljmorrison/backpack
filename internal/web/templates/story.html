@@ -7,6 +7,7 @@
 <h1><span class="id">{{.ID}}</span> {{.Title}}</h1>
 <div class="tags">
   <span class="tag status">{{storyLabel .}}</span>
+  {{if eq .Kind "bug"}}<span class="tag bug">Bug</span>{{end}}
   {{if .Phase}}<a class="tag" href="/w/{{$ws}}/phases#phase-{{.Phase}}">Phase {{.Phase}}</a>{{end}}
   {{if .Activity}}<span class="tag activity">{{label .Activity}}{{with .WaitingOn}}: {{.}}{{end}}</span>{{end}}
   {{if .Blocked}}<span class="tag bad">Blocked</span>{{end}}

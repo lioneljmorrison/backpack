@@ -633,6 +633,7 @@ paths:
                 description: { type: string }
                 goal: { type: string }
                 plan: { type: string }
+                kind: { type: string, enum: [bug], description: "Mark the story as a bug; omit for any other story" }
                 phase: { type: integer, minimum: 1, description: "Omit for a story with no phase" }
                 before: { type: string, example: S-3 }
                 after: { type: string, example: S-2 }
@@ -682,6 +683,7 @@ paths:
                 waiting_on: { type: string, example: the review agent }
                 branch: { type: string }
                 pr_url: { type: string }
+                kind: { type: string, enum: [bug, ""], description: "bug marks the story as a bug; an empty string clears the mark" }
       responses:
         "200":
           description: The story as it is now
@@ -1282,6 +1284,7 @@ components:
         description: { type: string }
         goal: { type: string }
         plan: { type: string }
+        kind: { type: string, enum: [bug], description: "Absent unless the story is a bug" }
         phase: { type: integer, description: "Absent for a story with no phase" }
         status: { $ref: "#/components/schemas/Status" }
         blocked: { type: boolean, description: "A story it depends on is not yet complete" }

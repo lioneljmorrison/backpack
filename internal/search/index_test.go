@@ -386,3 +386,10 @@ func TestAfterABranchRenameSearchReadsTheNewBranchInEachStoryState(t *testing.T)
 		}
 	}
 }
+
+func TestAStoryIsFoundByItsBugKind(t *testing.T) {
+	b, x := newIndexed(t)
+	addStory(t, b, "demo", board.NewStory{Title: "Crash on save", Kind: "bug"})
+	addStory(t, b, "demo", board.NewStory{Title: "Export invoices"})
+	wantIDs(t, x, "demo", "bug", "S-1")
+}

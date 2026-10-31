@@ -45,6 +45,7 @@ type addStoryIn struct {
 	Description string `json:"description,omitempty"`
 	Goal        string `json:"goal,omitempty"`
 	Plan        string `json:"plan,omitempty"`
+	Kind        string `json:"kind,omitempty" jsonschema:"bug"`
 	Phase       int    `json:"phase,omitempty" jsonschema:"fixed once set"`
 	Reasoning   string `json:"reasoning" jsonschema:"why this spot"`
 	position
@@ -60,6 +61,7 @@ type updateStoryIn struct {
 	WaitingOn   *string `json:"waiting_on,omitempty" jsonschema:"what it waits on"`
 	Branch      *string `json:"branch,omitempty"`
 	PRURL       *string `json:"pr_url,omitempty"`
+	Kind        *string `json:"kind,omitempty" jsonschema:"bug; empty clears"`
 }
 
 type markReviewedIn struct {
@@ -88,9 +90,9 @@ type cutReleaseIn struct {
 
 type addBranchIn struct {
 	in
-	Name  string `json:"name" jsonschema:"no whitespace, at most 100 characters"`
+	Name  string `json:"name" jsonschema:"no whitespace, max 100 characters"`
 	Into  string `json:"into" jsonschema:"existing branch it merges into"`
-	Alias string `json:"alias,omitempty" jsonschema:"web column heading, at most 100 characters"`
+	Alias string `json:"alias,omitempty" jsonschema:"web column heading, max 100 characters"`
 }
 
 type removeBranchIn struct {
@@ -101,8 +103,8 @@ type removeBranchIn struct {
 type updateBranchIn struct {
 	in
 	Branch string  `json:"branch" jsonschema:"current branch name"`
-	Name   *string `json:"name,omitempty" jsonschema:"new name: no whitespace, at most 100 characters"`
-	Alias  *string `json:"alias,omitempty" jsonschema:"column heading on the web board, at most 100 characters; empty clears"`
+	Name   *string `json:"name,omitempty" jsonschema:"new name: no whitespace, max 100 characters"`
+	Alias  *string `json:"alias,omitempty" jsonschema:"column heading on the web board, max 100 characters; empty clears"`
 	Into   *string `json:"into,omitempty" jsonschema:"existing branch it merges into from now on"`
 }
 
@@ -225,8 +227,8 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "whats_next", "The highest-ranked backlog story whose dependencies are complete, in full. Null when none is ready.", t.whatsNext)
 	tool(s, "where_are_we", "Where the project stands in a few lines: phase, in progress, in review, on hold, awaiting release, next up, proposals.", t.whereAreWe)
 	tool(s, "get_story", "One story: status, what blocks it and what it blocks.", t.getStory)
-	write(s, steps, "add_story", "Propose a story, ranked before or after another (default: bottom). It waits as proposed until a person approves it. Answers with id and status.", t.addStory)
-	write(s, steps, "update_story", "Change a story's fields; fields not given stay. A new goal or plan marks dependent stories upstream changed. Answers with the id, fields changed and stories marked.", t.updateStory)
+	write(s, steps, "add_story", "Propose a story, ranked before or after another (default: bottom). It stays proposed until a person approves it. Answers with id and status.", t.addStory)
+	write(s, steps, "update_story", "Change a story's fields; others stay. A new goal or plan marks dependents upstream changed. Answers with id, fields changed and stories marked.", t.updateStory)
 	write(s, steps, "mark_reviewed", "Clear a story's upstream-changed mark once you have checked it. Needs a reason. Answers with the id.", t.markReviewed)
 	write(s, steps, "move_story", "Move a story before or after another, or to the bottom. Answers with the id.", t.moveStory)
 	write(s, steps, "set_status", "Move a story one column forward, or back before merged; or on_hold, or closed (final). Approve a proposal with backlog. Released comes only from cut_release. Answers with id and status.", t.setStatus)
@@ -235,7 +237,7 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "list_releases", "Every release, newest first: id, version, tag, story count.", t.listReleases)
 	tool(s, "get_release", "One release by id (R-n), with its stories in delivery order.", t.getRelease)
 	write(s, steps, "add_branch", "Add a branch that merges into an existing one, such as staging into main. Answers with name and target.", t.addBranch)
-	write(s, steps, "update_branch", "Change a branch's name, alias (web column heading) or merge target; fields not given stay. Answers with the name and fields changed.", t.updateBranch)
+	write(s, steps, "update_branch", "Change a branch's name, alias (web column heading) or merge target; others stay. Answers with name and fields changed.", t.updateBranch)
 	write(s, steps, "log", "Add an entry to a story's log. Entries are never edited: fix one with a correction. Answers with the entry id.", t.log)
 	tool(s, "read_log", "The log of a story or goal (id) or a phase (phase), oldest first.", t.readLog)
 	write(s, steps, "add_dependency", "Record that a story can't be done until another is complete. Answers with the id and whether it is blocked.", t.addDependency)
@@ -244,13 +246,13 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "list_phases", "Every phase in order: title, description, completion and its goals.", t.listPhases)
 	write(s, steps, "add_phase", "Add a phase after the last. Answers with its number.", t.addPhase)
 	write(s, steps, "add_goal", "Add a goal to a phase. Answers with its id and whether it is met.", t.addGoal)
-	write(s, steps, "update_phase", "Change a phase's title or description; fields not given stay. Answers with its number.", t.updatePhase)
+	write(s, steps, "update_phase", "Change a phase's title or description; others stay. Answers with its number.", t.updatePhase)
 	write(s, steps, "update_goal", "Change a goal's text. Answers with its id.", t.updateGoal)
 	write(s, steps, "mark_goal_met", "Mark a goal met, or not met. Answers with its id and whether it is met.", t.markGoalMet)
 	write(s, steps, "add_idea", "Add an idea: a rough thought, not yet work, outside the backlog. Give it context. Answers with id and state.", t.addIdea)
 	tool(s, "list_ideas", "The open ideas, top first: id, title, state.", t.listIdeas)
 	tool(s, "get_idea", "One idea, with its context and what it became or why it was dropped.", t.getIdea)
-	write(s, steps, "update_idea", "Change an open idea's title or context; fields not given stay. Answers with id and state.", t.updateIdea)
+	write(s, steps, "update_idea", "Change an open idea's title or context; others stay. Answers with id and state.", t.updateIdea)
 	write(s, steps, "move_idea", "Move an open idea before or after another, or to the bottom. Answers with id and state.", t.moveIdea)
 	write(s, steps, "refine_idea", "Close an idea, linking the stories and phase it became (add them first). Answers with id and state.", t.refineIdea)
 	write(s, steps, "drop_idea", "Close an idea that became nothing, with a reason. Answers with id and state.", t.dropIdea)
@@ -301,7 +303,7 @@ func (t tools) getStory(_ context.Context, a storyIn) (any, error) {
 
 func (t tools) addStory(ctx context.Context, a addStoryIn) (any, error) {
 	s, err := t.b.AddStory(a.Workspace, actor(ctx), board.NewStory{Title: a.Title, Description: a.Description,
-		Goal: a.Goal, Plan: a.Plan, Phase: a.Phase, Proposed: true, Reasoning: a.Reasoning,
+		Goal: a.Goal, Plan: a.Plan, Kind: a.Kind, Phase: a.Phase, Proposed: true, Reasoning: a.Reasoning,
 		Position: board.Position(a.position)})
 	if err != nil {
 		return nil, err
@@ -312,7 +314,7 @@ func (t tools) addStory(ctx context.Context, a addStoryIn) (any, error) {
 func (t tools) updateStory(ctx context.Context, a updateStoryIn) (any, error) {
 	u, err := t.b.UpdateStoryDetail(a.Workspace, actor(ctx), a.ID, board.StoryPatch{Title: a.Title,
 		Description: a.Description, Goal: a.Goal, Plan: a.Plan, Activity: a.Activity, WaitingOn: a.WaitingOn,
-		Branch: a.Branch, PRURL: a.PRURL})
+		Branch: a.Branch, PRURL: a.PRURL, Kind: a.Kind})
 	if err != nil {
 		return nil, err
 	}

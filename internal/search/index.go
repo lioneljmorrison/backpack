@@ -264,7 +264,7 @@ func (x *Index) Search(ctx context.Context, ws, q string) ([]Result, error) {
 }
 
 func storyDoc(s board.Story, entries []board.LogEntry) doc {
-	detail := []string{s.Plan, s.HoldReason, s.Workaround}
+	detail := []string{s.Kind, s.Plan, s.HoldReason, s.Workaround}
 	for _, e := range entries {
 		detail = append(detail, e.Text, e.Reason)
 	}

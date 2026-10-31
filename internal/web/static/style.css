@@ -143,6 +143,7 @@ input, select, textarea {
   border: 1px solid var(--line);
 }
 .tag.activity { color: var(--accent); }
+.tag.bug { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
 .tag.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
 .tag.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
 .tag.good { background: var(--good-bg); color: var(--good); border-color: transparent; }

@@ -623,3 +623,17 @@ func TestAMarkedStoryPageNamesTheUpstreamStoryAndWhen(t *testing.T) {
 		t.Errorf("unmarked page says upstream changed")
 	}
 }
+
+func TestABugShowsABadgeOnItsCardAndItsPage(t *testing.T) {
+	h, b := withDemo(t)
+	story(t, b, board.NewStory{Title: "Crash on save", Kind: "bug"})
+	story(t, b, board.NewStory{Title: "Export"})
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	if n := strings.Count(page, `class="tag bug"`); n != 1 {
+		t.Errorf("the board has %d bug badges, want 1", n)
+	}
+	wantPage(t, get(h, "/w/demo/stories/S-1", "bp_good"), `class="tag bug"`)
+	if strings.Contains(get(h, "/w/demo/stories/S-2", "bp_good").Body.String(), `class="tag bug"`) {
+		t.Error("a story that is not a bug has the badge")
+	}
+}
