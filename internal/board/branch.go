@@ -106,7 +106,7 @@ func (b *Board) MergeBranch(ws, actor, branch, commit string) (_ []Story, err er
 		FOREACH (_ IN CASE WHEN violation IS NULL AND size(ss) > 0 THEN [1] ELSE [] END |
 			SET w.next_log = n + size(ss))
 		FOREACH (i IN range(0, size(ss) - 1) | FOREACH (s IN [ss[i]] |
-			SET s.into = b.into
+			SET s.into = b.into, s.upstream_id = null, s.upstream_at = null
 			CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $now, actor: $actor, kind: 'status',
 				from: 'merged', to: 'merged', commit: $commit, into: b.into})))
 		RETURN violation, b.into AS into, [s IN ss | s.id] AS ids`,
