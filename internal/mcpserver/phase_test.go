@@ -9,16 +9,20 @@ import (
 )
 
 func TestAddPhaseNumbersItAfterTheLast(t *testing.T) {
-	_, cs := connect(t)
+	b, cs := connect(t)
 	use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Foundations"})
 	got := use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Features", "description": "d"})
 	if !reflect.DeepEqual(got, map[string]any{"number": 2.0}) {
 		t.Fatalf("answer %v", got)
 	}
-	// The author is no longer in the write answer; read it back.
+	// The list carries the description but not the author, so read the
+	// author back from the board.
 	ps := use(t, cs, "list_phases", map[string]any{"workspace": "demo"})["phases"].([]any)
-	if p := ps[1].(map[string]any); p["number"] != 2.0 || p["created_by"] != "tester" {
+	if p := ps[1].(map[string]any); p["number"] != 2.0 || p["title"] != "Features" || p["description"] != "d" {
 		t.Fatalf("phase %v", p)
+	}
+	if full, err := b.Phases("demo"); err != nil || full[1].CreatedBy != "tester" {
+		t.Fatalf("phases %+v, %v", full, err)
 	}
 }
 
@@ -42,17 +46,21 @@ func TestAddGoalRefusesAPhaseThatDoesNotExist(t *testing.T) {
 }
 
 func TestMarkGoalMetMarksAndUnmarks(t *testing.T) {
-	_, cs := connect(t)
+	b, cs := connect(t)
 	use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Foundations"})
 	use(t, cs, "add_goal", map[string]any{"workspace": "demo", "phase": 1, "text": "it runs"})
 	g := use(t, cs, "mark_goal_met", map[string]any{"workspace": "demo", "id": "G-1", "met": true})
 	if !reflect.DeepEqual(g, map[string]any{"id": "G-1", "met": true}) {
 		t.Fatalf("goal %v", g)
 	}
-	// Who met it is no longer in the write answer; read it back.
+	// Who met it is in neither the write answer nor the list summary, and
+	// there is no single-phase read over MCP; read it from the board.
 	ps := use(t, cs, "list_phases", map[string]any{"workspace": "demo"})["phases"].([]any)
-	if gl := ps[0].(map[string]any)["goals"].([]any)[0].(map[string]any); gl["met"] != true || gl["met_by"] != "tester" {
+	if gl := ps[0].(map[string]any)["goals"].([]any)[0].(map[string]any); gl["met"] != true {
 		t.Fatalf("goal %v", gl)
+	}
+	if full, err := b.Phases("demo"); err != nil || full[0].Goals[0].MetBy != "tester" {
+		t.Fatalf("phases %+v, %v", full, err)
 	}
 	g = use(t, cs, "mark_goal_met", map[string]any{"workspace": "demo", "id": "G-1", "met": false})
 	if !reflect.DeepEqual(g, map[string]any{"id": "G-1", "met": false}) {

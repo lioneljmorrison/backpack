@@ -329,13 +329,24 @@ Each slice is its own branch and pull request into `dev`.
   `move_idea`, `refine_idea`, `drop_idea`) answer `{id, state}`; `add_phase`
   answers `{number}` (as `update_phase` does); `add_goal` and `mark_goal_met`
   answer `{id, met}` (`update_goal` answers `{id}`). `get_idea` and
-  `list_phases` read the rest back. Branch and release changes answer the same
+  `list_phases` read the rest back (`list_phases` is a summary, see below). Branch and release changes answer the same
   way (S-59): `cut_release` answers `{id, version, stories}` (the count; `get_release`
   has the ids), `add_branch` `{name, into}`, `update_branch` `{name, changed}`
   with the fields among name, alias and into whose value actually changed
   (`list_branches` has the rest). The shape is made in each tool's handler, so the
   action nested in a `batch` is the same short form. Anything fuller is a
   `get_story` away; HTTP keeps the full records.
+  Lists answer summaries (2026-10-31, S-44): `list_ideas` items are
+  `{id, title, state}` (`get_idea` has the context); `list_phases` items are
+  `{number, title, description, complete, stories_complete, stories_total,
+  goals}` with each goal `{id, text, met}`, plus `goals_met_early` only when
+  true; the description stays (omitted when empty) because there is no
+  single-phase read over MCP and it carries decisions; `list_releases` items
+  are `{id, version, tag, stories}` (the count; `get_release` has the commit,
+  notes and stories); `list_workspaces` and `list_branches` drop who and when.
+  `get_release` stays full in content but its stories are the lean story form
+  and the release carries no who and when, so the changelog keeps each
+  story's title, goal and plan.
   A refusal comes back as a tool error
   with the board's reason, as one text block.
 - **No sessions.** Every call carries its token and stands alone.
