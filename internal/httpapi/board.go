@@ -34,8 +34,10 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("GET /v1/workspaces/{ws}/phases", a.listPhases)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases", a.addPhase)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/phases/{n}", a.updatePhase)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/phases/{n}/log", a.readPhaseLog)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases/{n}/goals", a.addGoal)
-	mux.HandleFunc("PATCH /v1/workspaces/{ws}/goals/{id}", a.setGoalMet)
+	mux.HandleFunc("PATCH /v1/workspaces/{ws}/goals/{id}", a.updateGoal)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/goals/{id}/log", a.readGoalLog)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories", a.listStories)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories", a.addStory)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}", a.getStory)
@@ -204,19 +206,42 @@ func (a boardAPI) addGoal(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusCreated, g, err)
 }
 
-func (a boardAPI) setGoalMet(w http.ResponseWriter, r *http.Request) {
+// updateGoal marks a goal met or unmarks it (met), or changes its text.
+// One request does one of them.
+func (a boardAPI) updateGoal(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Met *bool `json:"met"`
+		Met  *bool   `json:"met"`
+		Text *string `json:"text"`
 	}
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	if in.Met == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "met is required"})
+	if (in.Met == nil) == (in.Text == nil) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "give met or text, one of them"})
 		return
 	}
-	g, err := a.b.SetGoalMet(r.PathValue("ws"), actor(r), r.PathValue("id"), *in.Met)
+	var g board.Goal
+	var err error
+	if in.Met != nil {
+		g, err = a.b.SetGoalMet(r.PathValue("ws"), actor(r), r.PathValue("id"), *in.Met)
+	} else {
+		g, err = a.b.UpdateGoal(r.PathValue("ws"), actor(r), r.PathValue("id"), *in.Text)
+	}
 	respond(w, http.StatusOK, g, err)
+}
+
+func (a boardAPI) readPhaseLog(w http.ResponseWriter, r *http.Request) {
+	n, ok := phaseNumber(w, r)
+	if !ok {
+		return
+	}
+	l, err := a.b.PhaseLog(r.PathValue("ws"), n)
+	respond(w, http.StatusOK, map[string]any{"entries": l}, err)
+}
+
+func (a boardAPI) readGoalLog(w http.ResponseWriter, r *http.Request) {
+	l, err := a.b.GoalLog(r.PathValue("ws"), r.PathValue("id"))
+	respond(w, http.StatusOK, map[string]any{"entries": l}, err)
 }
 
 func (a boardAPI) listStories(w http.ResponseWriter, r *http.Request) {

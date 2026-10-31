@@ -539,3 +539,36 @@ func TestReleasesAreListedAndReadOverHTTP(t *testing.T) {
 	want(t, call(t, h, "GET", rp+"/R-9", ""), http.StatusNotFound)
 	want(t, call(t, h, "GET", "/v1/workspaces/nope/releases", ""), http.StatusNotFound)
 }
+
+func TestEditingAPhaseAndAGoalOverHTTPIsLogged(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "Old", "description": "keep"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases/1/goals", `{"text": "old"}`), http.StatusCreated)
+
+	p := want(t, call(t, h, "PATCH", "/v1/workspaces/demo/phases/1", `{"title": "New"}`), http.StatusOK)
+	if p["title"] != "New" || p["description"] != "keep" {
+		t.Fatalf("phase %v", p)
+	}
+	g := want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{"text": "new"}`), http.StatusOK)
+	if g["id"] != "G-1" || g["text"] != "new" || g["met"] != false {
+		t.Fatalf("goal %v", g)
+	}
+
+	pl := want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/1/log", ""), http.StatusOK)["entries"].([]any)
+	if len(pl) != 1 || pl[0].(map[string]any)["field"] != "title" || pl[0].(map[string]any)["from"] != "Old" || pl[0].(map[string]any)["to"] != "New" {
+		t.Fatalf("phase log %v", pl)
+	}
+	gl := want(t, call(t, h, "GET", "/v1/workspaces/demo/goals/G-1/log", ""), http.StatusOK)["entries"].([]any)
+	if len(gl) != 1 || gl[0].(map[string]any)["kind"] != "edit" || gl[0].(map[string]any)["actor"] != "tester" {
+		t.Fatalf("goal log %v", gl)
+	}
+
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/phases/1", `{"title": ""}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/phases/9", `{"title": "x"}`), http.StatusNotFound)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{"text": ""}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{"text": "x", "met": true}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-9", `{"text": "x"}`), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/9/log", ""), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/goals/G-9/log", ""), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/x/log", ""), http.StatusBadRequest)
+}

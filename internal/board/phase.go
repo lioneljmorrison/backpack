@@ -85,7 +85,8 @@ func (b *Board) Phases(ws string) ([]Phase, error) {
 	return phases(g, 0)
 }
 
-// UpdatePhase edits a phase's title or description.
+// UpdatePhase edits a phase's title or description. Each field that changes
+// is logged on the phase with its old and new value.
 func (b *Board) UpdatePhase(ws, actor string, number int, patch PhasePatch) (_ Phase, err error) {
 	defer func() { b.changed(err, Change{ws, KindPhase, phaseID(number)}) }()
 	if patch.Title != nil && *patch.Title == "" {
@@ -98,11 +99,22 @@ func (b *Board) UpdatePhase(ws, actor string, number int, patch PhasePatch) (_ P
 	if err != nil {
 		return Phase{}, err
 	}
+	// One query: the edits are what differs from the stored values, the log
+	// entries take a block of ids from next_log, and the phase changes with
+	// them. A phase that does not exist matches nothing.
 	res, err := g.Query(`
-		MATCH (p:Phase {number: $n})
-		SET p.title = coalesce($title, p.title),
+		MATCH (w:Workspace), (p:Phase {number: $n})
+		WITH w, p, coalesce(w.next_log, 1) AS first,
+			[x IN [{field: 'title', before: p.title, after: $title},
+				{field: 'description', before: coalesce(p.description, ''), after: $description}]
+				WHERE x.after IS NOT NULL AND x.after <> x.before] AS edits
+		SET w.next_log = first + size(edits),
+			p.title = coalesce($title, p.title),
 			p.description = coalesce($description, p.description),
 			p.updated_by = $actor, p.updated_at = $now
+		FOREACH (i IN range(0, size(edits) - 1) |
+			CREATE (p)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(first + i), at: $now, actor: $actor, kind: 'edit',
+				field: edits[i].field, from: edits[i].before, to: edits[i].after}))
 		RETURN p.number`,
 		map[string]any{"n": number, "title": opt(patch.Title), "description": opt(patch.Description),
 			"actor": actor, "now": now()}, nil)
@@ -148,6 +160,44 @@ func (b *Board) AddGoal(ws, actor string, phase int, text string) (_ Goal, err e
 	}
 	goal.ID = str(res.Record(), "id")
 	return goal, nil
+}
+
+// UpdateGoal changes a goal's text. The change is logged on the goal with the
+// old and new text; setting the text it already has changes and logs nothing.
+func (b *Board) UpdateGoal(ws, actor, id, text string) (_ Goal, err error) {
+	var phase int
+	defer func() { b.changed(err, Change{ws, KindPhase, phaseID(phase)}) }()
+	if text == "" {
+		return Goal{}, refuse(Invalid, "text cannot be empty")
+	}
+	if err := plainText(text); err != nil {
+		return Goal{}, err
+	}
+	g, err := b.workspace(ws)
+	if err != nil {
+		return Goal{}, err
+	}
+	res, err := g.Query(`
+		MATCH (w:Workspace), (p:Phase)-[:HAS_GOAL]->(goal:Goal {id: $id})
+		WITH w, p, goal, coalesce(w.next_log, 1) AS first, goal.text AS before,
+			CASE WHEN goal.text <> $text THEN [1] ELSE [] END AS edits
+		SET w.next_log = first + size(edits), goal.text = $text
+		FOREACH (_ IN edits |
+			CREATE (goal)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(first), at: $now, actor: $actor, kind: 'edit',
+				field: 'text', from: before, to: $text}))
+		RETURN p.number AS phase, goal.id AS id, goal.text AS text, goal.created_by AS by, goal.created_at AS at,
+			goal.met_by AS met_by, goal.met_at AS met_at`,
+		map[string]any{"id": id, "text": text, "actor": actor, "now": now()}, nil)
+	if err != nil {
+		return Goal{}, fmt.Errorf("update goal: %w", err)
+	}
+	if !res.Next() {
+		return Goal{}, refuse(NotFound, "no goal %q", id)
+	}
+	r := res.Record()
+	phase = num(r, "phase")
+	return Goal{ID: str(r, "id"), Text: str(r, "text"), CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
+		Met: str(r, "met_at") != "", MetBy: str(r, "met_by"), MetAt: str(r, "met_at")}, nil
 }
 
 // SetGoalMet marks a goal met, recording who marked it, or unmarks it.
