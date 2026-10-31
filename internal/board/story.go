@@ -308,26 +308,44 @@ func (b *Board) Stories(ws string) ([]Story, error) {
 
 // UpdateStory edits a story's text, branch and pull request, and what it
 // is doing while in progress.
-func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, err error) {
+func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (Story, error) {
+	r, err := b.UpdateStoryDetail(ws, actor, id, patch)
+	return r.Story, err
+}
+
+// StoryUpdate is what an update did: the story, the names of the fields
+// whose value actually changed, and the dependents it marked as upstream
+// changed.
+type StoryUpdate struct {
+	Story   Story
+	Changed []string
+	Marked  []string
+}
+
+// UpdateStoryDetail is UpdateStory, also answering which fields changed and
+// which stories were marked, from the same single query.
+func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ StoryUpdate, err error) {
 	defer func() { b.changed(err, Change{ws, KindStory, id}) }()
 	if patch.Title != nil && *patch.Title == "" {
-		return Story{}, refuse(Invalid, "title cannot be empty")
+		return StoryUpdate{}, refuse(Invalid, "title cannot be empty")
 	}
 	if patch.Activity != nil && !slices.Contains(activities, *patch.Activity) {
-		return Story{}, refuse(Invalid, "activity is one of %s", strings.Join(activities, ", "))
+		return StoryUpdate{}, refuse(Invalid, "activity is one of %s", strings.Join(activities, ", "))
 	}
 	if err := plainText(deref(patch.Title), deref(patch.Description), deref(patch.Goal), deref(patch.Plan),
 		deref(patch.WaitingOn), deref(patch.Branch), deref(patch.PRURL)); err != nil {
-		return Story{}, err
+		return StoryUpdate{}, err
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
-		return Story{}, err
+		return StoryUpdate{}, err
 	}
 	res, err := g.Query(`
 		MATCH (w:Workspace), (s:Story {id: $id})
-		WITH w, s, coalesce($activity, s.activity) AS activity, coalesce(w.next_log, 1) AS n
-		WITH w, s, activity, n, CASE
+		WITH w, s, coalesce($activity, s.activity) AS activity, coalesce(w.next_log, 1) AS n,
+			[coalesce(s.title, ''), coalesce(s.description, ''), coalesce(s.goal, ''), coalesce(s.plan, ''),
+				coalesce(s.activity, ''), coalesce(s.waiting_on, ''), coalesce(s.branch, ''), coalesce(s.pr_url, '')] AS old
+		WITH w, s, activity, n, old, CASE
 			WHEN $activity IS NOT NULL AND s.status <> 'in_progress' THEN 'not started'
 			WHEN $waiting IS NOT NULL AND coalesce(activity, '') <> 'waiting' THEN 'not waiting'
 		END AS violation,
@@ -336,7 +354,7 @@ func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, er
 		OPTIONAL MATCH p = (d:Story)-[:DEPENDS_ON*1..]->(s)
 			WHERE violation IS NULL AND (goalChanged OR planChanged)
 				AND all(x IN nodes(p) WHERE x = s OR NOT x.status IN $done)
-		WITH w, s, activity, n, violation, goalChanged, planChanged, collect(DISTINCT d) AS ds,
+		WITH w, s, activity, n, old, violation, goalChanged, planChanged, collect(DISTINCT d) AS ds,
 			CASE WHEN goalChanged AND planChanged THEN 'goal and plan' WHEN goalChanged THEN 'goal' ELSE 'plan' END AS what
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 			SET s.title = coalesce($title, s.title),
@@ -354,28 +372,46 @@ func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, er
 				SET d.upstream_id = $id, d.upstream_at = $now
 				CREATE (d)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $now, actor: $actor, kind: 'note',
 					text: 'The ' + what + ' of ' + $id + ' changed; review this story'}))))
-		RETURN violation, s.status AS status, [d IN ds | d.id] AS marked`,
+		RETURN violation, s.status AS status, [d IN ds | d.id] AS marked, old`,
 		map[string]any{"id": id, "title": opt(patch.Title), "description": opt(patch.Description),
 			"goal": opt(patch.Goal), "plan": opt(patch.Plan), "activity": opt(patch.Activity),
 			"waiting": opt(patch.WaitingOn), "branch": opt(patch.Branch), "pr": opt(patch.PRURL),
 			"done": append(slices.Clone(complete), Closed), "actor": actor, "now": now()}, nil)
 	if err != nil {
-		return Story{}, fmt.Errorf("update story: %w", err)
+		return StoryUpdate{}, fmt.Errorf("update story: %w", err)
 	}
 	if !res.Next() {
-		return Story{}, refuse(NotFound, "no story %q", id)
+		return StoryUpdate{}, refuse(NotFound, "no story %q", id)
 	}
+	var marked, old []string
 	switch r := res.Record(); str(r, "violation") {
 	case "not started":
-		return Story{}, refuse(Conflict, "%s is %s; activity is set only while a story is in progress", id, label(str(r, "status")))
+		return StoryUpdate{}, refuse(Conflict, "%s is %s; activity is set only while a story is in progress", id, label(str(r, "status")))
 	case "not waiting":
-		return Story{}, refuse(Invalid, "waiting_on is set only while a story's activity is waiting")
+		return StoryUpdate{}, refuse(Invalid, "waiting_on is set only while a story's activity is waiting")
 	default:
-		for _, m := range strs(r, "marked") {
+		marked = byNumber(strs(r, "marked"))
+		for _, m := range marked {
 			b.changed(nil, Change{ws, KindStory, m})
 		}
+		old = strs(r, "old")
 	}
-	return story(g, id)
+	s, err := story(g, id)
+	if err != nil {
+		return StoryUpdate{}, err
+	}
+	given := []struct {
+		name string
+		to   *string
+	}{{"title", patch.Title}, {"description", patch.Description}, {"goal", patch.Goal}, {"plan", patch.Plan},
+		{"activity", patch.Activity}, {"waiting_on", patch.WaitingOn}, {"branch", patch.Branch}, {"pr_url", patch.PRURL}}
+	changed := []string{}
+	for i, f := range given {
+		if f.to != nil && i < len(old) && *f.to != old[i] {
+			changed = append(changed, f.name)
+		}
+	}
+	return StoryUpdate{Story: s, Changed: changed, Marked: marked}, nil
 }
 
 func story(g *falkordb.Graph, id string) (Story, error) {

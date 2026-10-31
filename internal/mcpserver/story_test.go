@@ -3,6 +3,8 @@ package mcpserver_test
 import (
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/lioneljmorrison/backpack/internal/board"
 )
 
@@ -22,9 +24,13 @@ func TestGetStoryRefusesAStoryThatDoesNotExist(t *testing.T) {
 
 func TestAddStoryProposesTheStoryWithTheTokensActor(t *testing.T) {
 	b, cs := connect(t)
-	s := use(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "First",
+	got := use(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "First",
 		"description": "d", "goal": "g", "plan": "p", "reasoning": "nothing else yet"})
-	if s["id"] != "S-1" || s["status"] != "proposed" || s["goal"] != "g" || s["plan"] != "p" || s["created_by"] != nil {
+	if len(got) != 2 || got["id"] != "S-1" || got["status"] != "proposed" {
+		t.Fatalf("answer %v", got)
+	}
+	s := readStory(t, cs, "S-1")
+	if s["goal"] != "g" || s["plan"] != "p" || s["created_by"] != nil {
 		t.Fatalf("story %v", s)
 	}
 	l, err := b.Log("demo", "S-1")
@@ -59,8 +65,9 @@ func TestAddStoryNeedsATitleAndReasoning(t *testing.T) {
 func TestUpdateStoryChangesOnlyTheFieldsGiven(t *testing.T) {
 	b, cs := connect(t)
 	addStory(t, b, "First")
-	s := use(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1",
+	use(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1",
 		"plan": "new plan", "branch": "feature/x"})
+	s := readStory(t, cs, "S-1")
 	if s["title"] != "First" || s["plan"] != "new plan" || s["branch"] != "feature/x" || s["updated_by"] != nil {
 		t.Fatalf("story %v", s)
 	}
@@ -72,8 +79,9 @@ func TestUpdateStorySetsWhatAnInProgressStoryIsDoing(t *testing.T) {
 	if _, err := b.SetStatus("demo", "tester", "S-1", board.StatusChange{To: board.InProgress}); err != nil {
 		t.Fatal(err)
 	}
-	s := use(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1",
+	use(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1",
 		"activity": "waiting", "waiting_on": "the test agent"})
+	s := readStory(t, cs, "S-1")
 	if s["activity"] != "waiting" || s["waiting_on"] != "the test agent" {
 		t.Fatalf("story %v", s)
 	}
@@ -90,8 +98,8 @@ func TestMoveStoryChangesItsPlaceInTheBacklog(t *testing.T) {
 	addStory(t, b, "First")
 	addStory(t, b, "Second")
 	s := use(t, cs, "move_story", map[string]any{"workspace": "demo", "id": "S-2", "before": "S-1"})
-	if s["id"] != "S-2" || s["moved_by"] != nil {
-		t.Fatalf("story %v", s)
+	if len(s) != 1 || s["id"] != "S-2" {
+		t.Fatalf("answer %v", s)
 	}
 	next := use(t, cs, "whats_next", map[string]any{"workspace": "demo"})
 	if n := next["story"].(map[string]any); n["id"] != "S-2" {
@@ -172,13 +180,7 @@ func TestGetStoryKeepsFieldsThatSaySomething(t *testing.T) {
 	}
 }
 
-func TestAStoryInABatchResultIsLean(t *testing.T) {
-	b, cs := connect(t)
-	addStory(t, b, "First")
-	r := results(t, cs, action("set_status", map[string]any{"id": "S-1", "to": "in_progress", "branch": "feature/x"}))
-	s, _ := r[0]["result"].(map[string]any)
-	if s["status"] != "in_progress" || s["branch"] != "feature/x" {
-		t.Fatalf("result %v", r[0])
-	}
-	absent(t, s, "created_at", "created_by", "moved_by", "moved_at", "blocked", "plan")
+func readStory(t *testing.T, cs *mcp.ClientSession, id string) map[string]any {
+	t.Helper()
+	return use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": id})
 }
