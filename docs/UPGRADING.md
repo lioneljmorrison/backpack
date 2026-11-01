@@ -28,6 +28,13 @@ its arguments). It adds a bug with a clear fix to the backlog without waiting
 for approval, if every check holds, and is refused otherwise. `add_story` is
 unchanged and still proposes.
 
+`get_context` is a new read, also on request (`actions` with `name` and
+`args`, `id` and the workspace). It answers summaries of a story's
+neighbourhood in one call: phase and goals, source idea, dependencies and
+dependents (finished ones too) with their recent decisions, where it was
+found, what was found while building it, and open bugs. The HTTP route is
+`GET /v1/workspaces/{ws}/stories/{id}/context`.
+
 To run a read, call `actions` with `name` and `args`, the workspace included:
 `{"name": "list_ideas", "args": {"workspace": "my-app"}}`. A name alone
 describes the action instead of running it. `actions` never runs a change, so

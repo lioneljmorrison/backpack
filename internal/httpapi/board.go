@@ -41,6 +41,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories", a.listStories)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories", a.addStory)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}", a.getStory)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/stories/{id}/context", a.getContext)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/stories/{id}", a.updateStory)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/move", a.moveStory)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/stories/{id}/status", a.setStatus)
@@ -262,6 +263,11 @@ func (a boardAPI) addStory(w http.ResponseWriter, r *http.Request) {
 func (a boardAPI) getStory(w http.ResponseWriter, r *http.Request) {
 	s, err := a.b.Story(r.PathValue("ws"), r.PathValue("id"))
 	respond(w, http.StatusOK, s, err)
+}
+
+func (a boardAPI) getContext(w http.ResponseWriter, r *http.Request) {
+	c, err := a.b.Context(r.PathValue("ws"), r.PathValue("id"))
+	respond(w, http.StatusOK, c, err)
 }
 
 func (a boardAPI) updateStory(w http.ResponseWriter, r *http.Request) {

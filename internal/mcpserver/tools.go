@@ -239,6 +239,7 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "whats_next", "The highest-ranked backlog story whose dependencies are complete, in full. Null when none is ready.", t.whatsNext)
 	tool(s, "where_are_we", "Where the project stands in brief: phase, in progress, in review, on hold, awaiting release, next up, proposals.", t.whereAreWe)
 	tool(s, "get_story", "One story: status, what blocks it and what it blocks.", t.getStory)
+	laterRead(r, "get_context", "A story's neighbourhood in summaries. Phase and goals, source idea, dependencies and dependents (finished too) with recent decisions, found-in, found, open bugs. Detail: get_story, read_log.", t.getContext)
 	write(r, "add_story", "Propose a story, ranked before or after another (default: bottom). It stays proposed until a person approves it. Answers with id and status.", t.addStory)
 	write(r, "update_story", "Change a story's fields; others stay. A new goal or plan marks dependents upstream changed. Answers with id, fields changed and stories marked.", t.updateStory)
 	later(r, "add_bug_fix", "Add a clear-fix bug, no approval. Needs kind bug, found_in, the fix, all three claims true, no phase or found_in's, and before or after with reasoning; else refused. Answers with id and status.", t.addBugFix)
@@ -246,7 +247,7 @@ func addTools(s *mcp.Server, t tools) {
 	later(r, "move_story", "Move a story before or after another, or to the bottom. Answers with id.", t.moveStory)
 	write(r, "set_status", "Move a story one column forward, or back before merged; or on_hold, or closed (final). Approve a proposal with backlog. Released comes only from cut_release. Answers with id and status.", t.setStatus)
 	later(r, "merge_branch", "Record a branch merged into its target at a commit; its merged stories move on. Answers with the story ids moved.", t.mergeBranch)
-	later(r, "cut_release", "Record a release (version, git tag, optional commit and notes): stories merged into the release branch become Released. Answers with id, version and story count.", t.cutRelease)
+	later(r, "cut_release", "Record a release (version, git tag, optional commit and notes). Stories merged into the release branch become Released. Answers with id, version and story count.", t.cutRelease)
 	laterRead(r, "list_releases", "Every release, newest first: id, version, tag, story count.", t.listReleases)
 	laterRead(r, "get_release", "One release by id (R-n), with its stories in delivery order.", t.getRelease)
 	later(r, "add_branch", "Add a branch merging into an existing one, such as staging into main. Answers with name and target.", t.addBranch)
@@ -264,7 +265,7 @@ func addTools(s *mcp.Server, t tools) {
 	later(r, "mark_goal_met", "Mark a goal met, or not met. Answers with id and whether met.", t.markGoalMet)
 	write(r, "add_idea", "Add an idea: a rough thought, not yet work, outside the backlog. Give it context. Then break it into proposed stories yourself and refine it. Answers with id and state.", t.addIdea)
 	laterRead(r, "list_ideas", "The open ideas, top first: id, title, state.", t.listIdeas)
-	laterRead(r, "get_idea", "One idea, with its context and what it became or why it was dropped.", t.getIdea)
+	laterRead(r, "get_idea", "One idea, with its context. Also what it became or why it was dropped.", t.getIdea)
 	later(r, "update_idea", "Change an open idea's title or context; others stay. Answers with id and state.", t.updateIdea)
 	later(r, "move_idea", "Move an open idea before or after another, or to the bottom. Answers with id and state.", t.moveIdea)
 	later(r, "refine_idea", "Close an idea, linking the stories and phase it became (add them first). Propose the stories yourself, a phase and goals if needed, then refine. Answers with id and state.", t.refineIdea)
@@ -313,6 +314,14 @@ func (t tools) whereAreWe(_ context.Context, a in) (any, error) {
 
 func (t tools) getStory(_ context.Context, a storyIn) (any, error) {
 	return leanResult(t.b.Story(a.Workspace, a.ID))
+}
+
+func (t tools) getContext(_ context.Context, a storyIn) (any, error) {
+	c, err := t.b.Context(a.Workspace, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	return leanContextOf(c), nil
 }
 
 func (t tools) addStory(ctx context.Context, a addStoryIn) (any, error) {
