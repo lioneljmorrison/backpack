@@ -376,34 +376,43 @@ Each slice is its own branch and pull request into `dev`.
   `cut_release`; `proposed` is set only to resume a held proposal.
   A refusal comes back as a tool error
   with the board's reason, as one text block.
-- **Menu and on-request actions (2026-10-31, S-62, step 1 of "Fewer tools").**
-  Agents load a small, stable menu of tools; rarer actions are fetched on
-  demand, so a new feature does not grow what every session loads. Step 1
-  (server 0.5.0, which breaks a client that calls a removed name directly)
-  moves the rarer *changes* off the menu. They are no longer in `ListTools`
-  but run through `batch` by name, with their own schema check, answers and
-  refusals unchanged: `add_branch`, `update_branch`, `remove_branch`,
-  `merge_branch`, `cut_release`, `add_phase`, `update_phase`, `add_goal`,
-  `update_goal`, `mark_goal_met`, `refine_idea`, `drop_idea`, `update_idea`,
-  `move_idea`, `move_story`, `remove_dependency` and `mark_reviewed`. Called
-  directly, one is an unknown tool (a JSON-RPC error). The reads stay on the
-  menu in step 1; step 2 moves the rarer reads the same way. The menu now has
-  `where_are_we`, `whats_next`, `get_story`, `search`, `add_story`,
-  `add_dependency`, `add_idea`, `set_status`, `update_story`, `log`, `batch`,
-  `list_workspaces` and the new `actions`, plus those reads. `actions` is
-  read-only: with no name it answers one short line for each on-request action
-  (about 1 KB in all); with a name, that action's arguments (type, hint, `?` for
-  optional, `workspace` left out). Both are built from each action's own
-  registered description and argument schema, so they cannot drift from what a
-  batch accepts. It never runs a change: an unknown name, or a tool that is on
-  the menu, is refused with a reason. The `actions` and `batch` descriptions
-  name branches, releases, phases, goals and ideas so a client's tool search
-  finds them. The tool list is capped by a test at 9,000 bytes (measured 8,314:
-  the cap is that plus about 8% headroom, rounded up), down from 14,648. The
-  rule for new features: a new action goes on request by default; adding a
-  tool to the menu needs the owner's approval, and the exact-menu test is the
-  guard. Projects that call a moved tool directly are moved over by
-  [docs/UPGRADING.md](UPGRADING.md).
+- **Menu and on-request actions (2026-10-31, S-62, steps 1 and 2 of "Fewer
+  tools").** Agents load a small, stable menu of tools; rarer actions are
+  fetched on demand, so a new feature does not grow what every session loads.
+  Server 0.5.0 breaks a client that calls a removed name directly.
+  *Step 1: rarer changes.* They are no longer in `ListTools` but run through
+  `batch` by name, with their own schema check, answers and refusals
+  unchanged: `add_branch`, `update_branch`, `remove_branch`, `merge_branch`,
+  `cut_release`, `add_phase`, `update_phase`, `add_goal`, `update_goal`,
+  `mark_goal_met`, `refine_idea`, `drop_idea`, `update_idea`, `move_idea`,
+  `move_story`, `remove_dependency` and `mark_reviewed`.
+  *Step 2: rarer reads.* `list_branches`, `list_releases`, `get_release`,
+  `read_log`, `list_phases`, `list_ideas` and `get_idea` leave the menu too and
+  run through `actions`. `batch` still refuses reads. Called directly, a moved
+  tool is an unknown tool (a JSON-RPC error).
+  The menu is exactly 13 tools: `where_are_we`, `whats_next`, `get_story`,
+  `search`, `add_story`, `add_dependency`, `add_idea`, `set_status`,
+  `update_story`, `log`, `batch`, `list_workspaces` and `actions`.
+  `actions` takes `{name, args}`. One rule: a name alone describes the action
+  (its description and arguments, each with its hint); a name with `args`
+  (even `{}`) runs a read, and its arguments, `workspace` included, are
+  checked against the read's own schema, so a bad or missing one is refused
+  with its reason and the answer is the old tool's. Naming a change with
+  `args` is refused ("run it with batch"); a change is never run here, and
+  `actions` stays free of side effects. With no name it answers the list: the
+  reads first (run here), then the changes (run with batch), one short line
+  each (1,757 bytes). The descriptions, lines and arguments come from each
+  action's own registered description and argument schema, so they cannot
+  drift from what runs; the `actions` and `batch` descriptions name
+  branches, releases, phases, goals, ideas and logs so a client's tool search
+  finds them. A name that is a menu tool, or unknown, is refused with a reason.
+  The tool list is capped by a test at 8,000 bytes (measured 6,595; 6,595 x
+  1.25 = 8,244, so the round number below it), down from 14,648 in 0.4.0 and
+  8,314 after step 1. The rule for new features: a new action goes on
+  request by default (a change through `batch`, a read through `actions`);
+  adding a tool to the menu needs the owner's approval, and the exact-menu
+  test is the guard. Projects that call a moved tool directly are moved over
+  by [docs/UPGRADING.md](UPGRADING.md).
 - **No sessions.** Every call carries its token and stands alone.
 
 5. **Where it runs** (2026-10-10). This is dev: the instance runs on
@@ -725,8 +734,8 @@ the token's actor: it is how a client checks its configuration.
 Served at `/mcp` (streamable HTTP, stateless) behind the same bearer check
 as `/v1/`; the actor reaches each tool through the request context. Since
 0.5.0 only the menu is listed (see "Menu and on-request actions"); the
-changes it does not list below are on request and run through `batch`, and
-`actions` describes them.
+tools named below that are not on the menu are on request: the changes run
+through `batch`, the reads through `actions`, which describes them all.
 `whats_next`, `where_are_we`, `get_story`, `add_story`, `update_story`,
 `move_story`, `set_status`, `add_dependency`, `remove_dependency`, `log`,
 `read_log`, `list_phases`, `add_phase`, `add_goal`, `mark_goal_met` (`met`

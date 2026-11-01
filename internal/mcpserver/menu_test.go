@@ -12,12 +12,10 @@ import (
 // menu is what ListTools offers: the tools every agent loads.
 //
 // This is the growth guard. Adding a tool to the menu needs the owner's
-// approval; a new action goes on request by default (it runs through batch
-// and is described by `actions`). Step 2 of "Fewer tools" moves the rarer
-// reads off the menu too.
-var menu = []string{"actions", "add_dependency", "add_idea", "add_story", "batch", "get_idea", "get_release",
-	"get_story", "list_branches", "list_ideas", "list_phases", "list_releases", "list_workspaces", "log",
-	"read_log", "search", "set_status", "update_story", "whats_next", "where_are_we"}
+// approval; a new action goes on request by default: a change runs through
+// batch, a read through actions, and `actions` describes both.
+var menu = []string{"actions", "add_dependency", "add_idea", "add_story", "batch", "get_story",
+	"list_workspaces", "log", "search", "set_status", "update_story", "whats_next", "where_are_we"}
 
 func menuNames(t *testing.T, cs *mcp.ClientSession) []string {
 	t.Helper()
@@ -63,31 +61,34 @@ func TestAnOnRequestToolCalledDirectlyIsUnknown(t *testing.T) {
 func TestActionsListsEachOnRequestActionOnceAndNoMenuTool(t *testing.T) {
 	_, cs := connect(t)
 	got := say(t, cs, "actions", map[string]any{})
-	lines := strings.Split(strings.TrimSpace(got), "\n")
-	// One line for each action, then one line on how to run them.
-	if len(lines) != len(onRequest)+1 {
-		t.Fatalf("%d lines, want %d:\n%s", len(lines), len(onRequest)+1, got)
-	}
-	for name := range onRequest {
+	count := func(name string) int {
 		n := 0
-		for _, l := range lines {
+		for _, l := range strings.Split(got, "\n") {
 			if strings.HasPrefix(l, name+": ") {
 				n++
 			}
 		}
-		if n != 1 {
-			t.Errorf("%s listed %d times:\n%s", name, n, got)
-		}
+		return n
 	}
-	for _, name := range menu {
-		for _, l := range lines {
-			if strings.HasPrefix(l, name+": ") {
-				t.Errorf("menu tool %s is listed: %s", name, l)
+	for _, set := range []map[string]bool{onRequest, onRequestReads} {
+		for name := range set {
+			if n := count(name); n != 1 {
+				t.Errorf("%s listed %d times:\n%s", name, n, got)
 			}
 		}
 	}
-	if len(got) > 1300 {
-		t.Errorf("the list is %d bytes, want about 1 KB", len(got))
+	for _, name := range menu {
+		if count(name) != 0 {
+			t.Errorf("menu tool %s is listed:\n%s", name, got)
+		}
+	}
+	// The reads come first, under their own heading, then the changes.
+	reads, changes := strings.Index(got, "Reads"), strings.Index(got, "Changes")
+	if reads < 0 || changes < reads || strings.Index(got, "list_ideas: ") > changes || strings.Index(got, "add_phase: ") < changes {
+		t.Errorf("reads and changes are not marked apart:\n%s", got)
+	}
+	if len(got) > 1800 {
+		t.Errorf("the list is %d bytes, want under 1,800", len(got))
 	}
 	t.Logf("actions listed %d bytes", len(got))
 }
@@ -139,5 +140,65 @@ func TestActionsNeverRunsAChange(t *testing.T) {
 	say(t, cs, "actions", map[string]any{"name": "add_phase"})
 	if ps, err := b.Phases("demo"); err != nil || len(ps) != 0 {
 		t.Fatalf("phases %v, %v", ps, err)
+	}
+}
+
+func TestActionsRunsAnOnRequestRead(t *testing.T) {
+	_, cs := connect(t)
+	use(t, cs, "add_idea", map[string]any{"workspace": "demo", "title": "Try it", "context": "why"})
+	list := use(t, cs, "actions", map[string]any{"name": "list_ideas", "args": map[string]any{"workspace": "demo"}})
+	is, _ := list["ideas"].([]any)
+	if len(is) != 1 || is[0].(map[string]any)["title"] != "Try it" || is[0].(map[string]any)["state"] != "open" {
+		t.Fatalf("ideas %v", list)
+	}
+	one := use(t, cs, "actions", map[string]any{"name": "get_idea", "args": map[string]any{"workspace": "demo", "id": "I-1"}})
+	if one["id"] != "I-1" || one["context"] != "why" {
+		t.Fatalf("idea %v", one)
+	}
+}
+
+func TestAnOnRequestReadWithBadArgumentsIsRefusedWithItsReason(t *testing.T) {
+	_, cs := connect(t)
+	for name, args := range map[string]map[string]any{
+		"missing workspace": {},
+		"missing id":        {"workspace": "demo"},
+		"unknown argument":  {"workspace": "demo", "id": "I-1", "colour": "red"},
+	} {
+		why := refused(t, cs, "actions", map[string]any{"name": "get_idea", "args": args})
+		if !strings.Contains(why, "arguments") {
+			t.Errorf("%s: reason %q", name, why)
+		}
+	}
+	if why := refused(t, cs, "actions", map[string]any{"name": "get_idea", "args": map[string]any{"workspace": "nope", "id": "I-1"}}); !strings.Contains(why, "nope") {
+		t.Errorf("reason %q", why)
+	}
+}
+
+func TestActionsWithOnlyAReadsNameDescribesIt(t *testing.T) {
+	_, cs := connect(t)
+	got := say(t, cs, "actions", map[string]any{"name": "get_idea"})
+	if !strings.Contains(got, "workspace: ") || !strings.Contains(got, "id: ") {
+		t.Fatalf("answer:\n%s", got)
+	}
+}
+
+func TestActionsRefusesToRunAChange(t *testing.T) {
+	b, cs := connect(t)
+	why := refused(t, cs, "actions", map[string]any{"name": "add_phase", "args": map[string]any{"workspace": "demo", "title": "Sneaky"}})
+	if !strings.Contains(why, "batch") {
+		t.Fatalf("reason %q", why)
+	}
+	if ps, err := b.Phases("demo"); err != nil || len(ps) != 0 {
+		t.Fatalf("phases %v, %v", ps, err)
+	}
+}
+
+func TestAMovedReadCalledDirectlyIsUnknown(t *testing.T) {
+	_, cs := connect(t)
+	for name := range onRequestReads {
+		_, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: map[string]any{"workspace": "demo"}})
+		if err == nil || !strings.Contains(err.Error(), "unknown tool") {
+			t.Errorf("%s: err %v, want an unknown tool error", name, err)
+		}
 	}
 }

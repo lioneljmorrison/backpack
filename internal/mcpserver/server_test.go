@@ -120,10 +120,24 @@ var onRequest = map[string]bool{
 	"mark_reviewed": true,
 }
 
+// onRequestReads names the reads that are not on the menu: they run only
+// through actions (name, and args with the workspace). callTool sends them
+// that way.
+var onRequestReads = map[string]bool{
+	"list_branches": true, "list_releases": true, "get_release": true, "read_log": true,
+	"list_phases": true, "list_ideas": true, "get_idea": true,
+}
+
 func callTool(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]any) *mcp.CallToolResult {
 	t.Helper()
-	if onRequest[tool] {
+	switch {
+	case onRequest[tool]:
 		return callOnRequest(t, cs, tool, args)
+	case onRequestReads[tool]:
+		if args == nil {
+			args = map[string]any{}
+		}
+		return callDirect(t, cs, "actions", map[string]any{"name": tool, "args": args})
 	}
 	return callDirect(t, cs, tool, args)
 }
