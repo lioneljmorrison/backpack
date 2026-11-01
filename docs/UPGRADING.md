@@ -35,6 +35,14 @@ dependents (finished ones too) with their recent decisions, where it was
 found, what was found while building it, and open bugs. The HTTP route is
 `GET /v1/workspaces/{ws}/stories/{id}/context`.
 
+`search` takes a new optional `story` (the HTTP route a `story` query
+parameter). With it, search looks near that story first: its dependencies and
+dependents, where it was found, what it found, its nearby bugs, its idea and
+its phase with the phase's other stories. If nothing matches there, it
+searches the whole workspace. The answer gains `scope` (`story` or
+`workspace`) only when `story` was given; without it nothing changes. An
+unknown story is refused.
+
 To run a read, call `actions` with `name` and `args`, the workspace included:
 `{"name": "list_ideas", "args": {"workspace": "my-app"}}`. A name alone
 describes the action instead of running it. `actions` never runs a change, so

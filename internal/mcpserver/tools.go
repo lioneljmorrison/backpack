@@ -219,6 +219,7 @@ type moveIdeaIn struct {
 type searchIn struct {
 	in
 	Query string `json:"query" jsonschema:"keywords or plain language"`
+	Story string `json:"story,omitempty" jsonschema:"story id: look near it first"`
 }
 
 type refineIdeaIn struct {
@@ -270,12 +271,16 @@ func addTools(s *mcp.Server, t tools) {
 	later(r, "move_idea", "Move an open idea before or after another, or to the bottom. Answers with id and state.", t.moveIdea)
 	later(r, "refine_idea", "Close an idea, linking the stories and phase it became (add them first). Propose the stories yourself, a phase and goals if needed, then refine. Answers with id and state.", t.refineIdea)
 	later(r, "drop_idea", "Close an idea that became nothing, with a reason. Answers with id and state.", t.dropIdea)
-	tool(s, "search", "Check whether a story, idea or phase already covers something, by keyword and meaning, closed included. Up to ten, best first.", t.search)
+	tool(s, "search", "Check whether a story, idea or phase already covers something, by keyword and meaning, closed included. Up to ten, best first. With story, looks near it first and says the scope.", t.search)
 	tool(s, "actions", "Rarer actions: branches, releases, phases, goals, ideas, logs. No name lists them; a name gives its arguments. A name with args runs a read (list_*, get_*, read_log) here. A change runs through batch.", actions(r))
 	tool(s, "batch", "Many board changes in one call: each action names a changing tool and its arguments. It also runs the rarer changes actions lists (branches, releases, phases, goals, ideas). In order; a failure doesn't stop the rest. Up to 100; no reads.", batch(r.steps))
 }
 
 func (t tools) search(ctx context.Context, a searchIn) (any, error) {
+	if a.Story != "" {
+		rs, scope, err := t.x.SearchNear(ctx, a.Workspace, a.Query, a.Story)
+		return map[string]any{"results": rs, "scope": scope}, err
+	}
 	rs, err := t.x.Search(ctx, a.Workspace, a.Query)
 	return map[string]any{"results": rs}, err
 }
