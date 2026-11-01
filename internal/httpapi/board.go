@@ -28,6 +28,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("GET /v1/workspaces/{ws}/releases", a.listReleases)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/releases/{id}", a.getRelease)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/releases", a.cutRelease)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/events", a.listEvents)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/next", a.next)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/status", a.where)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/board", a.board)
@@ -263,6 +264,12 @@ func (a boardAPI) addStory(w http.ResponseWriter, r *http.Request) {
 func (a boardAPI) getStory(w http.ResponseWriter, r *http.Request) {
 	s, err := a.b.Story(r.PathValue("ws"), r.PathValue("id"))
 	respond(w, http.StatusOK, s, err)
+}
+
+func (a boardAPI) listEvents(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	evs, err := a.b.Events(r.PathValue("ws"), board.EventsQuery{Before: q.Get("before"), After: q.Get("after"), Since: q.Get("since")})
+	respond(w, http.StatusOK, map[string]any{"events": evs}, err)
 }
 
 func (a boardAPI) getContext(w http.ResponseWriter, r *http.Request) {

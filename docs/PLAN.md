@@ -435,7 +435,7 @@ Each slice is its own branch and pull request into `dev`.
   `args` is refused ("run it with batch"); a change is never run here, and
   `actions` stays free of side effects. With no name it answers the list: the
   reads first (run here), then the changes (run with batch), one short line
-  each (1,747 bytes). The descriptions, lines and arguments come from each
+  each (1,791 bytes). The descriptions, lines and arguments come from each
   action's own registered description and argument schema, so they cannot
   drift from what runs; the `actions` and `batch` descriptions name
   branches, releases, phases, goals, ideas and logs so a client's tool search
@@ -447,6 +447,31 @@ Each slice is its own branch and pull request into `dev`.
   adding a tool to the menu needs the owner's approval, and the exact-menu
   test is the guard. Projects that call a moved tool directly are moved over
   by [docs/UPGRADING.md](UPGRADING.md).
+  *What happened lately (2026-10-31, S-53).* `list_events` (on request through
+  `actions`; `GET /v1/workspaces/{ws}/events`) answers the latest 20 things
+  that happened on the board, however old, oldest first, one short line each,
+  so it is empty only on a board where nothing has happened. Events are a
+  decision, a correction, a story moved to merged (into any branch), on hold
+  or closed (the reason on the last two), a story added (and the story it was
+  found in), an idea added and a release cut. Each shows once: a release's
+  own `merged` to `released` entries are left out in favour of its one line
+  (version, tag, story count); a proposal's placement decision is folded into
+  its added line; R-0 is not an event. Entries from before releases are
+  labelled as recorded before releases (an old `released` reads as reached the
+  release branch, an old `deployed` as released). Decision text, reasons and
+  titles are cut at 100 characters; the full text stays in the log. A line
+  starts with the event's own id, its position: `L-n`, `S-n`, `I-n` or `R-n`.
+  Events order by time (stored as a 20-character UTC string, to the second),
+  then kind (story, idea, release, log), then number as a number, so 9 comes
+  before 10. One option at a time (two are refused): `before` a position gives
+  the 20 before it, with no gap or overlap; `after` a position gives every
+  event from its second on except itself, repeating the rest of that second so
+  none is missed; `since` an RFC 3339 time, or a bare date as midnight UTC,
+  gives every event from then, inclusive. An unknown position is a 404, an
+  unreadable one or date a 400. `after` and `since` are not limited, but the
+  store caps a result at 10,000 rows, a known limit. It is one read-only query
+  (no migration, node, edge or index; an index on a time would return nothing
+  for a range on a string in FalkorDB).
   *Search near a story first (2026-10-31, S-52).* `search` takes an optional
   `story` (`GET .../search?q=&story=`). The board works out the neighbourhood
   in one graph read (`Board.Near`): the story itself, its dependencies and
@@ -764,6 +789,7 @@ GET  /v1/workspaces                                  POST
 GET  /v1/workspaces/{ws}/next                        what's next
 GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook)
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
+GET  /v1/workspaces/{ws}/events                      the latest events; ?before= ?after= ?since=
 GET  /v1/workspaces/{ws}/releases                    POST (cut); GET /releases/{id}
 GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{n} (title, description)
 POST /v1/workspaces/{ws}/stories/{id}/reviewed          clear the upstream-changed mark ({reason}; 409 when not marked)
