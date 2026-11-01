@@ -51,3 +51,50 @@ func TestSearchWithTypesenseUnreachableSaysSo(t *testing.T) {
 		t.Fatalf("reason %q", why)
 	}
 }
+
+func TestSearchGivenAStoryLooksNearItFirstAndSaysSo(t *testing.T) {
+	b, cs := connectIndexed(t, func(b *board.Board) *search.Index {
+		url, key, prefix := typesensetest.Prefix(t)
+		return search.New(url, key, prefix, b)
+	})
+	addStory(t, b, "Invoices in the work")
+	addStory(t, b, "Invoices dependency")
+	addStory(t, b, "Invoices far away")
+	if _, err := b.AddDependency("demo", "tester", "S-2", "S-1"); err != nil {
+		t.Fatal(err)
+	}
+	got := use(t, cs, "search", map[string]any{"workspace": "demo", "query": "invoices", "story": "S-1"})
+	rs, _ := got["results"].([]any)
+	if len(rs) != 2 || got["scope"] != "story" {
+		t.Fatalf("answer %v", got)
+	}
+	// Nothing near matches, so it widens and says so.
+	addStory(t, b, "Gardening notes about tomatoes")
+	got = use(t, cs, "search", map[string]any{"workspace": "demo", "query": "tomatoes", "story": "S-1"})
+	if rs, _ := got["results"].([]any); len(rs) != 1 || got["scope"] != "workspace" {
+		t.Fatalf("answer %v", got)
+	}
+}
+
+func TestSearchWithoutAStoryNamesNoScope(t *testing.T) {
+	b, cs := connectIndexed(t, func(b *board.Board) *search.Index {
+		url, key, prefix := typesensetest.Prefix(t)
+		return search.New(url, key, prefix, b)
+	})
+	addStory(t, b, "Invoices in the work")
+	got := use(t, cs, "search", map[string]any{"workspace": "demo", "query": "invoices"})
+	if _, ok := got["scope"]; ok {
+		t.Fatalf("answer %v", got)
+	}
+}
+
+func TestSearchNearAnUnknownStoryIsRefused(t *testing.T) {
+	_, cs := connectIndexed(t, func(b *board.Board) *search.Index {
+		url, key, prefix := typesensetest.Prefix(t)
+		return search.New(url, key, prefix, b)
+	})
+	why := refused(t, cs, "search", map[string]any{"workspace": "demo", "query": "invoices", "story": "S-99"})
+	if !strings.Contains(why, "S-99") {
+		t.Fatalf("reason %q", why)
+	}
+}

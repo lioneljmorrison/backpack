@@ -447,6 +447,18 @@ Each slice is its own branch and pull request into `dev`.
   adding a tool to the menu needs the owner's approval, and the exact-menu
   test is the guard. Projects that call a moved tool directly are moved over
   by [docs/UPGRADING.md](UPGRADING.md).
+  *Search near a story first (2026-10-31, S-52).* `search` takes an optional
+  `story` (`GET .../search?q=&story=`). The board works out the neighbourhood
+  in one graph read (`Board.Near`): the story itself, its dependencies and
+  dependents, where it was found, what it found, its nearby open bugs (the
+  context read's set), the idea it came from, its phase and the phase's other
+  stories. The index only ranks inside it, by a Typesense `filter_by` on the
+  documents' `id` (verified on Typesense 30.2; no schema change). No board
+  decision reads from the index. When nothing matches inside, the whole
+  workspace is searched. The answer adds `scope` (`story` or `workspace`)
+  only when `story` was given; without it the answer is as before. An unknown
+  story is refused (404), as it is for the context read, rather than quietly
+  searching the workspace, which would hide a mistyped id.
   *A story's context in one call (2026-10-31, S-51).* `get_context` (`id`, on
   request through `actions`; `GET /v1/workspaces/{ws}/stories/{id}/context`)
   answers summaries of a story's neighbourhood in one graph read, so an agent
@@ -766,7 +778,7 @@ POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
 GET  /v1/workspaces/{ws}/stories/{id}/log            POST
 GET  /v1/workspaces/{ws}/ideas                       POST
 GET  /v1/workspaces/{ws}/ideas/{id}                  PATCH; POST /move, /refine, /drop
-GET  /v1/workspaces/{ws}/search?q=                   stories, ideas and phases by keyword and meaning
+GET  /v1/workspaces/{ws}/search?q=[&story=]          stories, ideas and phases by keyword and meaning; story looks near it first
 POST /v1/workspaces/{ws}/batch                       1–100 POST/PATCH/DELETE requests, each sent to its own route
 ```
 

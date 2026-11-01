@@ -1103,6 +1103,18 @@ paths:
           in: query
           required: true
           schema: { type: string, example: sign in without a password }
+        - name: story
+          in: query
+          required: false
+          description: >-
+            A story id. The search looks near the story first: the story, its
+            dependencies and dependents, where it was found, what was found
+            building it, its nearby open bugs, its idea and its phase with the
+            phase's other stories. The board works that set out; the index
+            only ranks inside it. When nothing matches there, the whole
+            workspace is searched. The answer carries `scope`. An unknown
+            story is a 404.
+          schema: { type: string, example: S-4 }
       responses:
         "200":
           description: The matches, best first; empty when nothing matches
@@ -1115,6 +1127,14 @@ paths:
                   results:
                     type: array
                     items: { $ref: "#/components/schemas/SearchResult" }
+                  scope:
+                    type: string
+                    enum: [story, workspace]
+                    description: >-
+                      Where the matches were found. Present only when `story`
+                      was given: `story` for its neighbourhood, `workspace`
+                      when nothing matched there and the whole workspace was
+                      searched.
         "400": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
