@@ -32,6 +32,14 @@
   <h2>Blocks</h2>
   <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
   {{end}}
+  {{with .FoundIn}}
+  <h2>Found in</h2>
+  <ul class="links"><li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li></ul>
+  {{end}}
+  {{with .Found}}
+  <h2>Found while building</h2>
+  <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
+  {{end}}
 </div>
 {{end}}
 {{$id := .Story.ID}}
