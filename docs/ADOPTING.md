@@ -6,7 +6,8 @@ a Kanban board for agentic projects. Once it's set up, agents ask Backpack
 "where are we" and "what's next" instead of keeping a tracking document beside
 the code.
 
-Follow the steps in order. You do every step yourself. You need the person
+Follow the steps in order. (For a project that already uses Backpack, see
+[UPGRADING.md](UPGRADING.md).) You do every step yourself. You need the person
 only for what they alone can give you: the Backpack address, a token, a few
 choices, and a restart of Claude Code at the end.
 
@@ -152,12 +153,16 @@ curl -fsS -X POST https://backpack.example.com/v1/workspaces \
 is already taken, so check with the person whether that workspace is this
 project's.
 
-Then bring the branches to the approved shape. These are MCP tools, which
-appear after step 4 and a restart; until then the same changes are HTTP calls
+Then bring the branches to the approved shape. These are MCP actions: you run
+each through `batch` (`actions` names its arguments), and they work after
+step 4 and a restart. Until then the same changes are HTTP calls
 (`POST /v1/workspaces/{ws}/branches`, `PATCH` and `DELETE`
 `/v1/workspaces/{ws}/branches/{name}`, in `api/openapi.yaml`). If the
 tools aren't there yet, carry on with step 4 and finish this after the
 restart. Check the result with `list_branches`.
+
+For example, to add `staging`: `batch` with `actions` of
+`[{"tool": "add_branch", "args": {"name": "staging", "into": "main"}}]`.
 
 - **Rename** a seeded branch to the repository's name (`master`, `develop`):
   `update_branch` with `branch` (its current name) and `name`. No story moves.
@@ -295,7 +300,8 @@ goes onto the board with `add_story`, and the document stops being updated.
 
 Delivery is tracked in Backpack, workspace `my-app` (see `.backpack.json`),
 through the `backpack` MCP tools. There is no tracking document, and tracking
-is never committed. The branches are in `list_branches`.
+is never committed. `actions` lists the rarer actions; a rarer change runs
+through `batch`.
 
 - **Orientation.** The session hook has already shown "where are we"; trust it.
   Call `where_are_we` only if the hook didn't run. `whats_next` gives the next

@@ -362,7 +362,8 @@ Each slice is its own branch and pull request into `dev`.
   Tool descriptions are short (2026-10-31, S-45): each says what the tool does
   and what it answers with, at most 300 characters, and the full tool list
   (names, descriptions, input schemas) stays within two thirds of v0.3.1's
-  21,993 bytes (14,662), guarded by a test. The rules the descriptions used to
+  21,993 bytes (since S-62 a smaller cap, see the menu entry below), guarded by a
+  test. The rules the descriptions used to
   carry live in the refusals, which name the reason, and in this document: a
   story ranks below what it depends on, and a dependency points to the same or
   an earlier phase; a story's phase is fixed at creation; `batch` takes up to
@@ -375,6 +376,34 @@ Each slice is its own branch and pull request into `dev`.
   `cut_release`; `proposed` is set only to resume a held proposal.
   A refusal comes back as a tool error
   with the board's reason, as one text block.
+- **Menu and on-request actions (2026-10-31, S-62, step 1 of "Fewer tools").**
+  Agents load a small, stable menu of tools; rarer actions are fetched on
+  demand, so a new feature does not grow what every session loads. Step 1
+  (server 0.5.0, which breaks a client that calls a removed name directly)
+  moves the rarer *changes* off the menu. They are no longer in `ListTools`
+  but run through `batch` by name, with their own schema check, answers and
+  refusals unchanged: `add_branch`, `update_branch`, `remove_branch`,
+  `merge_branch`, `cut_release`, `add_phase`, `update_phase`, `add_goal`,
+  `update_goal`, `mark_goal_met`, `refine_idea`, `drop_idea`, `update_idea`,
+  `move_idea`, `move_story`, `remove_dependency` and `mark_reviewed`. Called
+  directly, one is an unknown tool (a JSON-RPC error). The reads stay on the
+  menu in step 1; step 2 moves the rarer reads the same way. The menu now has
+  `where_are_we`, `whats_next`, `get_story`, `search`, `add_story`,
+  `add_dependency`, `add_idea`, `set_status`, `update_story`, `log`, `batch`,
+  `list_workspaces` and the new `actions`, plus those reads. `actions` is
+  read-only: with no name it answers one short line for each on-request action
+  (about 1 KB in all); with a name, that action's arguments (type, hint, `?` for
+  optional, `workspace` left out). Both are built from each action's own
+  registered description and argument schema, so they cannot drift from what a
+  batch accepts. It never runs a change: an unknown name, or a tool that is on
+  the menu, is refused with a reason. The `actions` and `batch` descriptions
+  name branches, releases, phases, goals and ideas so a client's tool search
+  finds them. The tool list is capped by a test at 9,000 bytes (measured 8,314:
+  the cap is that plus about 8% headroom, rounded up), down from 14,648. The
+  rule for new features: a new action goes on request by default; adding a
+  tool to the menu needs the owner's approval, and the exact-menu test is the
+  guard. Projects that call a moved tool directly are moved over by
+  [docs/UPGRADING.md](UPGRADING.md).
 - **No sessions.** Every call carries its token and stands alone.
 
 5. **Where it runs** (2026-10-10). This is dev: the instance runs on
@@ -694,7 +723,10 @@ the token's actor: it is how a client checks its configuration.
 ### MCP tools (slice 4)
 
 Served at `/mcp` (streamable HTTP, stateless) behind the same bearer check
-as `/v1/`; the actor reaches each tool through the request context.
+as `/v1/`; the actor reaches each tool through the request context. Since
+0.5.0 only the menu is listed (see "Menu and on-request actions"); the
+changes it does not list below are on request and run through `batch`, and
+`actions` describes them.
 `whats_next`, `where_are_we`, `get_story`, `add_story`, `update_story`,
 `move_story`, `set_status`, `add_dependency`, `remove_dependency`, `log`,
 `read_log`, `list_phases`, `add_phase`, `add_goal`, `mark_goal_met` (`met`
@@ -728,7 +760,8 @@ MCP and HTTP only. No migration: the `LogEntry` id index already covers the
 entries.
 
 `batch` makes many board changes in one call: a list of `{tool, args}`,
-1 to 100, each naming a tool that changes the board, with that tool's
+1 to 100, each naming a tool that changes the board (on the menu or on
+request, see "Menu and on-request actions"), with that tool's
 arguments minus `workspace`, which the batch gives once. Each action runs
 through its tool's own handler, so it is answered exactly as if called alone,
 and runs as its own query. A failed action is answered with its reason and

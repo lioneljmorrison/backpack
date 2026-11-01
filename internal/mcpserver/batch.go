@@ -33,14 +33,43 @@ type outcome struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// step runs one batched action, its arguments including the workspace.
-type step func(ctx context.Context, args map[string]any) (any, error)
+// stepFunc runs one batched action, its arguments including the workspace.
+type stepFunc func(ctx context.Context, args map[string]any) (any, error)
 
-// write registers a tool that changes the board, and lets a batch run it. A
-// batched action is checked against the same schema as a call to the tool,
-// so a missing or unknown argument is refused as it would be alone.
-func write[In any](s *mcp.Server, steps map[string]step, name, description string, h func(context.Context, In) (any, error)) {
-	tool(s, name, description, h)
+// registry is the tools being registered: the server they go on, the steps
+// a batch can run, and the actions that are on request.
+type registry struct {
+	s     *mcp.Server
+	steps map[string]stepFunc
+	later []request
+}
+
+// request is an on-request action: a change that is not on the menu. Its
+// definition is what `actions` answers from.
+type request struct {
+	name        string
+	description string
+	schema      *jsonschema.Schema
+}
+
+// write registers a tool that changes the board and is on the menu, and lets
+// a batch run it. A batched action is checked against the same schema as a
+// call to the tool, so a missing or unknown argument is refused as it would
+// be alone.
+func write[In any](r *registry, name, description string, h func(context.Context, In) (any, error)) {
+	tool(r.s, name, description, h)
+	step[In](r, name, h)
+}
+
+// later registers a change that is on request: it is not on the menu, and
+// runs only through batch, with the same schema check, answers and refusals
+// as a tool of its own. `actions` describes it.
+func later[In any](r *registry, name, description string, h func(context.Context, In) (any, error)) {
+	r.later = append(r.later, request{name: name, description: description, schema: step[In](r, name, h)})
+}
+
+// step lets a batch run h as name, and returns the schema of its arguments.
+func step[In any](r *registry, name string, h func(context.Context, In) (any, error)) *jsonschema.Schema {
 	schema, err := jsonschema.For[In](nil)
 	if err != nil {
 		panic(err)
@@ -49,7 +78,7 @@ func write[In any](s *mcp.Server, steps map[string]step, name, description strin
 	if err != nil {
 		panic(err)
 	}
-	steps[name] = func(ctx context.Context, args map[string]any) (any, error) {
+	r.steps[name] = func(ctx context.Context, args map[string]any) (any, error) {
 		if err := resolved.Validate(args); err != nil {
 			return nil, &board.Error{Kind: board.Invalid, Msg: "arguments: " + err.Error()}
 		}
@@ -63,11 +92,12 @@ func write[In any](s *mcp.Server, steps map[string]step, name, description strin
 		}
 		return h(ctx, a)
 	}
+	return schema
 }
 
 // batch runs each action in order through the tool it names. An action that
 // fails is answered with its reason and doesn't stop the rest.
-func batch(steps map[string]step) func(context.Context, batchIn) (any, error) {
+func batch(steps map[string]stepFunc) func(context.Context, batchIn) (any, error) {
 	return func(ctx context.Context, a batchIn) (any, error) {
 		if len(a.Actions) == 0 || len(a.Actions) > maxBatch {
 			return nil, &board.Error{Kind: board.Invalid, Msg: fmt.Sprintf("a batch has 1 to %d actions", maxBatch)}
@@ -84,7 +114,7 @@ func batch(steps map[string]step) func(context.Context, batchIn) (any, error) {
 	}
 }
 
-func run(ctx context.Context, steps map[string]step, ws string, act batchAction) (any, error) {
+func run(ctx context.Context, steps map[string]stepFunc, ws string, act batchAction) (any, error) {
 	st, ok := steps[act.Tool]
 	if !ok {
 		return nil, &board.Error{Kind: board.Invalid, Msg: fmt.Sprintf("%q is not a tool that changes the board", act.Tool)}

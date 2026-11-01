@@ -110,3 +110,6 @@ and tells them how to get one. To set up a new project, point its agent at:
 ```
 https://github.com/lioneljmorrison/backpack/blob/main/docs/ADOPTING.md
 ```
+
+A project that already uses Backpack is brought up to date by
+[docs/UPGRADING.md](docs/UPGRADING.md), organised by version.

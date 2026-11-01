@@ -6,12 +6,15 @@ import (
 	"testing"
 )
 
-// v0.3.1's full tool list (the JSON of ListTools' tools: names, descriptions
-// and input schemas) was 21,993 bytes. The limit is a third less, rounded
-// down: 21,993 * 2/3 = 14,662. Clients that load every tool up front pay for
-// all of it, so a new tool or a longer description must earn its bytes.
+// The tool list (the JSON of ListTools' tools: names, descriptions and input
+// schemas) was 21,993 bytes in v0.3.1 and 14,648 in v0.4.0. Clients that load
+// every tool up front pay for all of it, so the rarer changes now go on
+// request (see the menu in menu_test.go) and the list is 8,314 bytes. The
+// limit is that plus about 8% headroom for a sentence or a field,
+// rounded up: 8,314 * 1.08 = 8,979, so 9,000. A new tool or a longer
+// description must earn its bytes.
 const (
-	maxToolListBytes   = 14662
+	maxToolListBytes   = 9000
 	maxDescriptionSize = 300
 )
 
@@ -30,6 +33,7 @@ func TestToolDescriptionsAreShort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("the tool list is %d bytes", len(all))
 	if len(all) > maxToolListBytes {
 		t.Errorf("the tool list is %d bytes, the limit is %d", len(all), maxToolListBytes)
 	}

@@ -105,7 +105,8 @@ secrets.
 
 Delivery is tracked in Backpack, workspace `backpack` (see `.backpack.json`),
 through the `backpack` MCP tools (set up: `docs/ADOPTING.md`). There is no
-tracking document, and tracking is never committed. The branches are in `list_branches`.
+tracking document, and tracking is never committed. `actions` lists the rarer
+actions; a rarer change runs through `batch`.
 
 - **Orientation.** The session hook has already shown "where are we"; trust it.
   Call `where_are_we` only if the hook didn't run. `whats_next` gives the next
@@ -160,6 +161,9 @@ the code. For each story:
    Don't wait for approval; continue with the next ready story.
 8. If the build fails twice or the plan doesn't hold, `on_hold` with the
    reason and move on.
+
+When a story needs a decision from the person, ask them then, log the question
+on the story, and only then set it waiting.
 
 Internal refactors and bug fixes that don't change behaviour need no doc
 change. Finish with a summary: stories merged, stories on hold and why,
