@@ -159,7 +159,8 @@ step 4 and a restart. Until then the same changes are HTTP calls
 (`POST /v1/workspaces/{ws}/branches`, `PATCH` and `DELETE`
 `/v1/workspaces/{ws}/branches/{name}`, in `api/openapi.yaml`). If the
 tools aren't there yet, carry on with step 4 and finish this after the
-restart. Check the result with `list_branches`.
+restart. Check the result with `actions`, naming `list_branches` and
+giving `args` of `{"workspace": "my-app"}`.
 
 For example, to add `staging`: `batch` with `actions` of
 `[{"tool": "add_branch", "args": {"name": "staging", "into": "main"}}]`.

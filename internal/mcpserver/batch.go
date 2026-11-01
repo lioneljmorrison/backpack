@@ -44,12 +44,15 @@ type registry struct {
 	later []request
 }
 
-// request is an on-request action: a change that is not on the menu. Its
-// definition is what `actions` answers from.
+// request is an on-request action, not on the menu. Its definition is what
+// `actions` answers from. A change runs through batch; a read (run set) runs
+// through actions.
 type request struct {
 	name        string
 	description string
 	schema      *jsonschema.Schema
+	read        bool
+	run         stepFunc
 }
 
 // write registers a tool that changes the board and is on the menu, and lets
@@ -58,18 +61,30 @@ type request struct {
 // be alone.
 func write[In any](r *registry, name, description string, h func(context.Context, In) (any, error)) {
 	tool(r.s, name, description, h)
-	step[In](r, name, h)
+	st, _ := checked(h)
+	r.steps[name] = st
 }
 
 // later registers a change that is on request: it is not on the menu, and
 // runs only through batch, with the same schema check, answers and refusals
 // as a tool of its own. `actions` describes it.
 func later[In any](r *registry, name, description string, h func(context.Context, In) (any, error)) {
-	r.later = append(r.later, request{name: name, description: description, schema: step[In](r, name, h)})
+	st, schema := checked(h)
+	r.steps[name] = st
+	r.later = append(r.later, request{name: name, description: description, schema: schema})
 }
 
-// step lets a batch run h as name, and returns the schema of its arguments.
-func step[In any](r *registry, name string, h func(context.Context, In) (any, error)) *jsonschema.Schema {
+// laterRead registers a read that is on request: it is not on the menu and a
+// batch refuses it. `actions` describes it and runs it, its arguments (the
+// workspace included) checked against its own schema.
+func laterRead[In any](r *registry, name, description string, h func(context.Context, In) (any, error)) {
+	st, schema := checked(h)
+	r.later = append(r.later, request{name: name, description: description, schema: schema, read: true, run: st})
+}
+
+// checked wraps h so its arguments, workspace included, are checked against
+// the schema of In first, and returns that schema.
+func checked[In any](h func(context.Context, In) (any, error)) (stepFunc, *jsonschema.Schema) {
 	schema, err := jsonschema.For[In](nil)
 	if err != nil {
 		panic(err)
@@ -78,7 +93,7 @@ func step[In any](r *registry, name string, h func(context.Context, In) (any, er
 	if err != nil {
 		panic(err)
 	}
-	r.steps[name] = func(ctx context.Context, args map[string]any) (any, error) {
+	return func(ctx context.Context, args map[string]any) (any, error) {
 		if err := resolved.Validate(args); err != nil {
 			return nil, &board.Error{Kind: board.Invalid, Msg: "arguments: " + err.Error()}
 		}
@@ -91,8 +106,7 @@ func step[In any](r *registry, name string, h func(context.Context, In) (any, er
 			return nil, &board.Error{Kind: board.Invalid, Msg: "arguments: " + err.Error()}
 		}
 		return h(ctx, a)
-	}
-	return schema
+	}, schema
 }
 
 // batch runs each action in order through the tool it names. An action that

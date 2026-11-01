@@ -8,13 +8,13 @@ import (
 
 // The tool list (the JSON of ListTools' tools: names, descriptions and input
 // schemas) was 21,993 bytes in v0.3.1 and 14,648 in v0.4.0. Clients that load
-// every tool up front pay for all of it, so the rarer changes now go on
-// request (see the menu in menu_test.go) and the list is 8,314 bytes. The
-// limit is that plus about 8% headroom for a sentence or a field,
-// rounded up: 8,314 * 1.08 = 8,979, so 9,000. A new tool or a longer
-// description must earn its bytes.
+// every tool up front pay for all of it, so rarer actions are on request
+// instead (see the menu in menu_test.go): the changes run through batch (step
+// 1, 8,314 bytes) and the reads through actions (step 2, 6,595 bytes). The
+// limit is 8,000: the measured 6,595 * 1.25 = 8,244 is higher, so the round
+// number below it. A new tool or a longer description must earn its bytes.
 const (
-	maxToolListBytes   = 9000
+	maxToolListBytes   = 8000
 	maxDescriptionSize = 300
 )
 
