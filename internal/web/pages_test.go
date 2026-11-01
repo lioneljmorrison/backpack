@@ -682,3 +682,25 @@ func TestOnlyCurrentDependenciesShowOnTheCardAndStoryPage(t *testing.T) {
 		t.Errorf("the list under Blocked by is %q", list)
 	}
 }
+
+func TestAStoryPageLinksWhereItWasFoundAndWhatItFound(t *testing.T) {
+	h, b := withDemo(t)
+	parent := story(t, b, board.NewStory{Title: "Parent work"})
+	child := story(t, b, board.NewStory{Title: "Turned up later", FoundIn: parent.ID})
+	lone := story(t, b, board.NewStory{Title: "Standalone"})
+
+	page := get(h, "/w/demo/stories/"+child.ID, "bp_good")
+	wantPage(t, page, "Found in", `href="/w/demo/stories/`+parent.ID+`"`, "Parent work")
+	if strings.Contains(page.Body.String(), "Found while building") {
+		t.Errorf("a story that found nothing shows a Found while building section")
+	}
+	wantPage(t, get(h, "/w/demo/stories/"+parent.ID, "bp_good"),
+		"Found while building", `href="/w/demo/stories/`+child.ID+`"`, "Turned up later")
+	if p := get(h, "/w/demo/stories/"+parent.ID, "bp_good").Body.String(); strings.Contains(p, "<h2>Found in</h2>") {
+		t.Errorf("a story not found elsewhere shows a Found in section")
+	}
+	p := get(h, "/w/demo/stories/"+lone.ID, "bp_good").Body.String()
+	if strings.Contains(p, "Found in") || strings.Contains(p, "Found while building") {
+		t.Errorf("a story with no trail shows found sections")
+	}
+}
