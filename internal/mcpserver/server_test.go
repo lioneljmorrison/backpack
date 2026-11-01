@@ -125,7 +125,7 @@ var onRequest = map[string]bool{
 // that way.
 var onRequestReads = map[string]bool{
 	"list_branches": true, "list_releases": true, "get_release": true, "read_log": true,
-	"list_phases": true, "list_ideas": true, "get_idea": true,
+	"list_phases": true, "list_ideas": true, "get_idea": true, "get_context": true,
 }
 
 func callTool(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]any) *mcp.CallToolResult {

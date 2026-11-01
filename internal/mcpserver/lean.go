@@ -168,3 +168,39 @@ func branchSummaries(bs []board.Branch) []branchSummary {
 	}
 	return out
 }
+
+// leanContext is a story's neighbourhood as an agent reads it: the board's
+// summaries with every empty section left out.
+type leanContext struct {
+	ID           string               `json:"id"`
+	Title        string               `json:"title"`
+	Status       string               `json:"status"`
+	Phase        *board.ContextPhase  `json:"phase,omitempty"`
+	Idea         *board.ContextIdea   `json:"idea,omitempty"`
+	DependsOn    []leanLink           `json:"depends_on,omitempty"`
+	DependedOnBy []leanLink           `json:"depended_on_by,omitempty"`
+	FoundIn      *board.ContextStory  `json:"found_in,omitempty"`
+	Found        []board.ContextStory `json:"found,omitempty"`
+	Bugs         []board.ContextBug   `json:"bugs,omitempty"`
+}
+
+type leanLink struct {
+	ID        string                  `json:"id"`
+	Title     string                  `json:"title"`
+	Status    string                  `json:"status"`
+	Decisions []board.ContextDecision `json:"decisions,omitempty"`
+}
+
+func leanContextOf(c board.StoryContext) leanContext {
+	return leanContext{ID: c.ID, Title: c.Title, Status: c.Status, Phase: c.Phase, Idea: c.Idea,
+		DependsOn: leanLinks(c.DependsOn), DependedOnBy: leanLinks(c.DependedOnBy),
+		FoundIn: c.FoundIn, Found: c.Found, Bugs: c.Bugs}
+}
+
+func leanLinks(ls []board.ContextLink) []leanLink {
+	var out []leanLink
+	for _, l := range ls {
+		out = append(out, leanLink{ID: l.ID, Title: l.Title, Status: l.Status, Decisions: l.Decisions})
+	}
+	return out
+}

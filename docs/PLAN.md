@@ -81,8 +81,8 @@ top story is the next to be delivered. Rank is order, not urgency.
   dependencies that are not yet complete (merged or released). *Blocks* lists
   the stories that are not closed and depend on this one, and is empty once
   this one is complete. Finished dependencies stay recorded in the graph; they
-  are only left out of the reads (2026-10-31, S-63). Known limit: until the
-  context read (S-51), no read lists the finished dependencies of a story.
+  are only left out of the story reads (2026-10-31, S-63). `get_context` reads
+  them from the links and lists them (see "A story's context in one call").
 - Backpack refuses any change that breaks these rules.
 
 **Placing new work.** An agent proposes where a new story belongs, with its
@@ -435,7 +435,7 @@ Each slice is its own branch and pull request into `dev`.
   `args` is refused ("run it with batch"); a change is never run here, and
   `actions` stays free of side effects. With no name it answers the list: the
   reads first (run here), then the changes (run with batch), one short line
-  each (1,757 bytes). The descriptions, lines and arguments come from each
+  each (1,747 bytes). The descriptions, lines and arguments come from each
   action's own registered description and argument schema, so they cannot
   drift from what runs; the `actions` and `batch` descriptions name
   branches, releases, phases, goals, ideas and logs so a client's tool search
@@ -447,6 +447,19 @@ Each slice is its own branch and pull request into `dev`.
   adding a tool to the menu needs the owner's approval, and the exact-menu
   test is the guard. Projects that call a moved tool directly are moved over
   by [docs/UPGRADING.md](UPGRADING.md).
+  *A story's context in one call (2026-10-31, S-51).* `get_context` (`id`, on
+  request through `actions`; `GET /v1/workspaces/{ws}/stories/{id}/context`)
+  answers summaries of a story's neighbourhood in one graph read, so an agent
+  starting a story needs no call for each neighbour and no search of the
+  workspace: its phase with the goals and whether each is met; the idea that
+  became it; what it depends on and what depends on it, each with its status
+  and its last three decisions (oldest first, `corrected` when a later
+  correction points at one), read from the `DEPENDS_ON` links directly so
+  merged and released dependencies are included; the story it was found in and
+  the stories found while building it; and the open bugs found in it or in its
+  direct dependencies, at most five. Detail stays with `get_story` and
+  `read_log`. Over MCP an empty section is left out. It is one read-only
+  query and writes nothing.
 - **No sessions.** Every call carries its token and stands alone.
 
 5. **Where it runs** (2026-10-10). This is dev: the instance runs on

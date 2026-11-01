@@ -800,6 +800,28 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/context:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    get:
+      summary: A story's neighbourhood in summaries
+      description: >-
+        One read in place of many: the story's phase with its goals, the idea
+        it came from, what it depends on and what depends on it (read from the
+        dependency links, so finished dependencies are included, unlike the
+        story read), where it was found and what was found while building it,
+        and the open bugs found in it or in its direct dependencies (up to
+        five). Detail stays with the story and its log. Over MCP this is
+        get_context, run through actions.
+      responses:
+        "200":
+          description: The context
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoryContext" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/stories/{id}/log:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -1348,6 +1370,85 @@ components:
       type: string
       enum: [planning, building, testing, waiting]
       description: What an in-progress story is doing.
+    StoryContext:
+      type: object
+      required: [id, title, status, depends_on, depended_on_by, found, bugs]
+      properties:
+        id: { type: string, example: S-3 }
+        title: { type: string }
+        status: { type: string }
+        phase:
+          type: object
+          description: The phase the story is in; absent when it has none
+          required: [number, title, goals]
+          properties:
+            number: { type: integer }
+            title: { type: string }
+            goals:
+              type: array
+              items:
+                type: object
+                required: [id, text, met]
+                properties:
+                  id: { type: string, example: G-1 }
+                  text: { type: string }
+                  met: { type: boolean }
+        idea:
+          type: object
+          description: The idea that became this story; absent when none did
+          required: [id, title]
+          properties:
+            id: { type: string, example: I-1 }
+            title: { type: string }
+        depends_on:
+          type: array
+          description: Every dependency, finished ones included, in delivery order
+          items: { $ref: "#/components/schemas/ContextLink" }
+        depended_on_by:
+          type: array
+          description: Every story that depends on this one, in delivery order
+          items: { $ref: "#/components/schemas/ContextLink" }
+        found_in: { $ref: "#/components/schemas/ContextStory" }
+        found:
+          type: array
+          description: The stories found while building this one
+          items: { $ref: "#/components/schemas/ContextStory" }
+        bugs:
+          type: array
+          description: Open bugs found in this story or a direct dependency, in delivery order, at most five
+          items:
+            type: object
+            required: [id, title, status, found_in]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              status: { type: string }
+              found_in: { type: string, description: The story the bug was found in }
+    ContextStory:
+      type: object
+      required: [id, title, status]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status: { type: string }
+    ContextLink:
+      type: object
+      required: [id, title, status, decisions]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status: { type: string }
+        decisions:
+          type: array
+          description: Its last three decisions, oldest first
+          items:
+            type: object
+            required: [id, text, reason]
+            properties:
+              id: { type: string, example: L-4 }
+              text: { type: string }
+              reason: { type: string }
+              corrected: { type: boolean, description: "Sent only when true: a later correction points at this decision" }
     LogEntry:
       type: object
       required: [id, at, actor, kind]
