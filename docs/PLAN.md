@@ -46,7 +46,10 @@ same board through an API.
 between workspaces.
 
 **Ideas.** Everything starts as an idea: a rough thought with little context
-and no sense yet of where it fits. Ideas are worked through together. Once
+and no sense yet of where it fits. An agent breaks an idea into stories, and a
+phase if needed, itself (2026-10-31, S-50): it proposes the stories (a qualifying
+bug goes straight in through `add_bug_fix`), adds any phase and goals, which
+take effect at once, and refines the idea right after. Once
 refined, an idea is **closed**, keeping links to the stories or phase it became.
 
 **Phases.** A phase is a large body of work (an epic), with its own

@@ -123,8 +123,8 @@ actions; a rarer change runs through `batch`.
   plan, or `mark_reviewed` with a reason.
 - **Search first,** before `add_story` or `add_idea`. New work goes in with
   `add_story` and its `reasoning`, waits as proposed for a person (a bug with a
-  clear fix: `add_bug_fix`), then `add_dependency`. Rough thoughts go in with
-  `add_idea` and a `context`; `refine_idea` or `drop_idea` closes them.
+  clear fix: `add_bug_fix`), then `add_dependency`. Break an `add_idea`
+  thought into proposed stories and any phase yourself, then `refine_idea` it.
 - **Many changes at once** go in one `batch`; read every answer.
 
 ## Working through the backlog
