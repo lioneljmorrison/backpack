@@ -150,15 +150,17 @@ the code. For each story:
    pass (after `make forward` when the stack runs on another host); if the
    change alters how Backpack is built, run, configured or used, or adds a
    known limitation, update README.md, CLAUDE.md or `docs/` to match and list
-   the doc changes in the report; commit on the branch (don't push); report
-   what changed, any deviation from the plan and why, and any gap or new work
-   it found. Keep the story's activity current with `update_story` as it moves.
+   the doc changes in the report; commit on the branch (don't push); log
+   decisions and add found work on the board; report what changed, any
+   deviation from the plan and why, any gap, and the ids it added. Keep the
+   story's activity current with `update_story` as it moves.
 5. Review the diff against the goal (`git diff origin/dev...`) and check the
    docs match. Send it back to the same sub-agent (`SendMessage`) for fixes.
 6. Push, open the pull request into `dev` (`in_review`), merge it once the
    gates pass (`merged`, with the merge commit). Log decisions and deviations.
-7. New work the sub-agent found: `search`, then `add_story` as proposed.
-   Don't wait for approval; continue with the next ready story.
+7. New work the sub-agent found: check what it added and its found-in link,
+   rather than adding it again. Don't wait for approval; continue with the
+   next ready story.
 8. If the build fails twice or the plan doesn't hold, `on_hold` with the
    reason and move on.
 
