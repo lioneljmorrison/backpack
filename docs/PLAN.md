@@ -435,14 +435,15 @@ Each slice is its own branch and pull request into `dev`.
   `args` is refused ("run it with batch"); a change is never run here, and
   `actions` stays free of side effects. With no name it answers the list: the
   reads first (run here), then the changes (run with batch), one short line
-  each (1,791 bytes). The descriptions, lines and arguments come from each
-  action's own registered description and argument schema, so they cannot
-  drift from what runs; the `actions` and `batch` descriptions name
-  branches, releases, phases, goals, ideas and logs so a client's tool search
-  finds them. A name that is a menu tool, or unknown, is refused with a reason.
-  The tool list is capped by a test at 8,000 bytes (measured 6,595; 6,595 x
-  1.25 = 8,244, so the round number below it), down from 14,648 in 0.4.0 and
-  8,314 after step 1. The rule for new features: a new action goes on
+  each (capped by a test at 1,800 bytes). The descriptions, lines and
+  arguments come from each action's own registered description and argument
+  schema, so they cannot drift from what runs; the `actions` and `batch`
+  descriptions name branches, releases, phases, goals, ideas and logs so a
+  client's tool search finds them. A name that is a menu tool, or unknown, is
+  refused with a reason.
+  The tool list is capped by a test at 8,000 bytes, set when Fewer tools
+  measured 6,595 (x 1.25 = 8,244, rounded down), down from 14,648 in 0.4.0
+  and 8,314 after step 1. The rule for new features: a new action goes on
   request by default (a change through `batch`, a read through `actions`);
   adding a tool to the menu needs the owner's approval, and the exact-menu
   test is the guard. Projects that call a moved tool directly are moved over
