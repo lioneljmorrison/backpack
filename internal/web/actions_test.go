@@ -386,3 +386,41 @@ func TestAStoryInReviewCanBeMergedIntoAnyStartingBranch(t *testing.T) {
 		t.Fatalf("into %q, want staging", into)
 	}
 }
+
+func TestAStoryCanBeAddedAsABugFromTheForm(t *testing.T) {
+	h, b := withDemo(t)
+	wantPage(t, get(h, "/w/demo/stories/new", "bp_good"), `name="kind"`, `value="bug"`)
+	w := post(h, host, "/w/demo/stories", "bp_good", url.Values{"title": {"Broken"}, "kind": {"bug"}})
+	wantRedirect(t, w, "/w/demo/stories/S-1")
+	got := must[board.Story](t)(b.Story("demo", "S-1"))
+	if got.Kind != "bug" || got.Status != board.Backlog {
+		t.Fatalf("story %+v, want a bug in the backlog", got)
+	}
+}
+
+func TestAStoryAddedWithoutTheBugBoxIsNotABug(t *testing.T) {
+	h, b := withDemo(t)
+	post(h, host, "/w/demo/stories", "bp_good", url.Values{"title": {"Plain"}})
+	if k := must[board.Story](t)(b.Story("demo", "S-1")).Kind; k != "" {
+		t.Fatalf("kind %q, want none", k)
+	}
+}
+
+func TestTheBugMarkCanBeSetAndClearedOnTheStoryPage(t *testing.T) {
+	h, b := withDemo(t)
+	s := story(t, b, board.NewStory{Title: "Work"})
+	back := "/w/demo/stories/" + s.ID
+	wantPage(t, get(h, back, "bp_good"), `action="`+back+`/kind"`)
+	act(t, h, back+"/kind", url.Values{"kind": {"bug"}}, back)
+	if k := must[board.Story](t)(b.Story("demo", s.ID)).Kind; k != "bug" {
+		t.Fatalf("kind %q, want bug", k)
+	}
+	page := get(h, back, "bp_good").Body.String()
+	if !strings.Contains(page, `value="bug" checked`) {
+		t.Fatal("the box is not ticked for a bug")
+	}
+	act(t, h, back+"/kind", url.Values{}, back)
+	if k := must[board.Story](t)(b.Story("demo", s.ID)).Kind; k != "" {
+		t.Fatalf("kind %q, want it cleared", k)
+	}
+}

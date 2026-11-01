@@ -25,6 +25,7 @@ func (s *site) routeActions(mux *http.ServeMux) {
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/move", s.moveStory)
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/status", s.setStatus)
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/activity", s.setActivity)
+	mux.HandleFunc("POST /w/{ws}/stories/{id}/kind", s.setKind)
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/log", s.addLog)
 	mux.HandleFunc("POST /w/{ws}/ideas", s.addIdea)
 	mux.HandleFunc("POST /w/{ws}/ideas/{id}/refine", s.refineIdea)
@@ -159,6 +160,14 @@ func (s *site) setActivity(w http.ResponseWriter, r *http.Request) {
 	s.done(w, r, storyURL(r, r.PathValue("id")), err)
 }
 
+// setKind marks a story as a bug, or clears the mark. The form is one
+// checkbox, so an unticked box sends nothing and means "clear".
+func (s *site) setKind(w http.ResponseWriter, r *http.Request) {
+	kind := r.PostFormValue("kind")
+	_, err := s.board.UpdateStory(r.PathValue("ws"), actor(r), r.PathValue("id"), board.StoryPatch{Kind: &kind})
+	s.done(w, r, storyURL(r, r.PathValue("id")), err)
+}
+
 func (s *site) addLog(w http.ResponseWriter, r *http.Request) {
 	e := board.NewLogEntry{
 		Kind:     r.PostFormValue("kind"),
@@ -202,6 +211,7 @@ func (s *site) addStory(w http.ResponseWriter, r *http.Request) {
 		Description: strings.TrimSpace(r.PostFormValue("description")),
 		Goal:        strings.TrimSpace(r.PostFormValue("goal")),
 		Plan:        strings.TrimSpace(r.PostFormValue("plan")),
+		Kind:        r.PostFormValue("kind"),
 		Position:    board.Position{After: r.PostFormValue("after")},
 	}
 	if p := r.PostFormValue("phase"); p != "" {

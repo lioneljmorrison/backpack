@@ -53,6 +53,11 @@
     <button type="submit">Move</button>
   </form>
   {{end}}
+  <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/kind">
+    <h2>Kind</h2>
+    <label class="check"><input type="checkbox" name="kind" value="bug"{{if eq .Story.Kind "bug"}} checked{{end}}> Bug</label>
+    <button type="submit">Save</button>
+  </form>
   {{if eq .Story.Status "in_progress"}}
   <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/activity">
     <h2>Doing</h2>
