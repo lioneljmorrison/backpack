@@ -1291,11 +1291,11 @@ components:
         blocked: { type: boolean, description: "A story it depends on is not yet complete" }
         blocked_by:
           type: array
-          description: Stories this one depends on, complete or not
+          description: Stories this one depends on that are not yet complete (merged or released). Finished dependencies stay recorded but are not listed.
           items: { type: string }
         blocks:
           type: array
-          description: Stories that depend on this one
+          description: Stories that are not closed and depend on this one while it is not complete. Empty once it is complete.
           items: { type: string }
         found_in: { type: string, description: "The story this one was found while building; absent if none" }
         found:

@@ -666,3 +666,22 @@ func TestAStoryFoundInRoundTripsOverHTTP(t *testing.T) {
 	}
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "C", "found_in": "S-99"}`), http.StatusNotFound)
 }
+
+func TestOnlyDependenciesThatStillBlockAreListedOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	for _, title := range []string{"A", "B", "C"} {
+		want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "`+title+`"}`), http.StatusCreated)
+	}
+	for _, to := range []string{"in_progress", "in_review", "merged"} {
+		want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-3/dependencies", `{"on": "S-1"}`), http.StatusOK)
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-3/dependencies", `{"on": "S-2"}`), http.StatusOK)
+	if by := s["blocked_by"].([]any); len(by) != 1 || by[0] != "S-2" {
+		t.Fatalf("S-3 %v", s)
+	}
+	first := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
+	if bl, ok := first["blocks"].([]any); !ok || len(bl) != 0 {
+		t.Fatalf("S-1 blocks %v, want []", first["blocks"])
+	}
+}

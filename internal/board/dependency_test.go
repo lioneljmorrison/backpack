@@ -195,3 +195,50 @@ func TestFinishedAndClosedStoriesCannotGainDependencies(t *testing.T) {
 		wantKind(t, err, board.Conflict)
 	}
 }
+
+func TestBlockedByListsOnlyDependenciesThatAreNotComplete(t *testing.T) {
+	b := threeStories(t)
+	walk(t, b, "S-1", "in_progress", "in_review", "merged")
+	depend(t, b, "S-3", "S-1")
+	depend(t, b, "S-3", "S-2")
+	s1, _ := b.Story("demo", "S-1")
+	s2, _ := b.Story("demo", "S-2")
+	s3, _ := b.Story("demo", "S-3")
+	if !slices.Equal(s3.BlockedBy, []string{"S-2"}) || !s3.Blocked {
+		t.Fatalf("S-3 %+v", s3)
+	}
+	if len(s1.Blocks) != 0 {
+		t.Fatalf("a complete story blocks %v", s1.Blocks)
+	}
+	if !slices.Equal(s2.Blocks, []string{"S-3"}) {
+		t.Fatalf("S-2 blocks %v", s2.Blocks)
+	}
+	for _, s := range []board.Story{s1, s2, s3} {
+		if s.Blocked != (len(s.BlockedBy) > 0) {
+			t.Errorf("%s: blocked %v with blocked_by %v", s.ID, s.Blocked, s.BlockedBy)
+		}
+	}
+}
+
+func TestAStoryWhoseDependenciesAreAllCompleteIsNotBlocked(t *testing.T) {
+	b := threeStories(t)
+	walk(t, b, "S-1", "in_progress", "in_review", "merged")
+	walk(t, b, "S-2", "in_progress", "in_review", "merged")
+	depend(t, b, "S-3", "S-1")
+	depend(t, b, "S-3", "S-2")
+	s3, _ := b.Story("demo", "S-3")
+	if s3.Blocked || len(s3.BlockedBy) != 0 {
+		t.Fatalf("S-3 %+v", s3)
+	}
+}
+
+func TestAClosedDependentIsNotListedAsBlocked(t *testing.T) {
+	b := threeStories(t)
+	depend(t, b, "S-2", "S-1")
+	depend(t, b, "S-3", "S-1")
+	setStatus(t, b, "S-3", board.StatusChange{To: "closed", Reason: "dropped"})
+	s1, _ := b.Story("demo", "S-1")
+	if !slices.Equal(s1.Blocks, []string{"S-2"}) {
+		t.Fatalf("S-1 blocks %v", s1.Blocks)
+	}
+}

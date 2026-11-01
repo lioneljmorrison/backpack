@@ -288,3 +288,46 @@ func TestActionsDescribesAddBugFixWithItsClaims(t *testing.T) {
 		}
 	}
 }
+
+func mergeStory(t *testing.T, b *board.Board, id string) {
+	t.Helper()
+	for _, c := range []board.StatusChange{
+		{To: board.InProgress}, {To: board.InReview}, {To: board.Merged},
+	} {
+		if _, err := b.SetStatus("demo", "tester", id, c); err != nil {
+			t.Fatalf("%s to %s: %v", id, c.To, err)
+		}
+	}
+}
+
+func TestGetStoryListsOnlyDependenciesThatStillBlock(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "First")
+	addStory(t, b, "Second")
+	addStory(t, b, "Third")
+	mergeStory(t, b, "S-1")
+	for _, on := range []string{"S-1", "S-2"} {
+		if _, err := b.AddDependency("demo", "tester", "S-3", on); err != nil {
+			t.Fatal(err)
+		}
+	}
+	third := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-3"})
+	by, _ := third["blocked_by"].([]any)
+	if third["blocked"] != true || len(by) != 1 || by[0] != "S-2" {
+		t.Fatalf("story %v", third)
+	}
+	first := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-1"})
+	absent(t, first, "blocks", "blocked", "blocked_by")
+}
+
+func TestGetStoryWithOnlyCompleteDependenciesLeavesOutBlockedFields(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "First")
+	addStory(t, b, "Second")
+	mergeStory(t, b, "S-1")
+	if _, err := b.AddDependency("demo", "tester", "S-2", "S-1"); err != nil {
+		t.Fatal(err)
+	}
+	s := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-2"})
+	absent(t, s, "blocked_by", "blocks", "blocked")
+}

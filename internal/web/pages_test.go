@@ -133,7 +133,7 @@ func TestAStoryShowsItsDetailDependenciesAndLog(t *testing.T) {
 
 	wantPage(t, get(h, "/w/demo/stories/"+second.ID, "bp_good"),
 		"Built on it", "What it is", "Why it matters", "How it goes",
-		"Depends on", `href="/w/demo/stories/S-1"`, "Groundwork",
+		"Blocked by", `href="/w/demo/stories/S-1"`, "Groundwork",
 		"Looked at the old one", "It was the new one", "Corrects "+note.ID, `id="`+note.ID+`"`)
 	wantPage(t, get(h, "/w/demo/stories/"+first.ID, "bp_good"), "Blocks", `href="/w/demo/stories/S-2"`)
 }
@@ -654,5 +654,31 @@ func TestAStraightInBugShowsABadgeOnItsCardAndItsPage(t *testing.T) {
 	wantPage(t, get(h, "/w/demo/stories/S-2", "bp_good"), "Straight in")
 	if strings.Contains(get(h, "/w/demo/stories/S-3", "bp_good").Body.String(), "Straight in") {
 		t.Error("a plain bug has the badge")
+	}
+}
+
+func TestOnlyCurrentDependenciesShowOnTheCardAndStoryPage(t *testing.T) {
+	h, b := withDemo(t)
+	first := story(t, b, board.NewStory{Title: "Finished groundwork"})
+	second := story(t, b, board.NewStory{Title: "Still open"})
+	third := story(t, b, board.NewStory{Title: "Built on both"})
+	for _, to := range []string{board.InProgress, board.InReview, board.Merged} {
+		must[board.Story](t)(b.SetStatus("demo", "tester", first.ID, board.StatusChange{To: to}))
+	}
+	must[board.Story](t)(b.AddDependency("demo", "tester", third.ID, first.ID))
+	must[board.Story](t)(b.AddDependency("demo", "tester", third.ID, second.ID))
+
+	card := get(h, "/w/demo", "bp_good").Body.String()
+	if !strings.Contains(card, "Blocked by S-2") || strings.Contains(card, "S-1, S-2") {
+		t.Errorf("the card does not name only S-2:\n%s", card)
+	}
+	page := get(h, "/w/demo/stories/"+third.ID, "bp_good").Body.String()
+	_, after, found := strings.Cut(page, "<h2>Blocked by</h2>")
+	if !found || strings.Contains(page, "Depends on") {
+		t.Fatalf("no Blocked by heading:\n%s", page)
+	}
+	list, _, _ := strings.Cut(after, "</ul>")
+	if !strings.Contains(list, "S-2") || strings.Contains(list, "S-1") {
+		t.Errorf("the list under Blocked by is %q", list)
 	}
 }
