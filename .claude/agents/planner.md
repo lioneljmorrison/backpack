@@ -33,6 +33,15 @@ Follow the repository guardrails in CLAUDE.md and docs/ENGINEERING-STANDARD.md:
 - Update `docs/PLAN.md` (or, once it exists, Backpack's own record) as part of
   the plan.
 
+Read the board before planning. The workspace is in `.backpack.json`. Run
+`get_context` for the story through the backpack `actions` tool
+(`{"name": "get_context", "args": {"workspace": "<ws>", "id": "S-n"}}`), then
+use the `search` tool with `story` set to find related work. Use the board only
+to read: you do not write to it, because the plan is not approved yet. Put the
+decisions you made, with their reason, and any work you found (as a bug or a
+story, noting the story it was found in) in the plan for the main session to
+record once it is approved.
+
 Orient first (read code, search, fetch sources), then deliver:
 
 1. A restatement of scope and any assumptions — ask if intent is unclear rather
