@@ -306,7 +306,7 @@ through `batch`.
 
 - **Orientation.** The session hook has already shown "where are we"; trust it.
   Call `where_are_we` only if the hook didn't run. `whats_next` gives the next
-  story and `get_story` its detail. Don't guess the next task.
+  story and `get_story` its detail.
 - **Record each move as it happens** with `set_status`: `in_progress` with the
   task branch, `in_review` with the pull request link, `merged` with the merge
   commit. `merge_branch` moves `dev`'s stories to `main`; `cut_release` records a
@@ -318,9 +318,9 @@ through `batch`.
 - **Upstream changed.** Check each marked story against the new plan; update its
   plan, or `mark_reviewed` with a reason.
 - **Search first,** before `add_story` or `add_idea`. New work goes in with
-  `add_story` and its `reasoning`, waits as proposed for a person, then
-  `add_dependency`. Rough thoughts go in with `add_idea` and a `context`;
-  `refine_idea` or `drop_idea` closes them.
+  `add_story` and its `reasoning`, waits as proposed for a person (a bug with a
+  clear fix: `add_bug_fix`), then `add_dependency`. Rough thoughts go in with
+  `add_idea` and a `context`; `refine_idea` or `drop_idea` closes them.
 - **Many changes at once** go in one `batch`; read every answer.
 ```
 

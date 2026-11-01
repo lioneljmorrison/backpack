@@ -1,6 +1,7 @@
 package mcpserver_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -214,4 +215,76 @@ func TestAStoryFoundInReadsBothWaysOverMCP(t *testing.T) {
 		t.Fatalf("A %v", a)
 	}
 	refused(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "C", "found_in": "S-99", "reasoning": "r"})
+}
+
+func bugFix(m map[string]any) map[string]any {
+	a := map[string]any{"workspace": "demo", "title": "Crash on save", "kind": "bug", "found_in": "S-1",
+		"after": "S-1", "reasoning": "next to where it was found", "fix": "Check the length first",
+		"no_design_choice": true, "no_contract_change": true, "nothing_else": true}
+	for k, v := range m {
+		if v == nil {
+			delete(a, k)
+		} else {
+			a[k] = v
+		}
+	}
+	return a
+}
+
+func TestAddBugFixPutsAClearBugInTheBacklogAndWhereAreWeShowsIt(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "Build A")
+	got := use(t, cs, "add_bug_fix", bugFix(nil))
+	if got["id"] != "S-2" || got["status"] != "backlog" {
+		t.Fatalf("answer %v", got)
+	}
+	if s := readStory(t, cs, "S-2"); s["straight_in"] != true || s["found_in"] != "S-1" {
+		t.Fatalf("story %v", s)
+	}
+	l, err := b.Log("demo", "S-2")
+	if err != nil || len(l) != 1 || l[0].Kind != "decision" || !strings.Contains(l[0].Text, "Check the length first") {
+		t.Fatalf("log %+v, %v", l, err)
+	}
+	if w := say(t, cs, "where_are_we", map[string]any{"workspace": "demo"}); !strings.Contains(w, "S-2 Crash on save — found in S-1") {
+		t.Fatalf("where:\n%s", w)
+	}
+}
+
+func TestAddBugFixIsRefusedWhenAClaimIsNotMadeOrACheckFails(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "Build A")
+	for name, edit := range map[string]map[string]any{
+		"a claim left out":  {"nothing_else": nil},
+		"a claim false":     {"no_design_choice": false},
+		"no fix":            {"fix": nil},
+		"not a bug":         {"kind": nil},
+		"no place":          {"after": nil},
+		"no found-in story": {"found_in": nil},
+	} {
+		t.Run(name, func(t *testing.T) { refused(t, cs, "add_bug_fix", bugFix(edit)) })
+	}
+	if ss, err := b.Stories("demo"); err != nil || len(ss) != 1 {
+		t.Fatalf("stories %+v, %v", ss, err)
+	}
+}
+
+func TestAddStoryStillProposesABugAndTakesNoClaims(t *testing.T) {
+	b, cs := connect(t)
+	addStory(t, b, "Build A")
+	args := map[string]any{"workspace": "demo", "title": "Crash", "kind": "bug", "found_in": "S-1", "reasoning": "r"}
+	if got := use(t, cs, "add_story", args); got["status"] != "proposed" {
+		t.Fatalf("answer %v", got)
+	}
+	args["fix"] = "x"
+	refused(t, cs, "add_story", args)
+}
+
+func TestActionsDescribesAddBugFixWithItsClaims(t *testing.T) {
+	_, cs := connect(t)
+	got := say(t, cs, "actions", map[string]any{"name": "add_bug_fix"})
+	for _, want := range []string{"fix: string", "no_design_choice: boolean", "no_contract_change: boolean", "nothing_else: boolean", "title: ", "batch"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("answer lacks %q:\n%s", want, got)
+		}
+	}
 }

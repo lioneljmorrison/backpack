@@ -117,7 +117,7 @@ var onRequest = map[string]bool{
 	"cut_release": true, "add_phase": true, "update_phase": true, "add_goal": true,
 	"update_goal": true, "mark_goal_met": true, "refine_idea": true, "drop_idea": true,
 	"update_idea": true, "move_idea": true, "move_story": true, "remove_dependency": true,
-	"mark_reviewed": true,
+	"mark_reviewed": true, "add_bug_fix": true,
 }
 
 // onRequestReads names the reads that are not on the menu: they run only

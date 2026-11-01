@@ -637,3 +637,22 @@ func TestABugShowsABadgeOnItsCardAndItsPage(t *testing.T) {
 		t.Error("a story that is not a bug has the badge")
 	}
 }
+
+func TestAStraightInBugShowsABadgeOnItsCardAndItsPage(t *testing.T) {
+	h, b := withDemo(t)
+	story(t, b, board.NewStory{Title: "Build A"})
+	if _, err := b.AddStory("demo", "tester", board.NewStory{Title: "Crash on save", Kind: "bug", FoundIn: "S-1",
+		Reasoning: "next to where it was found", Position: board.Position{After: "S-1"},
+		StraightIn: &board.StraightIn{Fix: "Check the length", NoDesignChoice: true, NoContractChange: true, NothingElse: true}}); err != nil {
+		t.Fatal(err)
+	}
+	story(t, b, board.NewStory{Title: "Plain bug", Kind: "bug"})
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	if n := strings.Count(page, "Straight in"); n != 1 {
+		t.Errorf("the board has %d straight-in badges, want 1", n)
+	}
+	wantPage(t, get(h, "/w/demo/stories/S-2", "bp_good"), "Straight in")
+	if strings.Contains(get(h, "/w/demo/stories/S-3", "bp_good").Body.String(), "Straight in") {
+		t.Error("a plain bug has the badge")
+	}
+}

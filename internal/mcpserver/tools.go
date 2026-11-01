@@ -52,6 +52,17 @@ type addStoryIn struct {
 	position
 }
 
+// addBugFixIn is add_story's fields plus the fix and the three claims. The
+// claims are required, so one left out is refused by the schema; a false one
+// is refused by the board.
+type addBugFixIn struct {
+	addStoryIn
+	Fix              string `json:"fix" jsonschema:"the fix, in a sentence"`
+	NoDesignChoice   bool   `json:"no_design_choice" jsonschema:"claim: the fix needs no design choice"`
+	NoContractChange bool   `json:"no_contract_change" jsonschema:"claim: it changes no API or tool contract"`
+	NothingElse      bool   `json:"nothing_else" jsonschema:"claim: it changes nothing else"`
+}
+
 type updateStoryIn struct {
 	storyIn
 	Title       *string `json:"title,omitempty"`
@@ -230,10 +241,11 @@ func addTools(s *mcp.Server, t tools) {
 	tool(s, "get_story", "One story: status, what blocks it and what it blocks.", t.getStory)
 	write(r, "add_story", "Propose a story, ranked before or after another (default: bottom). It stays proposed until a person approves it. Answers with id and status.", t.addStory)
 	write(r, "update_story", "Change a story's fields; others stay. A new goal or plan marks dependents upstream changed. Answers with id, fields changed and stories marked.", t.updateStory)
+	later(r, "add_bug_fix", "Add a clear-fix bug, no approval. Needs kind bug, found_in, the fix, all three claims true, no phase or found_in's, and before or after with reasoning; else refused. Answers with id and status.", t.addBugFix)
 	later(r, "mark_reviewed", "Clear a story's upstream-changed mark once checked. Needs a reason. Answers with id.", t.markReviewed)
 	later(r, "move_story", "Move a story before or after another, or to the bottom. Answers with id.", t.moveStory)
 	write(r, "set_status", "Move a story one column forward, or back before merged; or on_hold, or closed (final). Approve a proposal with backlog. Released comes only from cut_release. Answers with id and status.", t.setStatus)
-	later(r, "merge_branch", "Record that a branch was merged into its target at a commit; its merged stories move on. Answers with the story ids moved.", t.mergeBranch)
+	later(r, "merge_branch", "Record a branch merged into its target at a commit; its merged stories move on. Answers with the story ids moved.", t.mergeBranch)
 	later(r, "cut_release", "Record a release (version, git tag, optional commit and notes): stories merged into the release branch become Released. Answers with id, version and story count.", t.cutRelease)
 	laterRead(r, "list_releases", "Every release, newest first: id, version, tag, story count.", t.listReleases)
 	laterRead(r, "get_release", "One release by id (R-n), with its stories in delivery order.", t.getRelease)
@@ -304,9 +316,20 @@ func (t tools) getStory(_ context.Context, a storyIn) (any, error) {
 }
 
 func (t tools) addStory(ctx context.Context, a addStoryIn) (any, error) {
+	return t.add(ctx, a, nil)
+}
+
+// addBugFix is add_story for a bug with a clear fix: into the backlog, or
+// refused.
+func (t tools) addBugFix(ctx context.Context, a addBugFixIn) (any, error) {
+	return t.add(ctx, a.addStoryIn, &board.StraightIn{Fix: a.Fix, NoDesignChoice: a.NoDesignChoice,
+		NoContractChange: a.NoContractChange, NothingElse: a.NothingElse})
+}
+
+func (t tools) add(ctx context.Context, a addStoryIn, straight *board.StraightIn) (any, error) {
 	s, err := t.b.AddStory(a.Workspace, actor(ctx), board.NewStory{Title: a.Title, Description: a.Description,
-		Goal: a.Goal, Plan: a.Plan, Kind: a.Kind, FoundIn: a.FoundIn, Phase: a.Phase, Proposed: true, Reasoning: a.Reasoning,
-		Position: board.Position(a.position)})
+		Goal: a.Goal, Plan: a.Plan, Kind: a.Kind, FoundIn: a.FoundIn, Phase: a.Phase, Proposed: straight == nil,
+		Reasoning: a.Reasoning, Position: board.Position(a.position), StraightIn: straight})
 	if err != nil {
 		return nil, err
 	}
