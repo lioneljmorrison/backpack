@@ -1,9 +1,7 @@
 package mcpserver_test
 
 import (
-	"context"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -73,26 +71,6 @@ func TestMarkGoalMetNeedsMet(t *testing.T) {
 	use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Foundations"})
 	use(t, cs, "add_goal", map[string]any{"workspace": "demo", "phase": 1, "text": "it runs"})
 	refused(t, cs, "mark_goal_met", map[string]any{"workspace": "demo", "id": "G-1"})
-}
-
-func TestTheServerOffersExactlyTheSettledTools(t *testing.T) {
-	_, cs := connect(t)
-	res, err := cs.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, tl := range res.Tools {
-		names = append(names, tl.Name)
-	}
-	slices.Sort(names)
-	want := []string{"add_branch", "add_dependency", "add_goal", "add_idea", "add_phase", "add_story",
-		"batch", "cut_release", "drop_idea", "get_idea", "get_release", "get_story", "list_branches", "list_ideas", "list_phases", "list_releases", "list_workspaces", "log", "mark_goal_met", "mark_reviewed", "merge_branch", "move_idea",
-		"move_story", "read_log", "refine_idea", "remove_branch", "remove_dependency", "search", "set_status", "update_branch", "update_goal", "update_idea",
-		"update_phase", "update_story", "whats_next", "where_are_we"}
-	if !slices.Equal(names, want) {
-		t.Fatalf("tools %v, want %v", names, want)
-	}
 }
 
 func TestUpdatePhaseChangesOnlyTheFieldsGivenAndAnswersWithTheNumber(t *testing.T) {

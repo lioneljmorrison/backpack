@@ -109,13 +109,64 @@ func refused(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]a
 	return text(res)
 }
 
+// onRequest names the changes that are not on the menu: they run only
+// through batch. callTool sends them that way, as a one-action batch, and
+// unwraps the answer, so a test reads them as it reads any tool.
+var onRequest = map[string]bool{
+	"add_branch": true, "update_branch": true, "remove_branch": true, "merge_branch": true,
+	"cut_release": true, "add_phase": true, "update_phase": true, "add_goal": true,
+	"update_goal": true, "mark_goal_met": true, "refine_idea": true, "drop_idea": true,
+	"update_idea": true, "move_idea": true, "move_story": true, "remove_dependency": true,
+	"mark_reviewed": true,
+}
+
 func callTool(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]any) *mcp.CallToolResult {
+	t.Helper()
+	if onRequest[tool] {
+		return callOnRequest(t, cs, tool, args)
+	}
+	return callDirect(t, cs, tool, args)
+}
+
+func callDirect(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]any) *mcp.CallToolResult {
 	t.Helper()
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: args})
 	if err != nil {
 		t.Fatalf("%s: %v", tool, err)
 	}
 	return res
+}
+
+// callOnRequest runs an on-request change as a one-action batch. A failed
+// action comes back as an error result carrying its reason.
+func callOnRequest(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]any) *mcp.CallToolResult {
+	t.Helper()
+	rest := map[string]any{}
+	for k, v := range args {
+		if k != "workspace" {
+			rest[k] = v
+		}
+	}
+	res := callDirect(t, cs, "batch", map[string]any{"workspace": args["workspace"],
+		"actions": []any{map[string]any{"tool": tool, "args": rest}}})
+	if res.IsError {
+		return res
+	}
+	var out struct {
+		Results []struct {
+			OK     bool            `json:"ok"`
+			Result json.RawMessage `json:"result"`
+			Error  string          `json:"error"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(text(res)), &out); err != nil || len(out.Results) != 1 {
+		t.Fatalf("%s: batch answered %q: %v", tool, text(res), err)
+	}
+	r := out.Results[0]
+	if !r.OK {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: r.Error}}}
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(r.Result)}}}
 }
 
 func text(res *mcp.CallToolResult) string {

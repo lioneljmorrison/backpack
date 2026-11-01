@@ -19,7 +19,7 @@ import (
 // New returns the MCP handler, searching with x, the index of b. It keeps no
 // sessions: every call carries its own token, checked before it arrives here.
 func New(b *board.Board, x *search.Index) http.Handler {
-	s := mcp.NewServer(&mcp.Implementation{Name: "backpack", Version: "0.4.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "backpack", Version: "0.5.0"}, nil)
 	addTools(s, tools{b, x})
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s },
 		&mcp.StreamableHTTPOptions{Stateless: true})
