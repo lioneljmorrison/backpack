@@ -9,8 +9,12 @@ func TestAddDependencyIsReadFromBothEnds(t *testing.T) {
 	addStory(t, b, "First")
 	addStory(t, b, "Second")
 	s := use(t, cs, "add_dependency", map[string]any{"workspace": "demo", "id": "S-2", "on": "S-1"})
-	if by, _ := s["blocked_by"].([]any); len(by) != 1 || by[0] != "S-1" {
-		t.Fatalf("story %v", s)
+	if len(s) != 2 || s["id"] != "S-2" || s["blocked"] != true {
+		t.Fatalf("answer %v", s)
+	}
+	second := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-2"})
+	if by, _ := second["blocked_by"].([]any); len(by) != 1 || by[0] != "S-1" {
+		t.Fatalf("story %v", second)
 	}
 	first := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-1"})
 	if blocks, _ := first["blocks"].([]any); len(blocks) != 1 || blocks[0] != "S-2" {

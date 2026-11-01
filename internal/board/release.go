@@ -69,7 +69,7 @@ func (b *Board) CutRelease(ws, actor string, n NewRelease) (_ Release, err error
 			CREATE (r:Release {id: id, version: $version, tag: $tag, commit: $commit, notes: $notes,
 				created_by: $actor, created_at: $at})
 			FOREACH (i IN range(0, size(ss) - 1) | FOREACH (s IN [ss[i]] |
-				SET s.status = 'released'
+				SET s.status = 'released', s.upstream_id = null, s.upstream_at = null
 				CREATE (s)-[:IN_RELEASE]->(r)
 				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $at, actor: $actor, kind: 'status',
 					from: 'merged', to: 'released', commit: $commit, into: branch,

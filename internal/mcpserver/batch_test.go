@@ -76,7 +76,7 @@ func TestBatchReportsAFailedActionsReasonAndAppliesTheRest(t *testing.T) {
 func TestAStoryAddedThroughABatchIsProposed(t *testing.T) {
 	_, cs := connect(t)
 	rs := results(t, cs, action("add_story", map[string]any{"title": "First", "reasoning": "at the bottom"}))
-	if s, _ := rs[0]["result"].(map[string]any); s["status"] != "proposed" || s["created_by"] != "tester" {
+	if s, _ := rs[0]["result"].(map[string]any); len(s) != 2 || s["id"] != "S-1" || s["status"] != "proposed" {
 		t.Fatalf("result %v", rs[0])
 	}
 }

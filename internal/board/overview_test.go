@@ -1,6 +1,7 @@
 package board_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -220,5 +221,33 @@ func TestAPhaseWithNothingInItAndNoGoalsIsNotComplete(t *testing.T) {
 	setStatus(t, b, "S-1", board.StatusChange{To: "closed", Reason: "dropped"})
 	if p := phase(t, b, 1); p.Complete {
 		t.Fatalf("complete %+v", p)
+	}
+}
+
+func TestWhereAreWeShowsUnreleasedAsACountAndTheLatestThreeOnOneLine(t *testing.T) {
+	var w board.Where
+	for i := 1; i <= 5; i++ {
+		w.Unreleased = append(w.Unreleased, board.Story{ID: fmt.Sprintf("S-%d", i), Title: fmt.Sprintf("Title %d", i)})
+	}
+	text := w.Text()
+	want := "Merged, waiting for a release: 5 (latest: S-3 Title 3, S-4 Title 4, S-5 Title 5)\n"
+	if text != want {
+		t.Fatalf("text %q, want %q", text, want)
+	}
+	if strings.Contains(text, "S-1") || strings.Contains(text, "S-2") || strings.Count(text, "\n") != 1 {
+		t.Fatalf("older stories or extra lines:\n%s", text)
+	}
+}
+
+func TestWhereAreWeNamesOnlyTheDependenciesThatStillBlock(t *testing.T) {
+	b := whereBoard(t)
+	depend(t, b, "S-8", "S-1") // S-1 is merged
+	depend(t, b, "S-8", "S-6")
+	w, err := b.Where("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := w.Text(); !strings.Contains(text, "  S-8 After — blocked by S-6\n") {
+		t.Errorf("missing the open dependency alone in:\n%s", text)
 	}
 }

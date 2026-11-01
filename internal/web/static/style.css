@@ -143,6 +143,7 @@ input, select, textarea {
   border: 1px solid var(--line);
 }
 .tag.activity { color: var(--accent); }
+.tag.bug { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
 .tag.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
 .tag.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
 .tag.good { background: var(--good-bg); color: var(--good); border-color: transparent; }
@@ -245,6 +246,7 @@ button.secondary { background: transparent; color: var(--bad); border-color: var
 .panel details label { margin-top: 0.4rem; }
 .choices { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; }
 .choices label { display: flex; align-items: center; gap: 0.3rem; color: var(--text); font-size: 1rem; }
+.panel label.check { display: flex; align-items: center; gap: 0.3rem; color: var(--text); font-size: 1rem; }
 .act { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 0 1rem; max-width: 48rem; }
 
 .approve { background: var(--warn-bg); border-radius: var(--radius); padding: 0.25rem 1rem 1rem; margin-bottom: 1rem; }

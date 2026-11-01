@@ -7,25 +7,37 @@
 <h1><span class="id">{{.ID}}</span> {{.Title}}</h1>
 <div class="tags">
   <span class="tag status">{{storyLabel .}}</span>
+  {{if eq .Kind "bug"}}<span class="tag bug">Bug</span>{{end}}
+  {{if .StraightIn}}<span class="tag warn" title="Skipped approval">Straight in</span>{{end}}
   {{if .Phase}}<a class="tag" href="/w/{{$ws}}/phases#phase-{{.Phase}}">Phase {{.Phase}}</a>{{end}}
   {{if .Activity}}<span class="tag activity">{{label .Activity}}{{with .WaitingOn}}: {{.}}{{end}}</span>{{end}}
   {{if .Blocked}}<span class="tag bad">Blocked</span>{{end}}
   {{with .HoldReason}}<span class="tag warn">On hold: {{.}}</span>{{end}}
+  {{with .UpstreamChanged}}<span class="tag warn">Upstream changed</span>{{end}}
   {{with .Branch}}<span class="tag"><code>{{.}}</code></span>{{end}}
   {{with .PRURL}}<a class="tag" href="{{.}}">Pull request</a>{{end}}
   {{with .Release}}<a class="tag" href="/w/{{$ws}}/releases/{{.ID}}">Release {{.Version}}</a>{{end}}
 </div>
 <div class="detail">
+  {{with .UpstreamChanged}}<p class="text warn-text">Upstream changed: the goal or plan of <a href="/w/{{$ws}}/stories/{{.Story}}"><span class="id">{{.Story}}</span> {{index $titles .Story}}</a> changed <time datetime="{{.At}}">{{when .At}}</time>. Check this story's plan still holds.</p>{{end}}
   {{with .Description}}<h2>Description</h2><p class="text">{{.}}</p>{{end}}
   {{with .Goal}}<h2>Goal</h2><p class="text">{{.}}</p>{{end}}
   {{with .Plan}}<h2>Plan</h2><p class="text">{{.}}</p>{{end}}
   {{with .Workaround}}<h2>Workaround</h2><p class="text">{{.}}</p>{{end}}
   {{with .BlockedBy}}
-  <h2>Depends on</h2>
+  <h2>Blocked by</h2>
   <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
   {{end}}
   {{with .Blocks}}
   <h2>Blocks</h2>
+  <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
+  {{end}}
+  {{with .FoundIn}}
+  <h2>Found in</h2>
+  <ul class="links"><li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li></ul>
+  {{end}}
+  {{with .Found}}
+  <h2>Found while building</h2>
   <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
   {{end}}
 </div>
@@ -49,6 +61,11 @@
     <button type="submit">Move</button>
   </form>
   {{end}}
+  <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/kind">
+    <h2>Kind</h2>
+    <label class="check"><input type="checkbox" name="kind" value="bug"{{if eq .Story.Kind "bug"}} checked{{end}}> Bug</label>
+    <button type="submit">Save</button>
+  </form>
   {{if eq .Story.Status "in_progress"}}
   <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/activity">
     <h2>Doing</h2>

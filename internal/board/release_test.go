@@ -329,7 +329,7 @@ func TestWhereAreWeNamesTheStoriesMergedIntoTheReleaseBranchWaitingForARelease(t
 	if !slices.Equal(ids(w.Unreleased), []string{"S-1", "S-2", "S-3"}) || w.Unreleased[0].Title != "In main 1" {
 		t.Fatalf("unreleased %+v", w.Unreleased)
 	}
-	if text := w.Text(); !strings.Contains(text, "Merged, waiting for a release:\n  S-1 In main 1\n") || strings.Contains(text, "S-4") {
+	if text := w.Text(); !strings.Contains(text, "Merged, waiting for a release: 3 (latest: S-1 In main 1, S-2 In main 2, S-3 In main 3)\n") || strings.Contains(text, "S-4") {
 		t.Fatalf("text:\n%s", text)
 	}
 	if _, err := b.CutRelease("demo", actor, v1); err != nil {

@@ -166,3 +166,81 @@ func TestEditingAStoryRecordsWhoEditedIt(t *testing.T) {
 		t.Fatalf("edit not attributed: %+v", s)
 	}
 }
+
+func TestAStoryCanBeAddedAsABug(t *testing.T) {
+	b := newWorkspace(t)
+	bug := addStory(t, b, board.NewStory{Title: "Crash on save", Kind: "bug"})
+	plain := addStory(t, b, board.NewStory{Title: "Export"})
+	if bug.Kind != "bug" || plain.Kind != "" {
+		t.Fatalf("kinds %q and %q", bug.Kind, plain.Kind)
+	}
+	got, err := b.Story("demo", bug.ID)
+	if err != nil || got.Kind != "bug" {
+		t.Fatalf("read back %+v, %v", got, err)
+	}
+}
+
+func TestAStoryKindCanBeChangedAndCleared(t *testing.T) {
+	b := newWorkspace(t)
+	s := addStory(t, b, board.NewStory{Title: "Export"})
+	bug, clear := "bug", ""
+	u, err := b.UpdateStoryDetail("demo", actor, s.ID, board.StoryPatch{Kind: &bug})
+	if err != nil || u.Story.Kind != "bug" || !slices.Equal(u.Changed, []string{"kind"}) {
+		t.Fatalf("set: %+v, %v", u, err)
+	}
+	u, err = b.UpdateStoryDetail("demo", actor, s.ID, board.StoryPatch{Kind: &bug})
+	if err != nil || len(u.Changed) != 0 {
+		t.Fatalf("same again changed %v, %v", u.Changed, err)
+	}
+	u, err = b.UpdateStoryDetail("demo", actor, s.ID, board.StoryPatch{Kind: &clear})
+	if err != nil || u.Story.Kind != "" || !slices.Equal(u.Changed, []string{"kind"}) {
+		t.Fatalf("clear: %+v, %v", u, err)
+	}
+}
+
+func TestAStoryKindOtherThanBugIsRefused(t *testing.T) {
+	b := newWorkspace(t)
+	_, err := b.AddStory("demo", actor, board.NewStory{Title: "X", Kind: "chore"})
+	wantKind(t, err, board.Invalid)
+	s := addStory(t, b, board.NewStory{Title: "Y"})
+	chore := "chore"
+	_, err = b.UpdateStory("demo", actor, s.ID, board.StoryPatch{Kind: &chore})
+	wantKind(t, err, board.Invalid)
+}
+
+func TestAStoryRecordsWhereItWasFoundAndReadsBothWays(t *testing.T) {
+	b := newWorkspace(t)
+	a := addStory(t, b, board.NewStory{Title: "Build A"})
+	f := addStory(t, b, board.NewStory{Title: "Found B", FoundIn: a.ID})
+	if f.FoundIn != a.ID {
+		t.Fatalf("added %+v", f)
+	}
+	got, err := b.Story("demo", a.ID)
+	if err != nil || !slices.Equal(got.Found, []string{f.ID}) || got.FoundIn != "" {
+		t.Fatalf("A reads %+v, %v", got, err)
+	}
+	got, err = b.Story("demo", f.ID)
+	if err != nil || got.FoundIn != a.ID || len(got.Found) != 0 {
+		t.Fatalf("B reads %+v, %v", got, err)
+	}
+}
+
+func TestAStoryFoundInAnUnknownStoryIsRefusedAndNothingIsCreated(t *testing.T) {
+	b := newWorkspace(t)
+	_, err := b.AddStory("demo", actor, board.NewStory{Title: "X", FoundIn: "S-99"})
+	wantKind(t, err, board.NotFound)
+	if ss, err := b.Stories("demo"); err != nil || len(ss) != 0 {
+		t.Fatalf("stories %+v, %v", ss, err)
+	}
+}
+
+func TestAStoryCannotBeFoundInAClosedStory(t *testing.T) {
+	b := newWorkspace(t)
+	a := addStory(t, b, board.NewStory{Title: "Build A"})
+	setStatus(t, b, a.ID, board.StatusChange{To: "closed", Reason: "dropped"})
+	_, err := b.AddStory("demo", actor, board.NewStory{Title: "X", FoundIn: a.ID})
+	wantKind(t, err, board.Conflict)
+	if ss, err := b.Stories("demo"); err != nil || len(ss) != 1 {
+		t.Fatalf("stories %+v, %v", ss, err)
+	}
+}

@@ -346,6 +346,55 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/events:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The latest events, however old
+      description: >-
+        What happened lately, as short lines, oldest first: decisions,
+        corrections, stories moved to merged, on hold or closed, stories and
+        ideas added, and releases cut. Without options, the latest 20, however
+        long ago; it is empty only on a board where nothing has happened. Each
+        action shows once (a release's own entries are left out for its one
+        line, and a proposal's placement is part of its added line). Each
+        event's id is its position, ordered by time to the second, then kind
+        (story, idea, release, log), then number. Give at most one of
+        before, after and since. Entries recorded before releases are labelled
+        as such. A result is capped by the store at 10,000 rows. Over MCP this
+        is list_events, run through actions.
+      parameters:
+        - name: before
+          in: query
+          description: A position (L-41, S-3, I-2, R-1); the 20 events before it.
+          schema: { type: string, example: L-41 }
+        - name: after
+          in: query
+          description: >-
+            A position; every event from its second on, except that position
+            itself. The rest of its own second repeats, so none is missed.
+          schema: { type: string, example: L-41 }
+        - name: since
+          in: query
+          description: >-
+            An RFC 3339 time, or a date taken as midnight UTC; every event
+            from then on, inclusive.
+          schema: { type: string, example: "2026-10-31" }
+      responses:
+        "200":
+          description: The events, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/releases:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -467,7 +516,9 @@ paths:
       - $ref: "#/components/parameters/PhaseNumber"
     patch:
       summary: Edit a phase's title or description
-      description: Fields left out are unchanged.
+      description: >-
+        Fields left out are unchanged. Each field that changes is logged on
+        the phase with its old and new value (see the phase's log).
       requestBody:
         required: true
         content:
@@ -520,17 +571,23 @@ paths:
         required: true
         schema: { type: string, example: G-1 }
     patch:
-      summary: Mark a goal met, or unmark it
+      summary: Mark a goal met or unmark it, or change its text
+      description: >-
+        Give met or text, one of them. A change of text is logged on the goal
+        with the old and new text; setting the text it already has changes
+        and logs nothing.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [met]
               additionalProperties: false
+              minProperties: 1
+              maxProperties: 1
               properties:
                 met: { type: boolean }
+                text: { type: string, minLength: 1 }
       responses:
         "200":
           description: The goal as it is now
@@ -538,6 +595,52 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Goal" }
         "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/phases/{n}/log:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/PhaseNumber"
+    get:
+      summary: The phase's log, oldest entry first
+      description: One edit entry for each field an edit changed.
+      responses:
+        "200":
+          description: The entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/LogEntry" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/goals/{id}/log:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: G-1 }
+    get:
+      summary: The goal's log, oldest entry first
+      description: One edit entry for each change of its text.
+      responses:
+        "200":
+          description: The entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/LogEntry" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/stories:
@@ -579,6 +682,8 @@ paths:
                 description: { type: string }
                 goal: { type: string }
                 plan: { type: string }
+                kind: { type: string, enum: [bug], description: "Mark the story as a bug; omit for any other story" }
+                found_in: { type: string, example: S-3, description: "The story this one was found while building; 404 if unknown, 409 if closed" }
                 phase: { type: integer, minimum: 1, description: "Omit for a story with no phase" }
                 before: { type: string, example: S-3 }
                 after: { type: string, example: S-2 }
@@ -628,6 +733,7 @@ paths:
                 waiting_on: { type: string, example: the review agent }
                 branch: { type: string }
                 pr_url: { type: string }
+                kind: { type: string, enum: [bug, ""], description: "bug marks the story as a bug; an empty string clears the mark" }
       responses:
         "200":
           description: The story as it is now
@@ -712,6 +818,59 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/reviewed:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    post:
+      summary: Clear the story's upstream-changed mark
+      description: >-
+        Says the story was looked at after a story it depends on changed its
+        goal or plan. The reason is logged on the story as a note. Updating the
+        story's own goal or plan also clears the mark. A story that is not
+        marked is refused with 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, description: "What was checked or changed; plain text" }
+      responses:
+        "200":
+          description: The story as it is now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Story" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/stories/{id}/context:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    get:
+      summary: A story's neighbourhood in summaries
+      description: >-
+        One read in place of many: the story's phase with its goals, the idea
+        it came from, what it depends on and what depends on it (read from the
+        dependency links, so finished dependencies are included, unlike the
+        story read), where it was found and what was found while building it,
+        and the open bugs found in it or in its direct dependencies (up to
+        five). Detail stays with the story and its log. Over MCP this is
+        get_context, run through actions.
+      responses:
+        "200":
+          description: The context
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoryContext" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/stories/{id}/log:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -993,6 +1152,18 @@ paths:
           in: query
           required: true
           schema: { type: string, example: sign in without a password }
+        - name: story
+          in: query
+          required: false
+          description: >-
+            A story id. The search looks near the story first: the story, its
+            dependencies and dependents, where it was found, what was found
+            building it, its nearby open bugs, its idea and its phase with the
+            phase's other stories. The board works that set out; the index
+            only ranks inside it. When nothing matches there, the whole
+            workspace is searched. The answer carries `scope`. An unknown
+            story is a 404.
+          schema: { type: string, example: S-4 }
       responses:
         "200":
           description: The matches, best first; empty when nothing matches
@@ -1005,6 +1176,14 @@ paths:
                   results:
                     type: array
                     items: { $ref: "#/components/schemas/SearchResult" }
+                  scope:
+                    type: string
+                    enum: [story, workspace]
+                    description: >-
+                      Where the matches were found. Present only when `story`
+                      was given: `story` for its neighbourhood, `workspace`
+                      when nothing matched there and the whole workspace was
+                      searched.
         "400": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1197,16 +1376,22 @@ components:
         description: { type: string }
         goal: { type: string }
         plan: { type: string }
+        kind: { type: string, enum: [bug], description: "Absent unless the story is a bug" }
         phase: { type: integer, description: "Absent for a story with no phase" }
         status: { $ref: "#/components/schemas/Status" }
         blocked: { type: boolean, description: "A story it depends on is not yet complete" }
         blocked_by:
           type: array
-          description: Stories this one depends on, complete or not
+          description: Stories this one depends on that are not yet complete (merged or released). Finished dependencies stay recorded but are not listed.
           items: { type: string }
         blocks:
           type: array
-          description: Stories that depend on this one
+          description: Stories that are not closed and depend on this one while it is not complete. Empty once it is complete.
+          items: { type: string }
+        found_in: { type: string, description: "The story this one was found while building; absent if none" }
+        found:
+          type: array
+          description: Stories found while building this one
           items: { type: string }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
@@ -1222,6 +1407,17 @@ components:
         into: { type: string, description: "A merged story: the furthest branch it reached" }
         pr_url: { type: string }
         workaround: { type: string, description: "How it was started while blocked" }
+        upstream_changed:
+          type: object
+          description: >-
+            Set when a story this one depends on, directly or further down, had
+            its goal or plan changed; the most recent such change. Absent when
+            there is none. Cleared by updating this story's goal or plan, or by
+            the reviewed action.
+          required: [story, at]
+          properties:
+            story: { type: string, example: S-4 }
+            at: { type: string, format: date-time }
         release:
           type: object
           description: >-
@@ -1243,6 +1439,95 @@ components:
       type: string
       enum: [planning, building, testing, waiting]
       description: What an in-progress story is doing.
+    Event:
+      type: object
+      required: [id, at, kind, line]
+      properties:
+        id: { type: string, example: L-41, description: Its position. }
+        at: { type: string, example: "2026-10-29T14:03:09Z", description: When, in UTC to the second. }
+        kind: { type: string, enum: [decision, correction, status, story, idea, release] }
+        story: { type: string, example: S-50, description: The story a log entry belongs to. }
+        to: { type: string, example: merged, description: The status a status entry moved to. }
+        line: { type: string, example: "L-41 2026-10-29 14:03 S-50 decision: Keep ranks as text — the store orders them as Go does" }
+    StoryContext:
+      type: object
+      required: [id, title, status, depends_on, depended_on_by, found, bugs]
+      properties:
+        id: { type: string, example: S-3 }
+        title: { type: string }
+        status: { type: string }
+        phase:
+          type: object
+          description: The phase the story is in; absent when it has none
+          required: [number, title, goals]
+          properties:
+            number: { type: integer }
+            title: { type: string }
+            goals:
+              type: array
+              items:
+                type: object
+                required: [id, text, met]
+                properties:
+                  id: { type: string, example: G-1 }
+                  text: { type: string }
+                  met: { type: boolean }
+        idea:
+          type: object
+          description: The idea that became this story; absent when none did
+          required: [id, title]
+          properties:
+            id: { type: string, example: I-1 }
+            title: { type: string }
+        depends_on:
+          type: array
+          description: Every dependency, finished ones included, in delivery order
+          items: { $ref: "#/components/schemas/ContextLink" }
+        depended_on_by:
+          type: array
+          description: Every story that depends on this one, in delivery order
+          items: { $ref: "#/components/schemas/ContextLink" }
+        found_in: { $ref: "#/components/schemas/ContextStory" }
+        found:
+          type: array
+          description: The stories found while building this one
+          items: { $ref: "#/components/schemas/ContextStory" }
+        bugs:
+          type: array
+          description: Open bugs found in this story or a direct dependency, in delivery order, at most five
+          items:
+            type: object
+            required: [id, title, status, found_in]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              status: { type: string }
+              found_in: { type: string, description: The story the bug was found in }
+    ContextStory:
+      type: object
+      required: [id, title, status]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status: { type: string }
+    ContextLink:
+      type: object
+      required: [id, title, status, decisions]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status: { type: string }
+        decisions:
+          type: array
+          description: Its last three decisions, oldest first
+          items:
+            type: object
+            required: [id, text, reason]
+            properties:
+              id: { type: string, example: L-4 }
+              text: { type: string }
+              reason: { type: string }
+              corrected: { type: boolean, description: "Sent only when true: a later correction points at this decision" }
     LogEntry:
       type: object
       required: [id, at, actor, kind]
@@ -1250,15 +1535,20 @@ components:
         id: { type: string, example: L-4 }
         at: { type: string, format: date-time }
         actor: { type: string }
-        kind: { type: string, enum: [note, decision, commit, pr, status, correction] }
+        kind: { type: string, enum: [note, decision, commit, pr, status, correction, edit] }
+        field: { type: string, enum: [title, description, text], description: "An edit entry: the field changed" }
         text: { type: string }
         reason: { type: string }
         commit: { type: string }
         pr_url: { type: string }
         branch: { type: string }
         into: { type: string, description: "A merge: the branch it reached" }
-        from: { $ref: "#/components/schemas/Status" }
-        to: { $ref: "#/components/schemas/Status" }
+        from:
+          description: A status entry's old status, or an edit entry's old value
+          type: string
+        to:
+          description: A status entry's new status, or an edit entry's new value
+          type: string
         corrects: { type: string, description: "The entry this one corrects" }
         corrected_by:
           type: array
@@ -1266,7 +1556,7 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, proposed, in_progress, in_review, on_hold, next, unreleased]
+      required: [phase, proposed, in_progress, in_review, on_hold, next, unreleased, upstream_changed]
       properties:
         phase:
           description: The first phase that is not complete; null when there is none
@@ -1293,6 +1583,10 @@ components:
         unreleased:
           type: array
           description: Merged into the release branch and not yet in a release, in delivery order
+          items: { $ref: "#/components/schemas/Story" }
+        upstream_changed:
+          type: array
+          description: Stories not yet complete or closed whose upstream story changed its goal or plan, in delivery order
           items: { $ref: "#/components/schemas/Story" }
     Idea:
       type: object

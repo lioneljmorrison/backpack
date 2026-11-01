@@ -46,7 +46,10 @@ same board through an API.
 between workspaces.
 
 **Ideas.** Everything starts as an idea: a rough thought with little context
-and no sense yet of where it fits. Ideas are worked through together. Once
+and no sense yet of where it fits. An agent breaks an idea into stories, and a
+phase if needed, itself (2026-10-31, S-50): it proposes the stories (a qualifying
+bug goes straight in through `add_bug_fix`), adds any phase and goals, which
+take effect at once, and refines the idea right after. Once
 refined, an idea is **closed**, keeping links to the stories or phase it became.
 
 **Phases.** A phase is a large body of work (an epic), with its own
@@ -74,6 +77,12 @@ top story is the next to be delivered. Rank is order, not urgency.
 - A story must rank below everything it depends on.
 - A dependency can only point to the same or an earlier phase, never across
   workspaces, and never in a circle.
+- Both ends show only current dependencies. *Blocked by* lists the
+  dependencies that are not yet complete (merged or released). *Blocks* lists
+  the stories that are not closed and depend on this one, and is empty once
+  this one is complete. Finished dependencies stay recorded in the graph; they
+  are only left out of the story reads (2026-10-31, S-63). `get_context` reads
+  them from the links and lists them (see "A story's context in one call").
 - Backpack refuses any change that breaks these rules.
 
 **Placing new work.** An agent proposes where a new story belongs, with its
@@ -82,6 +91,43 @@ narrow the choice: the story must go below everything it depends on and above
 everything that depends on it. A proposed story sits in **Proposed**, ahead of
 Backlog, at the spot the agent chose, with the reasoning as the first entry in
 its log. Approving moves it to Backlog; declining closes it with a reason.
+
+**Bugs.** A story can be marked as a bug (`kind: bug`) when it is added, and
+the mark can be changed or cleared later with an edit. Bug is the only kind;
+a story of no kind is an ordinary story. The mark shows on the story's reads,
+in search and as a badge on the web card. It changes nothing about rank or
+status.
+
+**Found in.** When building one story turns up another, the new story can
+name the story it was found in (stories only, not ideas), as `found_in` on
+add. The link is made when the story is created, an unknown story is refused,
+and so is a closed one. A story read shows both ways: where it was found, and
+what was found while building it. The link is never edited.
+
+**Straight in** (2026-10-31, owner decision). A bug with a clear answer and no
+chain reaction may skip approval. It is its own on-request change,
+`add_bug_fix`, run through `batch` and described by `actions`, so the menu
+does not grow; `add_story` is unchanged and always proposes. `add_bug_fix`
+takes `add_story`'s fields plus `fix` (a sentence) and three yes/no claims,
+`no_design_choice`, `no_contract_change` and `nothing_else`, all required,
+and calls the same single board operation. Every check must hold, in the same
+query as the write, or the request is refused, never downgraded to a
+proposal: the story is marked bug; it names a found-in story that exists and
+is not closed; the fix is stated; all three claims are true; it has no
+dependencies (a new story cannot have any); its phase is none or the
+found-in story's phase, and that phase is not complete; and it is placed
+`before` or `after` a story with `reasoning`. On success the story goes into
+Backlog with `straight_in: true`, the `FOUND_IN` edge, and one decision entry
+(the next log id) holding the fix, the claims word for word, the reasoning
+and the actor. Where are we lists straight-in bugs not yet started, with the
+story each was found in, and flags one that has since gained a dependency
+(either way) or lost its bug mark; that is worked out on read, so a later
+dependency is flagged, not refused. The web card shows a badge. A person
+undoes it with close, hold or move; there is no move back to Proposed. The
+phase-complete check is the rule in `internal/board/phase.go` (the part that
+can apply: the found-in story is open and in the phase, so it has stories).
+Over HTTP a story is already added straight to Backlog, so the request is
+MCP only.
 
 **Statuses.**
 
@@ -123,9 +169,39 @@ agent see what was done in which commit, and what was later found wrong.
   - the current phase and how far along it is;
   - what is in progress and what each story is doing;
   - what is in review;
-  - the next three in the backlog.
+  - the next three in the backlog;
+  - what is merged into the release branch and waiting for a release. The
+    text shows one line, the count and the latest three (last in delivery
+    order), for example `Merged, waiting for a release: 12 (latest: S-9 …,
+    S-10 …, S-11 …)`, so the line stays short however long the wait. The
+    JSON keeps the full `unreleased` list.
+
+  - the stories marked "upstream changed", one line each, for example
+    `S-9 Title — after S-4`. The JSON keeps them as `upstream_changed`.
 
   The session-start hook shows this.
+
+**A changed plan flags what depends on it (2026-10-31, S-56).** A story's plan
+or goal is what the stories below it were planned against. When `update_story`
+sets a goal or plan to a value different from the stored one, every open story
+that depends on it, directly or further down, is marked "upstream changed".
+A story is open when it is not Merged, Released or Closed; the chain stops at a
+story that is complete or closed, so what lies only behind it is not marked.
+Changing only the title, description, activity, branch or pull request marks
+nothing, and neither does setting the same text again. A mark records the
+upstream story's id and the time; a story already marked takes the newer
+change (the most recent upstream story and time), and each change leaves a
+`note` on the marked story's log naming the story and whether its goal or
+plan changed. The mark shows in every story read (`upstream_changed`: `story`
+and `at`, absent when there is none) and in where are we. It clears when the
+marked story's own goal or plan is updated (which, being a plan change, marks
+its own dependents in turn), or when `mark_reviewed` says it was looked at:
+a reason is required, logged as a note, and a story that is not marked is
+refused (409). A story that becomes Merged (by `set_status`, or moved on by
+`merge_branch`), Released (`cut_release`) or Closed drops its mark too, in the
+same query as the move and with no log entry beyond the status entry; a story
+moved to in review or on hold keeps it. Everything happens in the same query as
+the update, review or move.
 
 **Search.** Ideas, phases, stories and logs can be searched by meaning as well
 as by keyword, for example "do we already have a story about this?"
@@ -277,9 +353,151 @@ Each slice is its own branch and pull request into `dev`.
   `.backpack.json`, such as chat, had no way to learn a workspace's slug.
 - **Workspace.** Every tool takes the workspace's slug, so one MCP address
   serves every project.
-- **Answers.** Every tool answers with the same JSON as the HTTP API, "where
-  are we" included. A refusal comes back as a tool error with the board's
-  reason.
+- **Answers.** Every tool answers with one text block of compact JSON and no
+  structured copy, so no content reaches the agent twice (2026-10-31, S-38).
+  This reverses the slice-4 decision that every tool answers with the same
+  JSON as the HTTP API: MCP answers may now differ from HTTP answers, to keep
+  them short for agents. The owner approved this on 2026-10-31. The HTTP API
+  and the web keep their full shapes. `where_are_we` is the first exception
+  to JSON: it answers with the session hook's plain text (the same as
+  `GET .../status` with `Accept: text/plain`), one text block, under 2,000
+  bytes on a large board; detail comes from `get_story` (2026-10-31, S-40).
+  A story read over MCP (`get_story`, `whats_next`) is lean: no who-and-when fields (they stay in the log,
+  `read_log`), nothing empty, and `blocked` only when true; fields that carry
+  meaning when set stay. HTTP keeps the full story record (2026-10-31, S-41).
+  Changes answer briefly (2026-10-31, S-42): `add_story` and `set_status`
+  answer `{id, status}` (a merge adds `into`, the branch reached);
+  `update_story` answers `{id, changed}`, the names of the fields whose value
+  actually changed, plus `marked` (the ids) when the change marked dependents
+  as upstream changed; `move_story` answers `{id}`; `add_dependency` answers
+  `{id, blocked}`; `log` answers the new entry's `{id}`; `merge_branch` answers
+  `{stories}`, the ids moved. Idea changes (`add_idea`, `update_idea`,
+  `move_idea`, `refine_idea`, `drop_idea`) answer `{id, state}`; `add_phase`
+  answers `{number}` (as `update_phase` does); `add_goal` and `mark_goal_met`
+  answer `{id, met}` (`update_goal` answers `{id}`). `get_idea` and
+  `list_phases` read the rest back (`list_phases` is a summary, see below). Branch and release changes answer the same
+  way (S-59): `cut_release` answers `{id, version, stories}` (the count; `get_release`
+  has the ids), `add_branch` `{name, into}`, `update_branch` `{name, changed}`
+  with the fields among name, alias and into whose value actually changed
+  (`list_branches` has the rest). The shape is made in each tool's handler, so the
+  action nested in a `batch` is the same short form. Anything fuller is a
+  `get_story` away; HTTP keeps the full records.
+  Lists answer summaries (2026-10-31, S-44): `list_ideas` items are
+  `{id, title, state}` (`get_idea` has the context); `list_phases` items are
+  `{number, title, description, complete, stories_complete, stories_total,
+  goals}` with each goal `{id, text, met}`, plus `goals_met_early` only when
+  true; the description stays (omitted when empty) because there is no
+  single-phase read over MCP and it carries decisions; `list_releases` items
+  are `{id, version, tag, stories}` (the count; `get_release` has the commit,
+  notes and stories); `list_workspaces` and `list_branches` drop who and when.
+  `get_release` stays full in content but its stories are the lean story form
+  and the release carries no who and when, so the changelog keeps each
+  story's title, goal and plan.
+  Tool descriptions are short (2026-10-31, S-45): each says what the tool does
+  and what it answers with, at most 300 characters, and the full tool list
+  (names, descriptions, input schemas) stays within two thirds of v0.3.1's
+  21,993 bytes (since S-62 a smaller cap, see the menu entry below), guarded by a
+  test. The rules the descriptions used to
+  carry live in the refusals, which name the reason, and in this document: a
+  story ranks below what it depends on, and a dependency points to the same or
+  an earlier phase; a story's phase is fixed at creation; `batch` takes up to
+  100 actions and only names items that already exist, not ones an earlier
+  action adds; a branch name has no whitespace and at most 100 characters;
+  `into` is required on `add_branch` (one release branch exists already) and
+  a merge moves a story one branch on, naming `into` when several branches
+  nothing merges into exist; `cut_release` refuses a version already released
+  and a cut with nothing to release; `released` is reached only by
+  `cut_release`; `proposed` is set only to resume a held proposal.
+  A refusal comes back as a tool error
+  with the board's reason, as one text block.
+- **Menu and on-request actions (2026-10-31, S-62, steps 1 and 2 of "Fewer
+  tools").** Agents load a small, stable menu of tools; rarer actions are
+  fetched on demand, so a new feature does not grow what every session loads.
+  Server 0.5.0 breaks a client that calls a removed name directly.
+  *Step 1: rarer changes.* They are no longer in `ListTools` but run through
+  `batch` by name, with their own schema check, answers and refusals
+  unchanged: `add_branch`, `update_branch`, `remove_branch`, `merge_branch`,
+  `cut_release`, `add_phase`, `update_phase`, `add_goal`, `update_goal`,
+  `mark_goal_met`, `refine_idea`, `drop_idea`, `update_idea`, `move_idea`,
+  `move_story`, `remove_dependency`, `mark_reviewed` and `add_bug_fix`.
+  *Step 2: rarer reads.* `list_branches`, `list_releases`, `get_release`,
+  `read_log`, `list_phases`, `list_ideas` and `get_idea` leave the menu too and
+  run through `actions`. `batch` still refuses reads. Called directly, a moved
+  tool is an unknown tool (a JSON-RPC error).
+  The menu is exactly 13 tools: `where_are_we`, `whats_next`, `get_story`,
+  `search`, `add_story`, `add_dependency`, `add_idea`, `set_status`,
+  `update_story`, `log`, `batch`, `list_workspaces` and `actions`.
+  `actions` takes `{name, args}`. One rule: a name alone describes the action
+  (its description and arguments, each with its hint); a name with `args`
+  (even `{}`) runs a read, and its arguments, `workspace` included, are
+  checked against the read's own schema, so a bad or missing one is refused
+  with its reason and the answer is the old tool's. Naming a change with
+  `args` is refused ("run it with batch"); a change is never run here, and
+  `actions` stays free of side effects. With no name it answers the list: the
+  reads first (run here), then the changes (run with batch), one short line
+  each (capped by a test at 1,800 bytes). The descriptions, lines and
+  arguments come from each action's own registered description and argument
+  schema, so they cannot drift from what runs; the `actions` and `batch`
+  descriptions name branches, releases, phases, goals, ideas and logs so a
+  client's tool search finds them. A name that is a menu tool, or unknown, is
+  refused with a reason.
+  The tool list is capped by a test at 8,000 bytes, set when Fewer tools
+  measured 6,595 (x 1.25 = 8,244, rounded down), down from 14,648 in 0.4.0
+  and 8,314 after step 1. The rule for new features: a new action goes on
+  request by default (a change through `batch`, a read through `actions`);
+  adding a tool to the menu needs the owner's approval, and the exact-menu
+  test is the guard. Projects that call a moved tool directly are moved over
+  by [docs/UPGRADING.md](UPGRADING.md).
+  *What happened lately (2026-10-31, S-53).* `list_events` (on request through
+  `actions`; `GET /v1/workspaces/{ws}/events`) answers the latest 20 things
+  that happened on the board, however old, oldest first, one short line each,
+  so it is empty only on a board where nothing has happened. Events are a
+  decision, a correction, a story moved to merged (into any branch), on hold
+  or closed (the reason on the last two), a story added (and the story it was
+  found in), an idea added and a release cut. Each shows once: a release's
+  own `merged` to `released` entries are left out in favour of its one line
+  (version, tag, story count); a proposal's placement decision is folded into
+  its added line; R-0 is not an event. Entries from before releases are
+  labelled as recorded before releases (an old `released` reads as reached the
+  release branch, an old `deployed` as released). Decision text, reasons and
+  titles are cut at 100 characters; the full text stays in the log. A line
+  starts with the event's own id, its position: `L-n`, `S-n`, `I-n` or `R-n`.
+  Events order by time (stored as a 20-character UTC string, to the second),
+  then kind (story, idea, release, log), then number as a number, so 9 comes
+  before 10. One option at a time (two are refused): `before` a position gives
+  the 20 before it, with no gap or overlap; `after` a position gives every
+  event from its second on except itself, repeating the rest of that second so
+  none is missed; `since` an RFC 3339 time, or a bare date as midnight UTC,
+  gives every event from then, inclusive. An unknown position is a 404, an
+  unreadable one or date a 400. `after` and `since` are not limited, but the
+  store caps a result at 10,000 rows, a known limit. It is one read-only query
+  (no migration, node, edge or index; an index on a time would return nothing
+  for a range on a string in FalkorDB).
+  *Search near a story first (2026-10-31, S-52).* `search` takes an optional
+  `story` (`GET .../search?q=&story=`). The board works out the neighbourhood
+  in one graph read (`Board.Near`): the story itself, its dependencies and
+  dependents, where it was found, what it found, its nearby open bugs (the
+  context read's set), the idea it came from, its phase and the phase's other
+  stories. The index only ranks inside it, by a Typesense `filter_by` on the
+  documents' `id` (verified on Typesense 30.2; no schema change). No board
+  decision reads from the index. When nothing matches inside, the whole
+  workspace is searched. The answer adds `scope` (`story` or `workspace`)
+  only when `story` was given; without it the answer is as before. An unknown
+  story is refused (404), as it is for the context read, rather than quietly
+  searching the workspace, which would hide a mistyped id.
+  *A story's context in one call (2026-10-31, S-51).* `get_context` (`id`, on
+  request through `actions`; `GET /v1/workspaces/{ws}/stories/{id}/context`)
+  answers summaries of a story's neighbourhood in one graph read, so an agent
+  starting a story needs no call for each neighbour and no search of the
+  workspace: its phase with the goals and whether each is met; the idea that
+  became it; what it depends on and what depends on it, each with its status
+  and its last three decisions (oldest first, `corrected` when a later
+  correction points at one), read from the `DEPENDS_ON` links directly so
+  merged and released dependencies are included; the story it was found in and
+  the stories found while building it; and the open bugs found in it or in its
+  direct dependencies, at most five. Detail stays with `get_story` and
+  `read_log`. Over MCP an empty section is left out. It is one read-only
+  query and writes nothing.
 - **No sessions.** Every call carries its token and stands alone.
 
 5. **Where it runs** (2026-10-10). This is dev: the instance runs on
@@ -491,20 +709,24 @@ the data volume. Backup copies the RDB file off the host.
 | `Branch` | `name`, `into` (the name of the branch it merges into, a property rather than an edge; none for the release branch), `alias` (display only), `created_by`, `created_at` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
-| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) |
+| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `kind` (`bug`, absent for any other story), `straight_in` (`true` on a bug that skipped approval, absent otherwise), `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) `upstream_id`, `upstream_at` (the upstream-changed mark, absent when none) |
 | `Release` | `id` (`R-n`), `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` |
 | `Idea` | `id` (`I-n`), `title`, `context`, `rank`, `state` (`open`/`closed`), `drop_reason`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
-| `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `from`, `to` |
+| `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `field` (an edit entry: the field changed), `from`, `to` (a status entry's statuses, or an edit entry's old and new value) |
 
 | Edge | Meaning |
 |---|---|
 | `(Phase)-[:HAS_GOAL]->(Goal)` | |
 | `(Phase)-[:CONTAINS]->(Story)` | optional; a story without one sits directly in the backlog |
 | `(Story)-[:DEPENDS_ON {created_by, created_at}]->(Story)` | read in reverse as "blocks" |
-| `(Story)-[:LOGGED]->(LogEntry)` | |
+| `(Story)-[:FOUND_IN]->(Story)` | the story this one was found while building; read in reverse as what was found while building it |
+| `(Story\|Phase\|Goal)-[:LOGGED]->(LogEntry)` | phases and goals log edits only (see "Editing phases and goals") |
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
 | `(Story)-[:IN_RELEASE]->(Release)` | |
+
+The upstream-changed mark is two properties on `Story`, not a node or an edge,
+and nothing looks stories up by it, so it needs no index or migration.
 
 A separate `backpack` graph holds actors with hashed tokens and the workspace
 registry: `WorkspaceEntry {slug, name, repo_url, has_release_stage,
@@ -545,8 +767,8 @@ workspace's branches are seeded from the creation setting (one branch, or
   started with a workaround.
 - **Statuses:** `proposed`, `backlog`, `in_progress`, `in_review`, `merged`,
   `released`, `on_hold`, `closed`. A merged story's `into` says which branch
-  column it is in. Complete is `merged` or `released`; `blocked` is computed
-  on read. `released` means an official release (R-n). The old meaning of
+  column it is in. Complete is `merged` or `released`; `blocked`, `blocked_by`
+  and `blocks` are computed on read (S-63). `released` means an official release (R-n). The old meaning of
   `released` (merged into `main`) and the old `deployed` status are refused
   with a message naming the new form. Migrations turn old released stories
   into merged into the release branch, and old deployed stories into released.
@@ -568,18 +790,22 @@ GET  /v1/workspaces                                  POST
 GET  /v1/workspaces/{ws}/next                        what's next
 GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook)
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
+GET  /v1/workspaces/{ws}/events                      the latest events; ?before= ?after= ?since=
 GET  /v1/workspaces/{ws}/releases                    POST (cut); GET /releases/{id}
-GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{id}
-POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met)
+GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{n} (title, description)
+POST /v1/workspaces/{ws}/stories/{id}/reviewed          clear the upstream-changed mark ({reason}; 409 when not marked)
+GET  /v1/workspaces/{ws}/phases/{n}/log              a phase's log
+POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met, or text)
+GET  /v1/workspaces/{ws}/goals/{id}/log              a goal's log
 GET  /v1/workspaces/{ws}/stories                     POST (with position)
-PATCH /v1/workspaces/{ws}/stories/{id}               fields, activity, branch, pr_url
+PATCH /v1/workspaces/{ws}/stories/{id}               fields, kind, activity, branch, pr_url
 POST /v1/workspaces/{ws}/stories/{id}/move           new position
 POST /v1/workspaces/{ws}/stories/{id}/status         to (+ branch / pr_url / commit / reason / workaround)
 POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
 GET  /v1/workspaces/{ws}/stories/{id}/log            POST
 GET  /v1/workspaces/{ws}/ideas                       POST
 GET  /v1/workspaces/{ws}/ideas/{id}                  PATCH; POST /move, /refine, /drop
-GET  /v1/workspaces/{ws}/search?q=                   stories, ideas and phases by keyword and meaning
+GET  /v1/workspaces/{ws}/search?q=[&story=]          stories, ideas and phases by keyword and meaning; story looks near it first
 POST /v1/workspaces/{ws}/batch                       1–100 POST/PATCH/DELETE requests, each sent to its own route
 ```
 
@@ -592,7 +818,10 @@ the token's actor: it is how a client checks its configuration.
 ### MCP tools (slice 4)
 
 Served at `/mcp` (streamable HTTP, stateless) behind the same bearer check
-as `/v1/`; the actor reaches each tool through the request context.
+as `/v1/`; the actor reaches each tool through the request context. Since
+0.5.0 only the menu is listed (see "Menu and on-request actions"); the
+tools named below that are not on the menu are on request: the changes run
+through `batch`, the reads through `actions`, which describes them all.
 `whats_next`, `where_are_we`, `get_story`, `add_story`, `update_story`,
 `move_story`, `set_status`, `add_dependency`, `remove_dependency`, `log`,
 `read_log`, `list_phases`, `add_phase`, `add_goal`, `mark_goal_met` (`met`
@@ -601,12 +830,33 @@ proposes: the story goes in as `proposed`, with a required `reasoning`.
 Ideas add `add_idea` (open at once, with optional `context`),
 `list_ideas`, `get_idea`, `update_idea`, `move_idea`,
 `refine_idea` and `drop_idea`. Search adds `search`. `cut_release` (2026-10-13, S-31) takes a `version` and a `tag` (both required, plain text) and an optional `commit` and `notes`, answers with the release (`id`, `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` and `stories`, the ids it released in delivery order), and is the same action as `POST /v1/workspaces/{ws}/releases` (201); a version already released or nothing to release is a 409, a missing version or tag or odd text a 400, and it runs inside `batch`. It is one query: it makes the Release (R-n, from the workspace's `next_release` counter), marks each story merged into the release branch Released, links it with `IN_RELEASE`, and logs a status entry (merged to released, naming the release, with the commit when given) from one block of log ids. `list_releases` and `get_release` (2026-10-13, S-32) read releases: `GET /v1/workspaces/{ws}/releases` answers `{releases}` newest first (by number, so R-10 before R-9), each as `cut_release` answers, with the ids of its stories; `GET /v1/workspaces/{ws}/releases/{id}` (tool `get_release`, with `id`) answers the release with `stories` as full stories in delivery order, and an unknown id is a 404. "Where are we" (`where_are_we`, `GET .../status`, and its text) gains `unreleased`: the stories merged into the release branch that are not in a release yet, in delivery order (an empty list when none). The web has `/w/{ws}/releases` (the list, in the navigation, newest first) and `/w/{ws}/releases/{id}` (version, tag, commit, date, notes and its stories as links), and the board's where-are-we area counts the stories waiting for a release. A story read (`get_story`, `GET .../stories/{id}`, the lists and the board, all from the one story read) carries `release` (`id` and `version`) when the story shipped in a release, and omits it otherwise, including for stories released before releases were recorded; the web story page links it to the release page (2026-10-13, S-33). `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `merge_branch` (2026-10-13, S-25) takes a branch and its merge commit and answers
-`{"stories": [...]}`, the stories it moved; it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `add_branch` (2026-10-13, S-28) takes a `name`, the branch it merges `into` (required) and an optional `alias`, answers with the branch, and is the same action as `POST /v1/workspaces/{ws}/branches` (201); an unknown `into` is a 404, a taken name a 409, a missing `into` or a bad name a 400, and it runs inside `batch`. `update_branch` (2026-10-13, S-26, S-27, S-28) takes a branch and an optional new `name`, `alias` and `into`, answers with the branch, and is the same action as `PATCH /v1/workspaces/{ws}/branches/{name}`; `into` re-points where the branch merges (nothing moves; one query, with the cycle check a bounded walk of the branches' `into` names, since `into` is a property and not an edge), and is refused for the branch itself or one leading back to it, an unknown branch, the release branch, or empty on any other branch (409, or 404 for an unknown one); fields not given are left alone, a name already in use or with whitespace or over 100 characters is refused, and renaming to the branch's own name changes nothing. An `alias` (plain text, at most 100 characters; empty clears it) replaces only the branch name inside its web column heading, "Merged (Production)"; the story page, API, tools and logs keep the name. `remove_branch` (2026-10-13, S-29) takes a branch, answers `{"removed": true}`, and is the same action as `DELETE /v1/workspaces/{ws}/branches/{name}` (204, as removing a dependency); it is one query and runs inside `batch`. It is refused with 409 for the release branch, the only starting branch, and a branch that still has stories merged into it or branches merging into it (the reason names them), and with 404 for an unknown branch. `list_workspaces` is the
+`{"stories": [...]}`, the ids of the stories it moved (over HTTP, the stories); it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `add_branch` (2026-10-13, S-28) takes a `name`, the branch it merges `into` (required) and an optional `alias`, answers with the branch, and is the same action as `POST /v1/workspaces/{ws}/branches` (201); an unknown `into` is a 404, a taken name a 409, a missing `into` or a bad name a 400, and it runs inside `batch`. `update_branch` (2026-10-13, S-26, S-27, S-28) takes a branch and an optional new `name`, `alias` and `into`, answers with the branch, and is the same action as `PATCH /v1/workspaces/{ws}/branches/{name}`; `into` re-points where the branch merges (nothing moves; one query, with the cycle check a bounded walk of the branches' `into` names, since `into` is a property and not an edge), and is refused for the branch itself or one leading back to it, an unknown branch, the release branch, or empty on any other branch (409, or 404 for an unknown one); fields not given are left alone, a name already in use or with whitespace or over 100 characters is refused, and renaming to the branch's own name changes nothing. An `alias` (plain text, at most 100 characters; empty clears it) replaces only the branch name inside its web column heading, "Merged (Production)"; the story page, API, tools and logs keep the name. `remove_branch` (2026-10-13, S-29) takes a branch, answers `{"removed": true}`, and is the same action as `DELETE /v1/workspaces/{ws}/branches/{name}` (204, as removing a dependency); it is one query and runs inside `batch`. It is refused with 409 for the release branch, the only starting branch, and a branch that still has stories merged into it or branches merging into it (the reason names them), and with 404 for an unknown branch. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.
 
+Editing phases and goals (2026-10-31, S-55): `update_phase` (`number`, and
+`title` and `description`, each optional) and `update_goal` (`id`, `text`)
+answer with only the phase's number or the goal's id; over HTTP they are
+`PATCH /phases/{n}` and `PATCH /goals/{id}` (with `text`; one request gives
+`met` or `text`, not both), which answer with the full phase or goal. Fields
+not given are left as they are; an empty title or goal text, or an unknown
+phase or goal, is refused (400, 404). Each runs as one query that also writes
+the log, and both run inside `batch`. Every field that really changes writes
+one `LogEntry` of kind `edit`, linked from the phase or goal with `LOGGED`:
+`field` (`title`, `description` or `text`), `from` (the old value), `to` (the
+new one), with `id` (from the workspace's `next_log` counter, shared with
+stories), `at` and `actor` as a story's entries have. A phase edited in two
+fields writes two entries, from one block of ids; setting a field to the value
+it has writes none. Entries are never edited. They are read with `read_log`
+(`phase` for a phase, `id` of a goal such as `G-3` for a goal; stories as
+before) and `GET /phases/{n}/log`, `GET /goals/{id}/log`. Adding a phase or
+goal is not logged. The web phases page is read-only, so these edits are
+MCP and HTTP only. No migration: the `LogEntry` id index already covers the
+entries.
+
 `batch` makes many board changes in one call: a list of `{tool, args}`,
-1 to 100, each naming a tool that changes the board, with that tool's
+1 to 100, each naming a tool that changes the board (on the menu or on
+request, see "Menu and on-request actions"), with that tool's
 arguments minus `workspace`, which the batch gives once. Each action runs
 through its tool's own handler, so it is answered exactly as if called alone,
 and runs as its own query. A failed action is answered with its reason and

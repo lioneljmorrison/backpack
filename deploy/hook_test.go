@@ -54,12 +54,12 @@ func TestHookPrintsWhereAreWeAsText(t *testing.T) {
 			http.Error(w, "unexpected request", http.StatusBadRequest)
 			return
 		}
-		w.Write([]byte("In progress:\n  S-1 Hook — building\n"))
+		w.Write([]byte("In progress:\n  S-1 Hook — building\nMerged, waiting for a release: 1 (latest: S-2 Done)\n"))
 	}))
 	defer srv.Close()
 
 	out, code := runHook(t, project(t, srv.URL), "bp_test")
-	if code != 0 || out != "In progress:\n  S-1 Hook — building\n" {
+	if code != 0 || out != "In progress:\n  S-1 Hook — building\nMerged, waiting for a release: 1 (latest: S-2 Done)\n" {
 		t.Fatalf("exit %d, output %q", code, out)
 	}
 }

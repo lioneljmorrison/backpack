@@ -1,9 +1,11 @@
 // Package mcpserver serves the board to agents as MCP tools. Each tool calls
-// the same board operation as its HTTP route, and answers with the same JSON.
+// the same board operation as its HTTP route, and answers with one text block
+// of compact JSON (not always the HTTP route's shape; see docs/PLAN.md).
 package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -17,18 +19,31 @@ import (
 // New returns the MCP handler, searching with x, the index of b. It keeps no
 // sessions: every call carries its own token, checked before it arrives here.
 func New(b *board.Board, x *search.Index) http.Handler {
-	s := mcp.NewServer(&mcp.Implementation{Name: "backpack", Version: "0.4.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "backpack", Version: "0.5.0"}, nil)
 	addTools(s, tools{b, x})
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s },
 		&mcp.StreamableHTTPOptions{Stateless: true})
 }
 
-// answer turns a board result into a tool result.
+// plain is a result a handler wants sent as it is, not as JSON: the one text
+// block carries the text itself.
+type plain string
+
+// answer turns a board result into a tool result: one text block of compact
+// JSON. It never hands the library a value to return, because the library
+// would then add a structured copy of the same content.
 func answer(v any, err error) (*mcp.CallToolResult, any, error) {
-	if err == nil {
-		return nil, v, nil
+	if err != nil {
+		return nil, nil, public(err)
 	}
-	return nil, nil, public(err)
+	if p, ok := v.(plain); ok {
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(p)}}}, nil, nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, nil, public(err)
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}}}, nil, nil
 }
 
 // public is what the caller is told of err: a refusal comes back with its

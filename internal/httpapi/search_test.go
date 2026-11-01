@@ -76,3 +76,32 @@ func TestSearchWithTypesenseUnreachableIsUnavailable(t *testing.T) {
 		t.Fatalf("answer %v", got)
 	}
 }
+
+func TestSearchGivenAStoryLooksNearItFirstAndSaysSo(t *testing.T) {
+	h := withSearch(t)
+	for _, title := range []string{"Invoices in the work", "Invoices dependency", "Invoices far away", "Gardening notes about tomatoes"} {
+		want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "`+title+`"}`), http.StatusCreated)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-2/dependencies", `{"on": "S-1"}`), http.StatusOK)
+	got := want(t, call(t, h, "GET", "/v1/workspaces/demo/search?q=invoices&story=S-1", ""), http.StatusOK)
+	if rs, _ := got["results"].([]any); len(rs) != 2 || got["scope"] != "story" {
+		t.Fatalf("answer %v", got)
+	}
+	got = want(t, call(t, h, "GET", "/v1/workspaces/demo/search?q=tomatoes&story=S-1", ""), http.StatusOK)
+	if rs, _ := got["results"].([]any); len(rs) != 1 || got["scope"] != "workspace" {
+		t.Fatalf("answer %v", got)
+	}
+}
+
+func TestSearchWithoutAStoryNamesNoScope(t *testing.T) {
+	h := withSearch(t)
+	got := want(t, call(t, h, "GET", "/v1/workspaces/demo/search?q=invoices", ""), http.StatusOK)
+	if _, ok := got["scope"]; ok {
+		t.Fatalf("answer %v", got)
+	}
+}
+
+func TestSearchNearAnUnknownStoryIsNotFound(t *testing.T) {
+	h := withSearch(t)
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/search?q=invoices&story=S-99", ""), http.StatusNotFound)
+}

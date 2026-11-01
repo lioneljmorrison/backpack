@@ -15,9 +15,21 @@ type Story struct {
 	Description string `json:"description"`
 	Goal        string `json:"goal"`
 	Plan        string `json:"plan"`
-	Phase       int    `json:"phase,omitempty"`
-	Status      string `json:"status"`
+	// Kind is "bug" for a bug; none for any other story.
+	Kind string `json:"kind,omitempty"`
+	// FoundIn is the story this one turned up while building; none if it
+	// was not found that way. Found is the reverse: the stories found
+	// while building this one.
+	FoundIn string   `json:"found_in,omitempty"`
+	Found   []string `json:"found"`
+	// StraightIn is set on a bug that skipped approval: it was filed with a
+	// clear fix and went straight into the backlog.
+	StraightIn bool   `json:"straight_in,omitempty"`
+	Phase      int    `json:"phase,omitempty"`
+	Status     string `json:"status"`
 	// Blocked is worked out, never set: a dependency is not yet complete.
+	// BlockedBy lists only those dependencies, and Blocks only the open
+	// stories waiting on this one while it is not complete.
 	Blocked    bool     `json:"blocked"`
 	BlockedBy  []string `json:"blocked_by"`
 	Blocks     []string `json:"blocks"`
@@ -41,14 +53,26 @@ type Story struct {
 	UpdatedBy string      `json:"updated_by,omitempty"`
 	UpdatedAt string      `json:"updated_at,omitempty"`
 
-	// waiting is the dependencies that are not yet complete.
-	waiting []string
+	// UpstreamChanged is set when a story this one depends on, directly or
+	// further down, had its goal or plan changed since this story was last
+	// reviewed; none otherwise. It records the most recent such change.
+	UpstreamChanged *UpstreamRef `json:"upstream_changed,omitempty"`
+
+	// linked is set when the story has any dependency link either way,
+	// complete or closed or not. StraightFlag reads it.
+	linked bool
 }
 
 // ReleaseRef names a release from a story: enough to show and to link.
 type ReleaseRef struct {
 	ID      string `json:"id"`
 	Version string `json:"version"`
+}
+
+// UpstreamRef says which story's goal or plan changed, and when.
+type UpstreamRef struct {
+	Story string `json:"story"`
+	At    string `json:"at"`
 }
 
 // Position places a story directly before or directly after another one.
@@ -66,10 +90,73 @@ type NewStory struct {
 	Description string `json:"description"`
 	Goal        string `json:"goal"`
 	Plan        string `json:"plan"`
-	Phase       int    `json:"phase"`
-	Proposed    bool   `json:"-"`
-	Reasoning   string `json:"-"`
+	Kind        string `json:"kind"`
+	// FoundIn names the story this one was found while building.
+	FoundIn   string `json:"found_in"`
+	Phase     int    `json:"phase"`
+	Proposed  bool   `json:"-"`
+	Reasoning string `json:"-"`
+	// StraightIn asks to skip approval for a bug with a clear fix. Every
+	// check must hold or the story is refused, not proposed instead.
+	StraightIn *StraightIn `json:"-"`
 	Position
+}
+
+// StraightIn is an agent's request for a bug to go straight into the
+// backlog: the fix in a sentence and three claims, each of which must be
+// true. It also needs a found-in story, a bug mark, a place (before or
+// after a story) and reasoning on the NewStory.
+type StraightIn struct {
+	Fix              string
+	NoDesignChoice   bool
+	NoContractChange bool
+	NothingElse      bool
+}
+
+// straightClaims are the claims as logged, word for word.
+const straightClaims = "needs no design choice; changes no API or tool contract; changes nothing else"
+
+// checkStraightIn refuses a straight-in request that fails a check that
+// needs no board data. The checks that do (the found-in story and its
+// phase) run in the same query as the write.
+func checkStraightIn(s NewStory) error {
+	x := s.StraightIn
+	switch {
+	case s.Proposed:
+		return refuse(Invalid, "a straight-in bug is not proposed; it goes into the backlog or is refused")
+	case s.Kind != kindBug:
+		return refuse(Invalid, "only a bug can go straight in")
+	case s.FoundIn == "":
+		return refuse(Invalid, "found_in is required: the story the bug was found in")
+	case strings.TrimSpace(x.Fix) == "":
+		return refuse(Invalid, "the fix is required, in a sentence")
+	case !x.NoDesignChoice:
+		return refuse(Invalid, "a bug that needs a design choice cannot go straight in")
+	case !x.NoContractChange:
+		return refuse(Invalid, "a bug whose fix changes an API or tool contract cannot go straight in")
+	case !x.NothingElse:
+		return refuse(Invalid, "a bug whose fix changes anything else cannot go straight in")
+	case s.Before == "" && s.After == "":
+		return refuse(Invalid, "give before or after: where it ranks in delivery order")
+	case s.Reasoning == "":
+		return refuse(Invalid, "reasoning is required for a straight-in bug")
+	}
+	return plainText(x.Fix)
+}
+
+// StraightFlag says why a straight-in bug needs a person's eye: it has
+// gained a dependency, either way, or lost its bug mark. It is worked out
+// on read. It is empty for a story that is not straight-in or has no problem.
+func (s Story) StraightFlag() string {
+	switch {
+	case !s.StraightIn:
+		return ""
+	case s.linked:
+		return "now has a dependency"
+	case s.Kind != kindBug:
+		return "no longer marked as a bug"
+	}
+	return ""
 }
 
 // StoryPatch changes the fields that are set and leaves the rest. Activity
@@ -84,6 +171,19 @@ type StoryPatch struct {
 	WaitingOn   *string `json:"waiting_on"`
 	Branch      *string `json:"branch"`
 	PRURL       *string `json:"pr_url"`
+	// Kind "bug" marks the story as a bug; "" clears the mark.
+	Kind *string `json:"kind"`
+}
+
+// kindBug is the one story kind there is. A story of no kind is just a story.
+const kindBug = "bug"
+
+// checkKind refuses any kind but bug, or none ("").
+func checkKind(k string) error {
+	if k != "" && k != kindBug {
+		return refuse(Invalid, "kind is %q, or empty for none", kindBug)
+	}
+	return nil
 }
 
 // activities are what an in-progress story can be doing.
@@ -104,8 +204,16 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 	if s.Proposed && s.Reasoning == "" {
 		return Story{}, refuse(Invalid, "reasoning is required to propose a story")
 	}
-	if !s.Proposed && s.Reasoning != "" {
+	if !s.Proposed && s.StraightIn == nil && s.Reasoning != "" {
 		return Story{}, refuse(Invalid, "reasoning is given only when proposing a story")
+	}
+	if err := checkKind(s.Kind); err != nil {
+		return Story{}, err
+	}
+	if s.StraightIn != nil {
+		if err := checkStraightIn(s); err != nil {
+			return Story{}, err
+		}
 	}
 	if err := plainText(s.Title, s.Description, s.Goal, s.Plan, s.Reasoning); err != nil {
 		return Story{}, err
@@ -120,6 +228,12 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 	if s.Proposed {
 		status = Proposed
 	}
+	var straight any
+	if x := s.StraightIn; x != nil {
+		straight = true
+		placed = "Straight into the backlog" + strings.TrimPrefix(placed, "Proposed") +
+			". Fix: " + strings.TrimRight(strings.TrimSpace(x.Fix), ".") + ". Claims, all true: " + straightClaims + "."
+	}
 	g, err := b.workspace(ws)
 	if err != nil {
 		return Story{}, err
@@ -133,17 +247,27 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			MATCH (w:Workspace)
 			OPTIONAL MATCH (p:Phase {number: $phase})
 			OPTIONAL MATCH (anchor:Story {id: $anchor})
+			OPTIONAL MATCH (f:Story {id: $found})
+			OPTIONAL MATCH (fp:Phase)-[:CONTAINS]->(f)
 			OPTIONAL MATCH (o:Story) WHERE ($lo = '' OR o.rank > $lo) AND ($hi = '' OR o.rank < $hi)
-			WITH w, p, anchor, count(o) AS between
-			WITH w, p, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
+			WITH w, p, anchor, f, fp, count(o) AS between
+			OPTIONAL MATCH (p)-[:CONTAINS]->(x:Story) WHERE x.status <> 'closed'
+			WITH w, p, anchor, f, fp, between, count(x) AS total,
+				toInteger(sum(CASE WHEN x.status IN $complete THEN 1 ELSE 0 END)) AS done
+			WITH w, p, f, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
 				WHEN $phase <> 0 AND p IS NULL THEN 'phase'
+				WHEN $found <> '' AND f IS NULL THEN 'found_in'
+				WHEN f.status = 'closed' THEN 'found_closed'
+				WHEN $straight AND $phase <> 0 AND coalesce(fp.number, 0) <> $phase THEN 'straight_phase'
+				WHEN $straight AND $phase <> 0 AND total > 0 AND done = total THEN 'straight_complete'
 				WHEN between > 0 OR ($anchor <> '' AND (anchor IS NULL OR anchor.rank <> $anchorRank)) THEN 'gap'
 			END AS violation
 			FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 				SET w.next_story = w.next_story + 1
 				CREATE (s:Story {id: id, title: $title, description: $description, goal: $goal,
-					plan: $plan, rank: $rank, status: $status, created_by: $actor, created_at: $now})
+					plan: $plan, kind: $kind, straight_in: $straightIn, rank: $rank, status: $status, created_by: $actor, created_at: $now})
 				FOREACH (q IN CASE WHEN p IS NULL THEN [] ELSE [p] END | CREATE (q)-[:CONTAINS]->(s))
+				FOREACH (q IN CASE WHEN f IS NULL THEN [] ELSE [f] END | CREATE (s)-[:FOUND_IN]->(q))
 				FOREACH (__ IN CASE WHEN $reasoning IS NULL THEN [] ELSE [1] END |
 					SET w.next_log = n + 1
 					CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n), at: $now, actor: $actor,
@@ -152,8 +276,8 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			map[string]any{
 				"phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
 				"rank": Between(at.lo, at.hi), "title": s.Title, "description": s.Description,
-				"goal": s.Goal, "plan": s.Plan, "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
-				"actor": actor, "now": now(),
+				"goal": s.Goal, "plan": s.Plan, "kind": orNull(s.Kind), "found": s.FoundIn, "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
+				"actor": actor, "now": now(), "straight": s.StraightIn != nil, "straightIn": straight, "complete": complete,
 			}, nil)
 		if err != nil {
 			return Story{}, fmt.Errorf("add story: %w", err)
@@ -165,6 +289,14 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			return story(g, str(r, "id"))
 		case "phase":
 			return Story{}, refuse(NotFound, "no phase %d", s.Phase)
+		case "found_in":
+			return Story{}, refuse(NotFound, "no story %q to have been found in", s.FoundIn)
+		case "found_closed":
+			return Story{}, refuse(Conflict, "%s is closed; a story cannot be found in a closed story", s.FoundIn)
+		case "straight_phase":
+			return Story{}, refuse(Conflict, "a straight-in bug takes no phase or the phase of %s, not phase %d", s.FoundIn, s.Phase)
+		case "straight_complete":
+			return Story{}, refuse(Conflict, "phase %d is complete; a straight-in bug cannot be added to it", s.Phase)
 		}
 	}
 	return Story{}, refuse(Conflict, "the backlog kept changing while the story was being placed; try again")
@@ -297,29 +429,57 @@ func (b *Board) Stories(ws string) ([]Story, error) {
 
 // UpdateStory edits a story's text, branch and pull request, and what it
 // is doing while in progress.
-func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, err error) {
+func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (Story, error) {
+	r, err := b.UpdateStoryDetail(ws, actor, id, patch)
+	return r.Story, err
+}
+
+// StoryUpdate is what an update did: the story, the names of the fields
+// whose value actually changed, and the dependents it marked as upstream
+// changed.
+type StoryUpdate struct {
+	Story   Story
+	Changed []string
+	Marked  []string
+}
+
+// UpdateStoryDetail is UpdateStory, also answering which fields changed and
+// which stories were marked, from the same single query.
+func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ StoryUpdate, err error) {
 	defer func() { b.changed(err, Change{ws, KindStory, id}) }()
 	if patch.Title != nil && *patch.Title == "" {
-		return Story{}, refuse(Invalid, "title cannot be empty")
+		return StoryUpdate{}, refuse(Invalid, "title cannot be empty")
 	}
 	if patch.Activity != nil && !slices.Contains(activities, *patch.Activity) {
-		return Story{}, refuse(Invalid, "activity is one of %s", strings.Join(activities, ", "))
+		return StoryUpdate{}, refuse(Invalid, "activity is one of %s", strings.Join(activities, ", "))
+	}
+	if err := checkKind(deref(patch.Kind)); err != nil {
+		return StoryUpdate{}, err
 	}
 	if err := plainText(deref(patch.Title), deref(patch.Description), deref(patch.Goal), deref(patch.Plan),
 		deref(patch.WaitingOn), deref(patch.Branch), deref(patch.PRURL)); err != nil {
-		return Story{}, err
+		return StoryUpdate{}, err
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
-		return Story{}, err
+		return StoryUpdate{}, err
 	}
 	res, err := g.Query(`
-		MATCH (s:Story {id: $id})
-		WITH s, coalesce($activity, s.activity) AS activity
-		WITH s, activity, CASE
+		MATCH (w:Workspace), (s:Story {id: $id})
+		WITH w, s, coalesce($activity, s.activity) AS activity, coalesce(w.next_log, 1) AS n,
+			[coalesce(s.title, ''), coalesce(s.description, ''), coalesce(s.goal, ''), coalesce(s.plan, ''),
+				coalesce(s.activity, ''), coalesce(s.waiting_on, ''), coalesce(s.branch, ''), coalesce(s.pr_url, ''), coalesce(s.kind, '')] AS old
+		WITH w, s, activity, n, old, CASE
 			WHEN $activity IS NOT NULL AND s.status <> 'in_progress' THEN 'not started'
 			WHEN $waiting IS NOT NULL AND coalesce(activity, '') <> 'waiting' THEN 'not waiting'
-		END AS violation
+		END AS violation,
+			$goal IS NOT NULL AND $goal <> coalesce(s.goal, '') AS goalChanged,
+			$plan IS NOT NULL AND $plan <> coalesce(s.plan, '') AS planChanged
+		OPTIONAL MATCH p = (d:Story)-[:DEPENDS_ON*1..]->(s)
+			WHERE violation IS NULL AND (goalChanged OR planChanged)
+				AND all(x IN nodes(p) WHERE x = s OR NOT x.status IN $done)
+		WITH w, s, activity, n, old, violation, goalChanged, planChanged, collect(DISTINCT d) AS ds,
+			CASE WHEN goalChanged AND planChanged THEN 'goal and plan' WHEN goalChanged THEN 'goal' ELSE 'plan' END AS what
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 			SET s.title = coalesce($title, s.title),
 				s.description = coalesce($description, s.description),
@@ -329,25 +489,54 @@ func (b *Board) UpdateStory(ws, actor, id string, patch StoryPatch) (_ Story, er
 				s.waiting_on = CASE WHEN activity = 'waiting' THEN coalesce($waiting, s.waiting_on) END,
 				s.branch = coalesce($branch, s.branch),
 				s.pr_url = coalesce($pr, s.pr_url),
-				s.updated_by = $actor, s.updated_at = $now)
-		RETURN violation, s.status AS status`,
+				s.kind = CASE WHEN $kind IS NULL THEN s.kind WHEN $kind = '' THEN null ELSE $kind END,
+				s.updated_by = $actor, s.updated_at = $now
+			FOREACH (__ IN CASE WHEN goalChanged OR planChanged THEN [1] ELSE [] END |
+				SET s.upstream_id = null, s.upstream_at = null, w.next_log = n + size(ds))
+			FOREACH (i IN range(0, size(ds) - 1) | FOREACH (d IN [ds[i]] |
+				SET d.upstream_id = $id, d.upstream_at = $now
+				CREATE (d)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $now, actor: $actor, kind: 'note',
+					text: 'The ' + what + ' of ' + $id + ' changed; review this story'}))))
+		RETURN violation, s.status AS status, [d IN ds | d.id] AS marked, old`,
 		map[string]any{"id": id, "title": opt(patch.Title), "description": opt(patch.Description),
 			"goal": opt(patch.Goal), "plan": opt(patch.Plan), "activity": opt(patch.Activity),
-			"waiting": opt(patch.WaitingOn), "branch": opt(patch.Branch), "pr": opt(patch.PRURL),
-			"actor": actor, "now": now()}, nil)
+			"waiting": opt(patch.WaitingOn), "branch": opt(patch.Branch), "pr": opt(patch.PRURL), "kind": opt(patch.Kind),
+			"done": append(slices.Clone(complete), Closed), "actor": actor, "now": now()}, nil)
 	if err != nil {
-		return Story{}, fmt.Errorf("update story: %w", err)
+		return StoryUpdate{}, fmt.Errorf("update story: %w", err)
 	}
 	if !res.Next() {
-		return Story{}, refuse(NotFound, "no story %q", id)
+		return StoryUpdate{}, refuse(NotFound, "no story %q", id)
 	}
+	var marked, old []string
 	switch r := res.Record(); str(r, "violation") {
 	case "not started":
-		return Story{}, refuse(Conflict, "%s is %s; activity is set only while a story is in progress", id, label(str(r, "status")))
+		return StoryUpdate{}, refuse(Conflict, "%s is %s; activity is set only while a story is in progress", id, label(str(r, "status")))
 	case "not waiting":
-		return Story{}, refuse(Invalid, "waiting_on is set only while a story's activity is waiting")
+		return StoryUpdate{}, refuse(Invalid, "waiting_on is set only while a story's activity is waiting")
+	default:
+		marked = byNumber(strs(r, "marked"))
+		for _, m := range marked {
+			b.changed(nil, Change{ws, KindStory, m})
+		}
+		old = strs(r, "old")
 	}
-	return story(g, id)
+	s, err := story(g, id)
+	if err != nil {
+		return StoryUpdate{}, err
+	}
+	given := []struct {
+		name string
+		to   *string
+	}{{"title", patch.Title}, {"description", patch.Description}, {"goal", patch.Goal}, {"plan", patch.Plan},
+		{"activity", patch.Activity}, {"waiting_on", patch.WaitingOn}, {"branch", patch.Branch}, {"pr_url", patch.PRURL}, {"kind", patch.Kind}}
+	changed := []string{}
+	for i, f := range given {
+		if f.to != nil && i < len(old) && *f.to != old[i] {
+			changed = append(changed, f.name)
+		}
+	}
+	return StoryUpdate{Story: s, Changed: changed, Marked: marked}, nil
 }
 
 func story(g *falkordb.Graph, id string) (Story, error) {
@@ -368,42 +557,52 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		OPTIONAL MATCH (p:Phase)-[:CONTAINS]->(s)
 		OPTIONAL MATCH (rel:Release)<-[:IN_RELEASE]-(s)
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story)
-		WITH s, p, rel, collect(t.id) AS blocked_by,
-			collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS waiting
+		WITH s, p, rel, collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS blocked_by, count(t) AS deps
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
-		WITH s, p, rel, blocked_by, waiting, collect(d.id) AS blocks
+		WITH s, p, rel, blocked_by, deps,
+			collect(CASE WHEN NOT s.status IN $complete AND d.status <> $closed THEN d.id END) AS blocks,
+			deps + count(d) > 0 AS linked
+		OPTIONAL MATCH (s)-[:FOUND_IN]->(fi:Story)
+		WITH s, p, rel, blocked_by, blocks, linked, fi
+		OPTIONAL MATCH (fd:Story)-[:FOUND_IN]->(s)
+		WITH s, p, rel, blocked_by, blocks, linked, fi, collect(fd.id) AS found
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
+			s.plan AS plan, s.kind AS kind, s.straight_in AS straight_in, fi.id AS found_in, found, s.status AS status, p.number AS phase, blocked_by, blocks, linked,
 			rel.id AS release_id, rel.version AS release_version,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
 			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
 			s.created_by AS created_by, s.created_at AS created_at,
 			s.moved_by AS moved_by, s.moved_at AS moved_at,
-			s.updated_by AS updated_by, s.updated_at AS updated_at
+			s.updated_by AS updated_by, s.updated_at AS updated_at,
+			s.upstream_id AS upstream_id, s.upstream_at AS upstream_at
 		ORDER BY s.rank`,
-		map[string]any{"id": id, "complete": complete}, nil)
+		map[string]any{"id": id, "complete": complete, "closed": Closed}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read stories: %w", err)
 	}
 	out := []Story{}
 	for res.Next() {
 		r := res.Record()
-		waiting := byNumber(strs(r, "waiting"))
+		blockedBy := byNumber(strs(r, "blocked_by"))
 		var rel *ReleaseRef
 		if id := str(r, "release_id"); id != "" {
 			rel = &ReleaseRef{ID: id, Version: str(r, "release_version")}
 		}
+		var up *UpstreamRef
+		if id := str(r, "upstream_id"); id != "" {
+			up = &UpstreamRef{Story: id, At: str(r, "upstream_at")}
+		}
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
-			Goal: str(r, "goal"), Plan: str(r, "plan"), Status: str(r, "status"), Phase: num(r, "phase"),
-			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
-			Blocked: len(waiting) > 0, waiting: waiting,
+			Goal: str(r, "goal"), Plan: str(r, "plan"), Kind: str(r, "kind"), StraightIn: flag(r, "straight_in"), FoundIn: str(r, "found_in"), Found: byNumber(strs(r, "found")), Status: str(r, "status"), Phase: num(r, "phase"),
+			BlockedBy: blockedBy, Blocks: byNumber(strs(r, "blocks")),
+			Blocked: len(blockedBy) > 0, linked: flag(r, "linked"),
 			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
 			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), Into: str(r, "into"), PRURL: str(r, "pr_url"),
 			Workaround: str(r, "workaround"), Release: rel,
 			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
-			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"),
+			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), UpstreamChanged: up,
 		})
 	}
 	return out, nil
@@ -425,4 +624,41 @@ func list(ids []string) string {
 		out += ", " + id
 	}
 	return out + " and " + ids[len(ids)-1]
+}
+
+// MarkReviewed clears a story's upstream-changed mark, logging a note with the
+// reason: the story was looked at and the changed plan or goal needs nothing
+// from it. A story that is not marked is refused.
+func (b *Board) MarkReviewed(ws, actor, id, reason string) (_ Story, err error) {
+	defer func() { b.changed(err, Change{ws, KindStory, id}) }()
+	if reason == "" {
+		return Story{}, refuse(Invalid, "a reason is required: say what was checked or changed")
+	}
+	if err := plainText(reason); err != nil {
+		return Story{}, err
+	}
+	g, err := b.workspace(ws)
+	if err != nil {
+		return Story{}, err
+	}
+	res, err := g.Query(`
+		MATCH (w:Workspace), (s:Story {id: $id})
+		WITH w, s, coalesce(w.next_log, 1) AS n, s.upstream_id AS up,
+			CASE WHEN s.upstream_id IS NULL THEN 'unmarked' END AS violation
+		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
+			SET w.next_log = n + 1, s.upstream_id = null, s.upstream_at = null
+			CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n), at: $now, actor: $actor, kind: 'note',
+				text: 'Reviewed after ' + up + ' changed: ' + $reason}))
+		RETURN violation`,
+		map[string]any{"id": id, "reason": reason, "actor": actor, "now": now()}, nil)
+	if err != nil {
+		return Story{}, fmt.Errorf("mark reviewed: %w", err)
+	}
+	if !res.Next() {
+		return Story{}, refuse(NotFound, "no story %q", id)
+	}
+	if str(res.Record(), "violation") != "" {
+		return Story{}, refuse(Conflict, "%s is not marked as upstream changed; there is nothing to review", id)
+	}
+	return story(g, id)
 }

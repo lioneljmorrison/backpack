@@ -16,7 +16,7 @@ func TestListWorkspacesShowsEveryWorkspace(t *testing.T) {
 		t.Fatalf("workspaces %v", ws)
 	}
 	a, d := ws[0].(map[string]any), ws[1].(map[string]any)
-	if a["slug"] != "alpha" || a["name"] != "Alpha" || a["repo_url"] != "https://example.com/alpha" || a["created_by"] != "tester" {
+	if a["slug"] != "alpha" || a["name"] != "Alpha" || a["repo_url"] != "https://example.com/alpha" {
 		t.Fatalf("first %v", a)
 	}
 	if d["slug"] != "demo" || d["name"] != "Demo" {

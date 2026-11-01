@@ -539,3 +539,149 @@ func TestReleasesAreListedAndReadOverHTTP(t *testing.T) {
 	want(t, call(t, h, "GET", rp+"/R-9", ""), http.StatusNotFound)
 	want(t, call(t, h, "GET", "/v1/workspaces/nope/releases", ""), http.StatusNotFound)
 }
+
+func TestEditingAPhaseAndAGoalOverHTTPIsLogged(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "Old", "description": "keep"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases/1/goals", `{"text": "old"}`), http.StatusCreated)
+
+	p := want(t, call(t, h, "PATCH", "/v1/workspaces/demo/phases/1", `{"title": "New"}`), http.StatusOK)
+	if p["title"] != "New" || p["description"] != "keep" {
+		t.Fatalf("phase %v", p)
+	}
+	g := want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{"text": "new"}`), http.StatusOK)
+	if g["id"] != "G-1" || g["text"] != "new" || g["met"] != false {
+		t.Fatalf("goal %v", g)
+	}
+
+	pl := want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/1/log", ""), http.StatusOK)["entries"].([]any)
+	if len(pl) != 1 || pl[0].(map[string]any)["field"] != "title" || pl[0].(map[string]any)["from"] != "Old" || pl[0].(map[string]any)["to"] != "New" {
+		t.Fatalf("phase log %v", pl)
+	}
+	gl := want(t, call(t, h, "GET", "/v1/workspaces/demo/goals/G-1/log", ""), http.StatusOK)["entries"].([]any)
+	if len(gl) != 1 || gl[0].(map[string]any)["kind"] != "edit" || gl[0].(map[string]any)["actor"] != "tester" {
+		t.Fatalf("goal log %v", gl)
+	}
+
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/phases/1", `{"title": ""}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/phases/9", `{"title": "x"}`), http.StatusNotFound)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{"text": ""}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-1", `{"text": "x", "met": true}`), http.StatusBadRequest)
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/goals/G-9", `{"text": "x"}`), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/9/log", ""), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/goals/G-9/log", ""), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/x/log", ""), http.StatusBadRequest)
+}
+
+func TestUpstreamChangesAndReviewsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	base := "/v1/workspaces/demo/stories/"
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A", "plan": "p"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "B"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", base+"S-2/dependencies", `{"on": "S-1"}`), http.StatusOK)
+	want(t, call(t, h, "PATCH", base+"S-1", `{"plan": "p"}`), http.StatusOK) // same plan: no mark
+	if s := want(t, call(t, h, "GET", base+"S-2", ""), http.StatusOK); s["upstream_changed"] != nil {
+		t.Fatalf("marked by an unchanged plan: %v", s)
+	}
+	want(t, call(t, h, "PATCH", base+"S-1", `{"plan": "p2"}`), http.StatusOK)
+	s := want(t, call(t, h, "GET", base+"S-2", ""), http.StatusOK)
+	if up, _ := s["upstream_changed"].(map[string]any); up["story"] != "S-1" || up["at"] == "" {
+		t.Fatalf("read %v", s)
+	}
+	status := want(t, call(t, h, "GET", "/v1/workspaces/demo/status", ""), http.StatusOK)
+	if up, _ := status["upstream_changed"].([]any); len(up) != 1 {
+		t.Fatalf("status %v", status)
+	}
+	want(t, call(t, h, "POST", base+"S-2/reviewed", `{}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", base+"S-2/reviewed", `{"reason":`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", base+"S-9/reviewed", `{"reason": "x"}`), http.StatusNotFound)
+	want(t, call(t, h, "POST", base+"S-1/reviewed", `{"reason": "x"}`), http.StatusConflict)
+	s = want(t, call(t, h, "POST", base+"S-2/reviewed", `{"reason": "still fine"}`), http.StatusOK)
+	if s["id"] != "S-2" || s["upstream_changed"] != nil {
+		t.Fatalf("reviewed %v", s)
+	}
+	want(t, call(t, h, "POST", base+"S-2/reviewed", `{"reason": "again"}`), http.StatusConflict)
+	log := want(t, call(t, h, "GET", base+"S-2/log", ""), http.StatusOK)["entries"].([]any)
+	if last := log[len(log)-1].(map[string]any); last["kind"] != "note" || !strings.Contains(last["text"].(string), "still fine") {
+		t.Fatalf("log %v", log)
+	}
+}
+
+func TestHTTPStoryKeepsTheFullRecord(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	got := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
+	if got["created_at"] == nil || got["created_by"] != "tester" || got["blocked"] != false {
+		t.Fatalf("read %v", got)
+	}
+}
+
+// The MCP lists answer summaries (S-44); the HTTP lists keep every field.
+func TestHTTPListsKeepTheirFullFields(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/ideas", `{"title": "A", "context": "background"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "One", "description": "first"}`), http.StatusCreated)
+	i := want(t, call(t, h, "GET", "/v1/workspaces/demo/ideas", ""), http.StatusOK)["ideas"].([]any)[0].(map[string]any)
+	if i["context"] != "background" || i["created_by"] != "tester" {
+		t.Fatalf("idea %v", i)
+	}
+	p := want(t, call(t, h, "GET", "/v1/workspaces/demo/phases", ""), http.StatusOK)["phases"].([]any)[0].(map[string]any)
+	if p["description"] != "first" || p["created_by"] != "tester" {
+		t.Fatalf("phase %v", p)
+	}
+}
+
+func TestAStoryKindRoundTripsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "Crash", "kind": "bug"}`), http.StatusCreated)
+	if s["kind"] != "bug" {
+		t.Fatalf("added %v", s)
+	}
+	s = want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
+	if s["kind"] != "bug" {
+		t.Fatalf("read %v", s)
+	}
+	s = want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"kind": ""}`), http.StatusOK)
+	if _, there := s["kind"]; there {
+		t.Fatalf("cleared %v", s)
+	}
+	s = want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"kind": "bug"}`), http.StatusOK)
+	if s["kind"] != "bug" {
+		t.Fatalf("set %v", s)
+	}
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"kind": "chore"}`), http.StatusBadRequest)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "X", "kind": "chore"}`), http.StatusBadRequest)
+}
+
+func TestAStoryFoundInRoundTripsOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "B", "found_in": "S-1"}`), http.StatusCreated)
+	if s["found_in"] != "S-1" {
+		t.Fatalf("added %v", s)
+	}
+	a := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
+	if f, _ := a["found"].([]any); len(f) != 1 || f[0] != "S-2" {
+		t.Fatalf("read %v", a)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "C", "found_in": "S-99"}`), http.StatusNotFound)
+}
+
+func TestOnlyDependenciesThatStillBlockAreListedOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	for _, title := range []string{"A", "B", "C"} {
+		want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "`+title+`"}`), http.StatusCreated)
+	}
+	for _, to := range []string{"in_progress", "in_review", "merged"} {
+		want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", `{"to": "`+to+`"}`), http.StatusOK)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-3/dependencies", `{"on": "S-1"}`), http.StatusOK)
+	s := want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-3/dependencies", `{"on": "S-2"}`), http.StatusOK)
+	if by := s["blocked_by"].([]any); len(by) != 1 || by[0] != "S-2" {
+		t.Fatalf("S-3 %v", s)
+	}
+	first := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
+	if bl, ok := first["blocks"].([]any); !ok || len(bl) != 0 {
+		t.Fatalf("S-1 blocks %v, want []", first["blocks"])
+	}
+}

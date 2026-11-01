@@ -133,7 +133,7 @@ func TestAStoryShowsItsDetailDependenciesAndLog(t *testing.T) {
 
 	wantPage(t, get(h, "/w/demo/stories/"+second.ID, "bp_good"),
 		"Built on it", "What it is", "Why it matters", "How it goes",
-		"Depends on", `href="/w/demo/stories/S-1"`, "Groundwork",
+		"Blocked by", `href="/w/demo/stories/S-1"`, "Groundwork",
 		"Looked at the old one", "It was the new one", "Corrects "+note.ID, `id="`+note.ID+`"`)
 	wantPage(t, get(h, "/w/demo/stories/"+first.ID, "bp_good"), "Blocks", `href="/w/demo/stories/S-2"`)
 }
@@ -571,5 +571,136 @@ func TestTheReleasePageForR0ListsItsStoriesAndShowsNoTag(t *testing.T) {
 	}
 	if !strings.Contains(get(h, "/w/demo/stories/S-1", "bp_good").Body.String(), `href="/w/demo/releases/R-0"`) {
 		t.Error("the story page does not link to R-0")
+	}
+}
+
+// markedPair adds a story that depends on another, then changes the other's
+// plan so the dependent story carries the upstream-changed mark.
+func markedPair(t *testing.T) (h http.Handler, up, marked, free board.Story) {
+	t.Helper()
+	h, b := withDemo(t)
+	up = story(t, b, board.NewStory{Title: "Upstream", Goal: "g", Plan: "p"})
+	marked = story(t, b, board.NewStory{Title: "Dependent", Goal: "g", Plan: "p"})
+	free = story(t, b, board.NewStory{Title: "Free", Goal: "g", Plan: "p"})
+	must[board.Story](t)(b.AddDependency("demo", "tester", marked.ID, up.ID))
+	plan := "a new plan"
+	must[board.Story](t)(b.UpdateStory("demo", "tester", up.ID, board.StoryPatch{Plan: &plan}))
+	return h, up, marked, free
+}
+
+func TestAMarkedCardShowsTheUpstreamChangedBadgeAndAnUnmarkedOneDoesNot(t *testing.T) {
+	h, _, marked, free := markedPair(t)
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	card := func(id string) string {
+		i := strings.Index(page, `data-id="`+id+`"`)
+		if i < 0 {
+			t.Fatalf("no card for %s", id)
+		}
+		return page[i : i+strings.Index(page[i:], "</article>")]
+	}
+	if c := card(marked.ID); !strings.Contains(c, "Upstream changed") {
+		t.Errorf("marked card has no badge: %s", c)
+	}
+	if c := card(free.ID); strings.Contains(c, "Upstream changed") {
+		t.Errorf("unmarked card has the badge: %s", c)
+	}
+}
+
+func TestAMarkedStoryPageNamesTheUpstreamStoryAndWhen(t *testing.T) {
+	h, up, marked, free := markedPair(t)
+	page := get(h, "/w/demo/stories/"+marked.ID, "bp_good").Body.String()
+	if !strings.Contains(page, "Upstream changed") {
+		t.Errorf("page does not say upstream changed: %s", page)
+	}
+	if !strings.Contains(page, `href="/w/demo/stories/`+up.ID+`"`) || !strings.Contains(page, "Upstream") {
+		t.Errorf("page does not link the upstream story")
+	}
+	if !strings.Contains(page, `<time datetime="`) {
+		t.Errorf("page has no time")
+	}
+	other := get(h, "/w/demo/stories/"+free.ID, "bp_good").Body.String()
+	if strings.Contains(other, "Upstream changed") {
+		t.Errorf("unmarked page says upstream changed")
+	}
+}
+
+func TestABugShowsABadgeOnItsCardAndItsPage(t *testing.T) {
+	h, b := withDemo(t)
+	story(t, b, board.NewStory{Title: "Crash on save", Kind: "bug"})
+	story(t, b, board.NewStory{Title: "Export"})
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	if n := strings.Count(page, `class="tag bug"`); n != 1 {
+		t.Errorf("the board has %d bug badges, want 1", n)
+	}
+	wantPage(t, get(h, "/w/demo/stories/S-1", "bp_good"), `class="tag bug"`)
+	if strings.Contains(get(h, "/w/demo/stories/S-2", "bp_good").Body.String(), `class="tag bug"`) {
+		t.Error("a story that is not a bug has the badge")
+	}
+}
+
+func TestAStraightInBugShowsABadgeOnItsCardAndItsPage(t *testing.T) {
+	h, b := withDemo(t)
+	story(t, b, board.NewStory{Title: "Build A"})
+	if _, err := b.AddStory("demo", "tester", board.NewStory{Title: "Crash on save", Kind: "bug", FoundIn: "S-1",
+		Reasoning: "next to where it was found", Position: board.Position{After: "S-1"},
+		StraightIn: &board.StraightIn{Fix: "Check the length", NoDesignChoice: true, NoContractChange: true, NothingElse: true}}); err != nil {
+		t.Fatal(err)
+	}
+	story(t, b, board.NewStory{Title: "Plain bug", Kind: "bug"})
+	page := get(h, "/w/demo", "bp_good").Body.String()
+	if n := strings.Count(page, "Straight in"); n != 1 {
+		t.Errorf("the board has %d straight-in badges, want 1", n)
+	}
+	wantPage(t, get(h, "/w/demo/stories/S-2", "bp_good"), "Straight in")
+	if strings.Contains(get(h, "/w/demo/stories/S-3", "bp_good").Body.String(), "Straight in") {
+		t.Error("a plain bug has the badge")
+	}
+}
+
+func TestOnlyCurrentDependenciesShowOnTheCardAndStoryPage(t *testing.T) {
+	h, b := withDemo(t)
+	first := story(t, b, board.NewStory{Title: "Finished groundwork"})
+	second := story(t, b, board.NewStory{Title: "Still open"})
+	third := story(t, b, board.NewStory{Title: "Built on both"})
+	for _, to := range []string{board.InProgress, board.InReview, board.Merged} {
+		must[board.Story](t)(b.SetStatus("demo", "tester", first.ID, board.StatusChange{To: to}))
+	}
+	must[board.Story](t)(b.AddDependency("demo", "tester", third.ID, first.ID))
+	must[board.Story](t)(b.AddDependency("demo", "tester", third.ID, second.ID))
+
+	card := get(h, "/w/demo", "bp_good").Body.String()
+	if !strings.Contains(card, "Blocked by S-2") || strings.Contains(card, "S-1, S-2") {
+		t.Errorf("the card does not name only S-2:\n%s", card)
+	}
+	page := get(h, "/w/demo/stories/"+third.ID, "bp_good").Body.String()
+	_, after, found := strings.Cut(page, "<h2>Blocked by</h2>")
+	if !found || strings.Contains(page, "Depends on") {
+		t.Fatalf("no Blocked by heading:\n%s", page)
+	}
+	list, _, _ := strings.Cut(after, "</ul>")
+	if !strings.Contains(list, "S-2") || strings.Contains(list, "S-1") {
+		t.Errorf("the list under Blocked by is %q", list)
+	}
+}
+
+func TestAStoryPageLinksWhereItWasFoundAndWhatItFound(t *testing.T) {
+	h, b := withDemo(t)
+	parent := story(t, b, board.NewStory{Title: "Parent work"})
+	child := story(t, b, board.NewStory{Title: "Turned up later", FoundIn: parent.ID})
+	lone := story(t, b, board.NewStory{Title: "Standalone"})
+
+	page := get(h, "/w/demo/stories/"+child.ID, "bp_good")
+	wantPage(t, page, "Found in", `href="/w/demo/stories/`+parent.ID+`"`, "Parent work")
+	if strings.Contains(page.Body.String(), "Found while building") {
+		t.Errorf("a story that found nothing shows a Found while building section")
+	}
+	wantPage(t, get(h, "/w/demo/stories/"+parent.ID, "bp_good"),
+		"Found while building", `href="/w/demo/stories/`+child.ID+`"`, "Turned up later")
+	if p := get(h, "/w/demo/stories/"+parent.ID, "bp_good").Body.String(); strings.Contains(p, "<h2>Found in</h2>") {
+		t.Errorf("a story not found elsewhere shows a Found in section")
+	}
+	p := get(h, "/w/demo/stories/"+lone.ID, "bp_good").Body.String()
+	if strings.Contains(p, "Found in") || strings.Contains(p, "Found while building") {
+		t.Errorf("a story with no trail shows found sections")
 	}
 }

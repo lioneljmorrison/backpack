@@ -226,29 +226,84 @@ func (x *Index) docs(ws string) ([]doc, error) {
 // Search finds a workspace's stories, ideas and phases by keyword and by
 // meaning, best first.
 func (x *Index) Search(ctx context.Context, ws, q string) ([]Result, error) {
+	return x.search(ctx, ws, q, "")
+}
+
+// Scopes name where SearchNear looked.
+const (
+	ScopeStory     = "story"
+	ScopeWorkspace = "workspace"
+)
+
+// SearchNear searches a story's neighbourhood first, as the board works it
+// out (Board.Near): the index only ranks inside it. When nothing matches
+// there it searches the whole workspace. The scope it used comes back. An
+// unknown story is NotFound.
+func (x *Index) SearchNear(ctx context.Context, ws, q, story string) ([]Result, string, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, "", &board.Error{Kind: board.Invalid, Msg: "a search needs a query"}
+	}
+	if err := x.workspaceExists(ws); err != nil {
+		return nil, "", err
+	}
+	n, err := x.b.Near(ws, story)
+	if err != nil {
+		return nil, "", err
+	}
+	ids := slices.Clone(n.Stories)
+	ids = append(ids, n.Ideas...)
+	if n.Phase != 0 {
+		ids = append(ids, "P-"+strconv.Itoa(n.Phase))
+	}
+	// Backticks let Typesense read the hyphen in an id as part of it.
+	for i, id := range ids {
+		ids[i] = "`" + id + "`"
+	}
+	rs, err := x.search(ctx, ws, q, "id:["+strings.Join(ids, ",")+"]")
+	if err != nil || len(rs) > 0 {
+		return rs, ScopeStory, err
+	}
+	rs, err = x.search(ctx, ws, q, "")
+	return rs, ScopeWorkspace, err
+}
+
+func (x *Index) workspaceExists(ws string) error {
+	all, err := x.b.Workspaces()
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(all, func(w board.Workspace) bool { return w.Slug == ws }) {
+		return &board.Error{Kind: board.NotFound, Msg: fmt.Sprintf("no workspace %q", ws)}
+	}
+	return nil
+}
+
+// search runs one query, narrowed by filter when it is not empty.
+func (x *Index) search(ctx context.Context, ws, q, filter string) ([]Result, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return nil, &board.Error{Kind: board.Invalid, Msg: "a search needs a query"}
 	}
-	all, err := x.b.Workspaces()
-	if err != nil {
+	if err := x.workspaceExists(ws); err != nil {
 		return nil, err
 	}
-	if !slices.ContainsFunc(all, func(w board.Workspace) bool { return w.Slug == ws }) {
-		return nil, &board.Error{Kind: board.NotFound, Msg: fmt.Sprintf("no workspace %q", ws)}
+	params := url.Values{
+		"q":              {q},
+		"query_by":       {"title,summary,detail,embedding"},
+		"vector_query":   {fmt.Sprintf("embedding:([], distance_threshold:%v)", maxDistance)},
+		"exclude_fields": {"embedding"},
+		"per_page":       {strconv.Itoa(maxResults)},
+	}
+	if filter != "" {
+		params.Set("filter_by", filter)
 	}
 	var res struct {
 		Hits []struct {
 			Document doc `json:"document"`
 		} `json:"hits"`
 	}
-	err = x.c.search(ctx, x.collection(ws), url.Values{
-		"q":              {q},
-		"query_by":       {"title,summary,detail,embedding"},
-		"vector_query":   {fmt.Sprintf("embedding:([], distance_threshold:%v)", maxDistance)},
-		"exclude_fields": {"embedding"},
-		"per_page":       {strconv.Itoa(maxResults)},
-	}, &res)
+	err := x.c.search(ctx, x.collection(ws), params, &res)
 	if errors.Is(err, errNoCollection) {
 		return nil, fmt.Errorf("%w: %s has no index; reindex needed", ErrUnavailable, ws)
 	}
@@ -264,7 +319,7 @@ func (x *Index) Search(ctx context.Context, ws, q string) ([]Result, error) {
 }
 
 func storyDoc(s board.Story, entries []board.LogEntry) doc {
-	detail := []string{s.Plan, s.HoldReason, s.Workaround}
+	detail := []string{s.Kind, s.Plan, s.HoldReason, s.Workaround}
 	for _, e := range entries {
 		detail = append(detail, e.Text, e.Reason)
 	}
