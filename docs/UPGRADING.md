@@ -23,6 +23,11 @@ tool list: `add_branch`, `update_branch`,
 `get_idea` (reads, run with `actions`). A call to one of them directly is now refused as an unknown
 tool. The arguments, answers and refusals are unchanged.
 
+`add_bug_fix` is new, and also on request (run with `batch`; `actions` gives
+its arguments). It adds a bug with a clear fix to the backlog without waiting
+for approval, if every check holds, and is refused otherwise. `add_story` is
+unchanged and still proposes.
+
 To run a read, call `actions` with `name` and `args`, the workspace included:
 `{"name": "list_ideas", "args": {"workspace": "my-app"}}`. A name alone
 describes the action instead of running it. `actions` never runs a change, so

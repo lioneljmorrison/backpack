@@ -40,6 +40,8 @@ type Where struct {
 	OnHold     []Story `json:"on_hold"`
 	// Next is the top of the backlog, blocked stories included.
 	Next []Story `json:"next"`
+	// StraightIn is the bugs that skipped approval and are not yet started.
+	StraightIn []Story `json:"straight_in"`
 	// Unreleased is what is merged into the release branch and not yet in a
 	// release, in delivery order.
 	Unreleased []Story `json:"unreleased"`
@@ -73,7 +75,7 @@ func (b *Board) Where(ws string) (Where, error) {
 			break
 		}
 	}
-	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, Unreleased: []Story{}, UpstreamChanged: []Story{}}
+	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, StraightIn: []Story{}, Unreleased: []Story{}, UpstreamChanged: []Story{}}
 	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete }); i >= 0 {
 		w.Phase = &ps[i]
 	}
@@ -95,6 +97,9 @@ func (b *Board) Where(ws string) (Where, error) {
 				w.Unreleased = append(w.Unreleased, s)
 			}
 		case Backlog:
+			if s.StraightIn {
+				w.StraightIn = append(w.StraightIn, s)
+			}
 			if len(w.Next) < upcoming {
 				w.Next = append(w.Next, s)
 			}
@@ -105,7 +110,7 @@ func (b *Board) Where(ws string) (Where, error) {
 
 // Text is "where are we" as a few lines for a session hook.
 func (w Where) Text() string {
-	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next)+len(w.Unreleased)+len(w.UpstreamChanged) == 0 {
+	if w.Phase == nil && len(w.Proposed)+len(w.InProgress)+len(w.InReview)+len(w.OnHold)+len(w.Next)+len(w.StraightIn)+len(w.Unreleased)+len(w.UpstreamChanged) == 0 {
 		return "Nothing in progress, in review or in the backlog.\n"
 	}
 	var b strings.Builder
@@ -164,6 +169,13 @@ func (w Where) Text() string {
 	}
 	section("Upstream changed", w.UpstreamChanged, func(s Story) []string {
 		return []string{"after " + s.UpstreamChanged.Story}
+	})
+	section("Straight in, not started", w.StraightIn, func(s Story) []string {
+		parts := []string{"found in " + s.FoundIn}
+		if f := s.StraightFlag(); f != "" {
+			parts = append(parts, "flagged: "+f)
+		}
+		return parts
 	})
 	section("Next", w.Next, none)
 	section("Waiting for approval", w.Proposed, none)

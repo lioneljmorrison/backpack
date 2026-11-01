@@ -95,6 +95,31 @@ add. The link is made when the story is created, an unknown story is refused,
 and so is a closed one. A story read shows both ways: where it was found, and
 what was found while building it. The link is never edited.
 
+**Straight in** (2026-10-31, owner decision). A bug with a clear answer and no
+chain reaction may skip approval. It is its own on-request change,
+`add_bug_fix`, run through `batch` and described by `actions`, so the menu
+does not grow; `add_story` is unchanged and always proposes. `add_bug_fix`
+takes `add_story`'s fields plus `fix` (a sentence) and three yes/no claims,
+`no_design_choice`, `no_contract_change` and `nothing_else`, all required,
+and calls the same single board operation. Every check must hold, in the same
+query as the write, or the request is refused, never downgraded to a
+proposal: the story is marked bug; it names a found-in story that exists and
+is not closed; the fix is stated; all three claims are true; it has no
+dependencies (a new story cannot have any); its phase is none or the
+found-in story's phase, and that phase is not complete; and it is placed
+`before` or `after` a story with `reasoning`. On success the story goes into
+Backlog with `straight_in: true`, the `FOUND_IN` edge, and one decision entry
+(the next log id) holding the fix, the claims word for word, the reasoning
+and the actor. Where are we lists straight-in bugs not yet started, with the
+story each was found in, and flags one that has since gained a dependency
+(either way) or lost its bug mark; that is worked out on read, so a later
+dependency is flagged, not refused. The web card shows a badge. A person
+undoes it with close, hold or move; there is no move back to Proposed. The
+phase-complete check is the rule in `internal/board/phase.go` (the part that
+can apply: the found-in story is open and in the phase, so it has stories).
+Over HTTP a story is already added straight to Backlog, so the request is
+MCP only.
+
 **Statuses.**
 
 | Column | Meaning | In this repo |
@@ -385,7 +410,7 @@ Each slice is its own branch and pull request into `dev`.
   unchanged: `add_branch`, `update_branch`, `remove_branch`, `merge_branch`,
   `cut_release`, `add_phase`, `update_phase`, `add_goal`, `update_goal`,
   `mark_goal_met`, `refine_idea`, `drop_idea`, `update_idea`, `move_idea`,
-  `move_story`, `remove_dependency` and `mark_reviewed`.
+  `move_story`, `remove_dependency`, `mark_reviewed` and `add_bug_fix`.
   *Step 2: rarer reads.* `list_branches`, `list_releases`, `get_release`,
   `read_log`, `list_phases`, `list_ideas` and `get_idea` leave the menu too and
   run through `actions`. `batch` still refuses reads. Called directly, a moved
@@ -624,7 +649,7 @@ the data volume. Backup copies the RDB file off the host.
 | `Branch` | `name`, `into` (the name of the branch it merges into, a property rather than an edge; none for the release branch), `alias` (display only), `created_by`, `created_at` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
-| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `kind` (`bug`, absent for any other story), `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) `upstream_id`, `upstream_at` (the upstream-changed mark, absent when none) |
+| `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `kind` (`bug`, absent for any other story), `straight_in` (`true` on a bug that skipped approval, absent otherwise), `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) `upstream_id`, `upstream_at` (the upstream-changed mark, absent when none) |
 | `Release` | `id` (`R-n`), `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` |
 | `Idea` | `id` (`I-n`), `title`, `context`, `rank`, `state` (`open`/`closed`), `drop_reason`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
 | `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `field` (an edit entry: the field changed), `from`, `to` (a status entry's statuses, or an edit entry's old and new value) |

@@ -14,6 +14,7 @@ type leanStory struct {
 	Plan        string `json:"plan,omitempty"`
 	Kind        string `json:"kind,omitempty"`
 	FoundIn     string `json:"found_in,omitempty"`
+	StraightIn  bool   `json:"straight_in,omitempty"`
 	Phase       int    `json:"phase,omitempty"`
 	Status      string `json:"status"`
 	// Blocked is sent only when true.
@@ -36,7 +37,7 @@ type leanStory struct {
 // lean is the agent's view of s.
 func lean(s board.Story) leanStory {
 	return leanStory{
-		ID: s.ID, Title: s.Title, Description: s.Description, Goal: s.Goal, Plan: s.Plan, Kind: s.Kind, FoundIn: s.FoundIn, Found: s.Found,
+		ID: s.ID, Title: s.Title, Description: s.Description, Goal: s.Goal, Plan: s.Plan, Kind: s.Kind, FoundIn: s.FoundIn, StraightIn: s.StraightIn, Found: s.Found,
 		Phase: s.Phase, Status: s.Status, Blocked: s.Blocked, BlockedBy: s.BlockedBy, Blocks: s.Blocks,
 		HeldFrom: s.HeldFrom, HoldReason: s.HoldReason, Activity: s.Activity, WaitingOn: s.WaitingOn,
 		Branch: s.Branch, Into: s.Into, PRURL: s.PRURL, Workaround: s.Workaround,

@@ -42,6 +42,7 @@
   <a class="card-title" href="/w/{{.WS}}/stories/{{.S.ID}}"><span class="id">{{.S.ID}}</span> {{.S.Title}}</a>
   <div class="tags">
     {{if eq .S.Kind "bug"}}<span class="tag bug">Bug</span>{{end}}
+    {{if .S.StraightIn}}<span class="tag warn" title="Skipped approval">Straight in</span>{{end}}
     {{if .S.Phase}}<span class="tag">Phase {{.S.Phase}}</span>{{end}}
     {{if .S.Activity}}<span class="tag activity">{{label .S.Activity}}{{with .S.WaitingOn}}: {{.}}{{end}}</span>{{end}}
     {{if .S.Blocked}}<span class="tag bad">Blocked by {{range $i, $b := .S.BlockedBy}}{{if $i}}, {{end}}{{$b}}{{end}}</span>{{end}}

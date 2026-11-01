@@ -22,8 +22,11 @@ type Story struct {
 	// while building this one.
 	FoundIn string   `json:"found_in,omitempty"`
 	Found   []string `json:"found"`
-	Phase   int      `json:"phase,omitempty"`
-	Status  string   `json:"status"`
+	// StraightIn is set on a bug that skipped approval: it was filed with a
+	// clear fix and went straight into the backlog.
+	StraightIn bool   `json:"straight_in,omitempty"`
+	Phase      int    `json:"phase,omitempty"`
+	Status     string `json:"status"`
 	// Blocked is worked out, never set: a dependency is not yet complete.
 	Blocked    bool     `json:"blocked"`
 	BlockedBy  []string `json:"blocked_by"`
@@ -90,7 +93,67 @@ type NewStory struct {
 	Phase     int    `json:"phase"`
 	Proposed  bool   `json:"-"`
 	Reasoning string `json:"-"`
+	// StraightIn asks to skip approval for a bug with a clear fix. Every
+	// check must hold or the story is refused, not proposed instead.
+	StraightIn *StraightIn `json:"-"`
 	Position
+}
+
+// StraightIn is an agent's request for a bug to go straight into the
+// backlog: the fix in a sentence and three claims, each of which must be
+// true. It also needs a found-in story, a bug mark, a place (before or
+// after a story) and reasoning on the NewStory.
+type StraightIn struct {
+	Fix              string
+	NoDesignChoice   bool
+	NoContractChange bool
+	NothingElse      bool
+}
+
+// straightClaims are the claims as logged, word for word.
+const straightClaims = "needs no design choice; changes no API or tool contract; changes nothing else"
+
+// checkStraightIn refuses a straight-in request that fails a check that
+// needs no board data. The checks that do (the found-in story and its
+// phase) run in the same query as the write.
+func checkStraightIn(s NewStory) error {
+	x := s.StraightIn
+	switch {
+	case s.Proposed:
+		return refuse(Invalid, "a straight-in bug is not proposed; it goes into the backlog or is refused")
+	case s.Kind != kindBug:
+		return refuse(Invalid, "only a bug can go straight in")
+	case s.FoundIn == "":
+		return refuse(Invalid, "found_in is required: the story the bug was found in")
+	case strings.TrimSpace(x.Fix) == "":
+		return refuse(Invalid, "the fix is required, in a sentence")
+	case !x.NoDesignChoice:
+		return refuse(Invalid, "a bug that needs a design choice cannot go straight in")
+	case !x.NoContractChange:
+		return refuse(Invalid, "a bug whose fix changes an API or tool contract cannot go straight in")
+	case !x.NothingElse:
+		return refuse(Invalid, "a bug whose fix changes anything else cannot go straight in")
+	case s.Before == "" && s.After == "":
+		return refuse(Invalid, "give before or after: where it ranks in delivery order")
+	case s.Reasoning == "":
+		return refuse(Invalid, "reasoning is required for a straight-in bug")
+	}
+	return plainText(x.Fix)
+}
+
+// StraightFlag says why a straight-in bug needs a person's eye: it has
+// gained a dependency, either way, or lost its bug mark. It is worked out
+// on read. It is empty for a story that is not straight-in or has no problem.
+func (s Story) StraightFlag() string {
+	switch {
+	case !s.StraightIn:
+		return ""
+	case len(s.BlockedBy)+len(s.Blocks) > 0:
+		return "now has a dependency"
+	case s.Kind != kindBug:
+		return "no longer marked as a bug"
+	}
+	return ""
 }
 
 // StoryPatch changes the fields that are set and leaves the rest. Activity
@@ -138,11 +201,16 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 	if s.Proposed && s.Reasoning == "" {
 		return Story{}, refuse(Invalid, "reasoning is required to propose a story")
 	}
-	if !s.Proposed && s.Reasoning != "" {
+	if !s.Proposed && s.StraightIn == nil && s.Reasoning != "" {
 		return Story{}, refuse(Invalid, "reasoning is given only when proposing a story")
 	}
 	if err := checkKind(s.Kind); err != nil {
 		return Story{}, err
+	}
+	if s.StraightIn != nil {
+		if err := checkStraightIn(s); err != nil {
+			return Story{}, err
+		}
 	}
 	if err := plainText(s.Title, s.Description, s.Goal, s.Plan, s.Reasoning); err != nil {
 		return Story{}, err
@@ -156,6 +224,12 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 	}
 	if s.Proposed {
 		status = Proposed
+	}
+	var straight any
+	if x := s.StraightIn; x != nil {
+		straight = true
+		placed = "Straight into the backlog" + strings.TrimPrefix(placed, "Proposed") +
+			". Fix: " + strings.TrimRight(strings.TrimSpace(x.Fix), ".") + ". Claims, all true: " + straightClaims + "."
 	}
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -171,18 +245,24 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			OPTIONAL MATCH (p:Phase {number: $phase})
 			OPTIONAL MATCH (anchor:Story {id: $anchor})
 			OPTIONAL MATCH (f:Story {id: $found})
+			OPTIONAL MATCH (fp:Phase)-[:CONTAINS]->(f)
 			OPTIONAL MATCH (o:Story) WHERE ($lo = '' OR o.rank > $lo) AND ($hi = '' OR o.rank < $hi)
-			WITH w, p, anchor, f, count(o) AS between
+			WITH w, p, anchor, f, fp, count(o) AS between
+			OPTIONAL MATCH (p)-[:CONTAINS]->(x:Story) WHERE x.status <> 'closed'
+			WITH w, p, anchor, f, fp, between, count(x) AS total,
+				toInteger(sum(CASE WHEN x.status IN $complete THEN 1 ELSE 0 END)) AS done
 			WITH w, p, f, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
 				WHEN $phase <> 0 AND p IS NULL THEN 'phase'
 				WHEN $found <> '' AND f IS NULL THEN 'found_in'
 				WHEN f.status = 'closed' THEN 'found_closed'
+				WHEN $straight AND $phase <> 0 AND coalesce(fp.number, 0) <> $phase THEN 'straight_phase'
+				WHEN $straight AND $phase <> 0 AND total > 0 AND done = total THEN 'straight_complete'
 				WHEN between > 0 OR ($anchor <> '' AND (anchor IS NULL OR anchor.rank <> $anchorRank)) THEN 'gap'
 			END AS violation
 			FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 				SET w.next_story = w.next_story + 1
 				CREATE (s:Story {id: id, title: $title, description: $description, goal: $goal,
-					plan: $plan, kind: $kind, rank: $rank, status: $status, created_by: $actor, created_at: $now})
+					plan: $plan, kind: $kind, straight_in: $straightIn, rank: $rank, status: $status, created_by: $actor, created_at: $now})
 				FOREACH (q IN CASE WHEN p IS NULL THEN [] ELSE [p] END | CREATE (q)-[:CONTAINS]->(s))
 				FOREACH (q IN CASE WHEN f IS NULL THEN [] ELSE [f] END | CREATE (s)-[:FOUND_IN]->(q))
 				FOREACH (__ IN CASE WHEN $reasoning IS NULL THEN [] ELSE [1] END |
@@ -194,7 +274,7 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 				"phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
 				"rank": Between(at.lo, at.hi), "title": s.Title, "description": s.Description,
 				"goal": s.Goal, "plan": s.Plan, "kind": orNull(s.Kind), "found": s.FoundIn, "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
-				"actor": actor, "now": now(),
+				"actor": actor, "now": now(), "straight": s.StraightIn != nil, "straightIn": straight, "complete": complete,
 			}, nil)
 		if err != nil {
 			return Story{}, fmt.Errorf("add story: %w", err)
@@ -210,6 +290,10 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			return Story{}, refuse(NotFound, "no story %q to have been found in", s.FoundIn)
 		case "found_closed":
 			return Story{}, refuse(Conflict, "%s is closed; a story cannot be found in a closed story", s.FoundIn)
+		case "straight_phase":
+			return Story{}, refuse(Conflict, "a straight-in bug takes no phase or the phase of %s, not phase %d", s.FoundIn, s.Phase)
+		case "straight_complete":
+			return Story{}, refuse(Conflict, "phase %d is complete; a straight-in bug cannot be added to it", s.Phase)
 		}
 	}
 	return Story{}, refuse(Conflict, "the backlog kept changing while the story was being placed; try again")
@@ -479,7 +563,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		OPTIONAL MATCH (fd:Story)-[:FOUND_IN]->(s)
 		WITH s, p, rel, blocked_by, waiting, blocks, fi, collect(fd.id) AS found
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.kind AS kind, fi.id AS found_in, found, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
+			s.plan AS plan, s.kind AS kind, s.straight_in AS straight_in, fi.id AS found_in, found, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
 			rel.id AS release_id, rel.version AS release_version,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
 			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
@@ -506,7 +590,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		}
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
-			Goal: str(r, "goal"), Plan: str(r, "plan"), Kind: str(r, "kind"), FoundIn: str(r, "found_in"), Found: byNumber(strs(r, "found")), Status: str(r, "status"), Phase: num(r, "phase"),
+			Goal: str(r, "goal"), Plan: str(r, "plan"), Kind: str(r, "kind"), StraightIn: flag(r, "straight_in"), FoundIn: str(r, "found_in"), Found: byNumber(strs(r, "found")), Status: str(r, "status"), Phase: num(r, "phase"),
 			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
 			Blocked: len(waiting) > 0, waiting: waiting,
 			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
