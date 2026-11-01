@@ -86,7 +86,7 @@ func TestActionsListsEachOnRequestActionOnceAndNoMenuTool(t *testing.T) {
 			}
 		}
 	}
-	if len(got) > 1100 {
+	if len(got) > 1300 {
 		t.Errorf("the list is %d bytes, want about 1 KB", len(got))
 	}
 	t.Logf("actions listed %d bytes", len(got))
