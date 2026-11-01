@@ -185,6 +185,15 @@ type readLogIn struct {
 	Phase int    `json:"phase,omitempty" jsonschema:"phase number; not with id"`
 }
 
+// eventsIn is what list_events takes: the workspace, and at most one of
+// three ways to go beyond the latest page.
+type eventsIn struct {
+	in
+	Before string `json:"before,omitempty" jsonschema:"position (L-41, S-3): the 20 before it"`
+	After  string `json:"after,omitempty" jsonschema:"position: every event from its second on"`
+	Since  string `json:"since,omitempty" jsonschema:"RFC 3339 time or date: every event from then"`
+}
+
 // ideaIn names an idea.
 type ideaIn struct {
 	in
@@ -255,6 +264,7 @@ func addTools(s *mcp.Server, t tools) {
 	later(r, "update_branch", "Change a branch's name, alias (web column heading) or merge target; others stay. Answers with name and fields changed.", t.updateBranch)
 	write(r, "log", "Add an entry to a story's log. Entries are never edited; fix with a correction. Answers with entry id.", t.log)
 	laterRead(r, "read_log", "The log of a story or goal (id) or a phase (phase), oldest first.", t.readLog)
+	laterRead(r, "list_events", "The latest events, however old. One line each, oldest first: decisions, merges, holds, closes, releases, stories and ideas added. Each starts with its position: before pages back 20, after gives all since one, since all from an RFC 3339 date.", t.listEvents)
 	write(r, "add_dependency", "Record that a story can't be done until another is complete. Answers with id and whether it is blocked.", t.addDependency)
 	later(r, "remove_branch", "Remove a branch nothing refers to. The refusal names what still does.", t.removeBranch)
 	later(r, "remove_dependency", "Remove a story's dependency on another.", t.removeDependency)
@@ -315,6 +325,30 @@ func (t tools) whereAreWe(_ context.Context, a in) (any, error) {
 		return nil, err
 	}
 	return plain(w.Text()), nil
+}
+
+// listEvents answers the lines as they are; a page with nothing says so.
+func (t tools) listEvents(_ context.Context, a eventsIn) (any, error) {
+	evs, err := t.b.Events(a.Workspace, board.EventsQuery{Before: a.Before, After: a.After, Since: a.Since})
+	if err != nil {
+		return nil, err
+	}
+	if len(evs) == 0 {
+		switch {
+		case a.Before != "":
+			return plain("Nothing before " + a.Before + "."), nil
+		case a.After != "":
+			return plain("Nothing after " + a.After + "."), nil
+		case a.Since != "":
+			return plain("Nothing since " + a.Since + "."), nil
+		}
+		return plain("Nothing has happened yet."), nil
+	}
+	lines := make([]string, len(evs))
+	for i, e := range evs {
+		lines[i] = e.Line
+	}
+	return plain(strings.Join(lines, "\n")), nil
 }
 
 func (t tools) getStory(_ context.Context, a storyIn) (any, error) {

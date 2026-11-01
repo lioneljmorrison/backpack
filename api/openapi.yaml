@@ -346,6 +346,55 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /v1/workspaces/{ws}/events:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The latest events, however old
+      description: >-
+        What happened lately, as short lines, oldest first: decisions,
+        corrections, stories moved to merged, on hold or closed, stories and
+        ideas added, and releases cut. Without options, the latest 20, however
+        long ago; it is empty only on a board where nothing has happened. Each
+        action shows once (a release's own entries are left out for its one
+        line, and a proposal's placement is part of its added line). Each
+        event's id is its position, ordered by time to the second, then kind
+        (story, idea, release, log), then number. Give at most one of
+        before, after and since. Entries recorded before releases are labelled
+        as such. A result is capped by the store at 10,000 rows. Over MCP this
+        is list_events, run through actions.
+      parameters:
+        - name: before
+          in: query
+          description: A position (L-41, S-3, I-2, R-1); the 20 events before it.
+          schema: { type: string, example: L-41 }
+        - name: after
+          in: query
+          description: >-
+            A position; every event from its second on, except that position
+            itself. The rest of its own second repeats, so none is missed.
+          schema: { type: string, example: L-41 }
+        - name: since
+          in: query
+          description: >-
+            An RFC 3339 time, or a date taken as midnight UTC; every event
+            from then on, inclusive.
+          schema: { type: string, example: "2026-10-31" }
+      responses:
+        "200":
+          description: The events, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/releases:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -1390,6 +1439,16 @@ components:
       type: string
       enum: [planning, building, testing, waiting]
       description: What an in-progress story is doing.
+    Event:
+      type: object
+      required: [id, at, kind, line]
+      properties:
+        id: { type: string, example: L-41, description: Its position. }
+        at: { type: string, example: "2026-10-29T14:03:09Z", description: When, in UTC to the second. }
+        kind: { type: string, enum: [decision, correction, status, story, idea, release] }
+        story: { type: string, example: S-50, description: The story a log entry belongs to. }
+        to: { type: string, example: merged, description: The status a status entry moved to. }
+        line: { type: string, example: "L-41 2026-10-29 14:03 S-50 decision: Keep ranks as text — the store orders them as Go does" }
     StoryContext:
       type: object
       required: [id, title, status, depends_on, depended_on_by, found, bugs]

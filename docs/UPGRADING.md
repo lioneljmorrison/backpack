@@ -35,6 +35,14 @@ dependents (finished ones too) with their recent decisions, where it was
 found, what was found while building it, and open bugs. The HTTP route is
 `GET /v1/workspaces/{ws}/stories/{id}/context`.
 
+`list_events` is a new read, also on request (`actions` with `name` and
+`args`, the workspace included). It answers the latest 20 things that happened
+on the board, however old, oldest first, one short line each: decisions,
+corrections, merges, holds, closes, releases, and stories and ideas added. It
+takes one optional `before` or `after` (a position such as `L-41`) or `since`
+(an RFC 3339 time or a date) to page back or catch up. The HTTP route is
+`GET /v1/workspaces/{ws}/events`, with the same query parameters.
+
 `search` takes a new optional `story` (the HTTP route a `story` query
 parameter). With it, search looks near that story first: its dependencies and
 dependents, where it was found, what it found, its nearby bugs, its idea and
