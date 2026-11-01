@@ -238,3 +238,16 @@ func TestWhereAreWeShowsUnreleasedAsACountAndTheLatestThreeOnOneLine(t *testing.
 		t.Fatalf("older stories or extra lines:\n%s", text)
 	}
 }
+
+func TestWhereAreWeNamesOnlyTheDependenciesThatStillBlock(t *testing.T) {
+	b := whereBoard(t)
+	depend(t, b, "S-8", "S-1") // S-1 is merged
+	depend(t, b, "S-8", "S-6")
+	w, err := b.Where("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := w.Text(); !strings.Contains(text, "  S-8 After — blocked by S-6\n") {
+		t.Errorf("missing the open dependency alone in:\n%s", text)
+	}
+}

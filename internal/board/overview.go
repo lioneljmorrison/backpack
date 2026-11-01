@@ -129,7 +129,7 @@ func (w Where) Text() string {
 		for _, s := range ss {
 			parts := detail(s)
 			if s.Blocked {
-				blocked := "blocked by " + list(s.waiting)
+				blocked := "blocked by " + list(s.BlockedBy)
 				if s.Workaround != "" {
 					blocked += ", working around it: " + s.Workaround
 				}

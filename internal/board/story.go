@@ -28,6 +28,8 @@ type Story struct {
 	Phase      int    `json:"phase,omitempty"`
 	Status     string `json:"status"`
 	// Blocked is worked out, never set: a dependency is not yet complete.
+	// BlockedBy lists only those dependencies, and Blocks only the open
+	// stories waiting on this one while it is not complete.
 	Blocked    bool     `json:"blocked"`
 	BlockedBy  []string `json:"blocked_by"`
 	Blocks     []string `json:"blocks"`
@@ -56,8 +58,9 @@ type Story struct {
 	// reviewed; none otherwise. It records the most recent such change.
 	UpstreamChanged *UpstreamRef `json:"upstream_changed,omitempty"`
 
-	// waiting is the dependencies that are not yet complete.
-	waiting []string
+	// linked is set when the story has any dependency link either way,
+	// complete or closed or not. StraightFlag reads it.
+	linked bool
 }
 
 // ReleaseRef names a release from a story: enough to show and to link.
@@ -148,7 +151,7 @@ func (s Story) StraightFlag() string {
 	switch {
 	case !s.StraightIn:
 		return ""
-	case len(s.BlockedBy)+len(s.Blocks) > 0:
+	case s.linked:
 		return "now has a dependency"
 	case s.Kind != kindBug:
 		return "no longer marked as a bug"
@@ -554,16 +557,17 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		OPTIONAL MATCH (p:Phase)-[:CONTAINS]->(s)
 		OPTIONAL MATCH (rel:Release)<-[:IN_RELEASE]-(s)
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story)
-		WITH s, p, rel, collect(t.id) AS blocked_by,
-			collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS waiting
+		WITH s, p, rel, collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS blocked_by, count(t) AS deps
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
-		WITH s, p, rel, blocked_by, waiting, collect(d.id) AS blocks
+		WITH s, p, rel, blocked_by, deps,
+			collect(CASE WHEN NOT s.status IN $complete AND d.status <> $closed THEN d.id END) AS blocks,
+			deps + count(d) > 0 AS linked
 		OPTIONAL MATCH (s)-[:FOUND_IN]->(fi:Story)
-		WITH s, p, rel, blocked_by, waiting, blocks, fi
+		WITH s, p, rel, blocked_by, blocks, linked, fi
 		OPTIONAL MATCH (fd:Story)-[:FOUND_IN]->(s)
-		WITH s, p, rel, blocked_by, waiting, blocks, fi, collect(fd.id) AS found
+		WITH s, p, rel, blocked_by, blocks, linked, fi, collect(fd.id) AS found
 		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.kind AS kind, s.straight_in AS straight_in, fi.id AS found_in, found, s.status AS status, p.number AS phase, blocked_by, blocks, waiting,
+			s.plan AS plan, s.kind AS kind, s.straight_in AS straight_in, fi.id AS found_in, found, s.status AS status, p.number AS phase, blocked_by, blocks, linked,
 			rel.id AS release_id, rel.version AS release_version,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
 			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
@@ -572,14 +576,14 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 			s.updated_by AS updated_by, s.updated_at AS updated_at,
 			s.upstream_id AS upstream_id, s.upstream_at AS upstream_at
 		ORDER BY s.rank`,
-		map[string]any{"id": id, "complete": complete}, nil)
+		map[string]any{"id": id, "complete": complete, "closed": Closed}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read stories: %w", err)
 	}
 	out := []Story{}
 	for res.Next() {
 		r := res.Record()
-		waiting := byNumber(strs(r, "waiting"))
+		blockedBy := byNumber(strs(r, "blocked_by"))
 		var rel *ReleaseRef
 		if id := str(r, "release_id"); id != "" {
 			rel = &ReleaseRef{ID: id, Version: str(r, "release_version")}
@@ -591,8 +595,8 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		out = append(out, Story{
 			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
 			Goal: str(r, "goal"), Plan: str(r, "plan"), Kind: str(r, "kind"), StraightIn: flag(r, "straight_in"), FoundIn: str(r, "found_in"), Found: byNumber(strs(r, "found")), Status: str(r, "status"), Phase: num(r, "phase"),
-			BlockedBy: byNumber(strs(r, "blocked_by")), Blocks: byNumber(strs(r, "blocks")),
-			Blocked: len(waiting) > 0, waiting: waiting,
+			BlockedBy: blockedBy, Blocks: byNumber(strs(r, "blocks")),
+			Blocked: len(blockedBy) > 0, linked: flag(r, "linked"),
 			HeldFrom: str(r, "held_from"), HoldReason: str(r, "hold_reason"), Activity: str(r, "activity"),
 			WaitingOn: str(r, "waiting_on"), Branch: str(r, "branch"), Into: str(r, "into"), PRURL: str(r, "pr_url"),
 			Workaround: str(r, "workaround"), Release: rel,

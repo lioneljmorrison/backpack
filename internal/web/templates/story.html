@@ -25,7 +25,7 @@
   {{with .Plan}}<h2>Plan</h2><p class="text">{{.}}</p>{{end}}
   {{with .Workaround}}<h2>Workaround</h2><p class="text">{{.}}</p>{{end}}
   {{with .BlockedBy}}
-  <h2>Depends on</h2>
+  <h2>Blocked by</h2>
   <ul class="links">{{range .}}<li><a href="/w/{{$ws}}/stories/{{.}}"><span class="id">{{.}}</span> {{index $titles .}}</a></li>{{end}}</ul>
   {{end}}
   {{with .Blocks}}

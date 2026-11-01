@@ -214,3 +214,46 @@ func TestAStoryThatIsNotStraightInIsNeverListedAsOne(t *testing.T) {
 		t.Fatalf("where %+v, %v", w, err)
 	}
 }
+
+func straightText(t *testing.T, b *board.Board) string {
+	t.Helper()
+	w, err := b.Where("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return w.Text()
+}
+
+func TestAStraightInBugStaysFlaggedWhenItsDependencyHasFinished(t *testing.T) {
+	b := straightBoard(t)
+	bug, err := b.AddStory("demo", actor, straightBug())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib, err := b.AddStory("demo", actor, board.NewStory{Title: "Library", Position: board.Position{Before: bug.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	walk(t, b, lib.ID, "in_progress", "in_review", "merged")
+	depend(t, b, bug.ID, lib.ID)
+	if text := straightText(t, b); !strings.Contains(text, "Crash on save — found in S-1; flagged: now has a dependency") {
+		t.Fatalf("not flagged:\n%s", text)
+	}
+}
+
+func TestAStraightInBugStaysFlaggedWhenItsDependentIsClosed(t *testing.T) {
+	b := straightBoard(t)
+	bug, err := b.AddStory("demo", actor, straightBug())
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, err := b.AddStory("demo", actor, board.NewStory{Title: "Later", Position: board.Position{After: bug.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	depend(t, b, later.ID, bug.ID)
+	setStatus(t, b, later.ID, board.StatusChange{To: "closed", Reason: "dropped"})
+	if text := straightText(t, b); !strings.Contains(text, "Crash on save — found in S-1; flagged: now has a dependency") {
+		t.Fatalf("not flagged:\n%s", text)
+	}
+}

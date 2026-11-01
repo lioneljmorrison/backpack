@@ -74,6 +74,12 @@ top story is the next to be delivered. Rank is order, not urgency.
 - A story must rank below everything it depends on.
 - A dependency can only point to the same or an earlier phase, never across
   workspaces, and never in a circle.
+- Both ends show only current dependencies. *Blocked by* lists the
+  dependencies that are not yet complete (merged or released). *Blocks* lists
+  the stories that are not closed and depend on this one, and is empty once
+  this one is complete. Finished dependencies stay recorded in the graph; they
+  are only left out of the reads (2026-10-31, S-63). Known limit: until the
+  context read (S-51), no read lists the finished dependencies of a story.
 - Backpack refuses any change that breaks these rules.
 
 **Placing new work.** An agent proposes where a new story belongs, with its
@@ -707,8 +713,8 @@ workspace's branches are seeded from the creation setting (one branch, or
   started with a workaround.
 - **Statuses:** `proposed`, `backlog`, `in_progress`, `in_review`, `merged`,
   `released`, `on_hold`, `closed`. A merged story's `into` says which branch
-  column it is in. Complete is `merged` or `released`; `blocked` is computed
-  on read. `released` means an official release (R-n). The old meaning of
+  column it is in. Complete is `merged` or `released`; `blocked`, `blocked_by`
+  and `blocks` are computed on read (S-63). `released` means an official release (R-n). The old meaning of
   `released` (merged into `main`) and the old `deployed` status are refused
   with a message naming the new form. Migrations turn old released stories
   into merged into the release branch, and old deployed stories into released.
