@@ -244,7 +244,7 @@ type dropIdeaIn struct {
 
 func addTools(s *mcp.Server, t tools) {
 	r := &registry{s: s, steps: map[string]stepFunc{}}
-	tool(s, "list_workspaces", "Every workspace: slug, name, repository.", t.listWorkspaces)
+	tool(s, "list_workspaces", "Every workspace: slug, name, repositories (name and URL).", t.listWorkspaces)
 	laterRead(r, "list_branches", "The branches in merge order, each with the branch it merges into.", t.listBranches)
 	tool(s, "whats_next", "The highest-ranked backlog story whose dependencies are complete, in full. Null when none is ready.", t.whatsNext)
 	tool(s, "where_are_we", "Where the project stands in brief: phase, in progress, in review, on hold, awaiting release, next up, proposals.", t.whereAreWe)

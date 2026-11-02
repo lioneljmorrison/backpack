@@ -21,7 +21,7 @@ type Store struct {
 
 // NewStore brings the graph's indexes up to date and returns the store.
 func NewStore(g *falkordb.Graph) (*Store, error) {
-	if err := falkor.Migrate(g, migrations); err != nil {
+	if err := falkor.Migrate(g, migrations, nil); err != nil {
 		return nil, err
 	}
 	return &Store{g: g}, nil

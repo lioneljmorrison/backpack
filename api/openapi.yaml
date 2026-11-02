@@ -93,7 +93,8 @@ paths:
               properties:
                 slug: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", maxLength: 64, example: my-app }
                 name: { type: string, example: My app }
-                repo_url: { type: string }
+                repo_url: { type: string, description: The URL of the workspace's repository. }
+                repo: { type: string, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", maxLength: 64, description: The name of the workspace's repository; the slug when absent. }
                 has_release_stage:
                   type: boolean
                   default: false
@@ -1290,11 +1291,19 @@ components:
           example: { falkordb: ok, typesense: ok }
     Workspace:
       type: object
-      required: [slug, name, has_release_stage, created_by, created_at]
+      required: [slug, name, repos, has_release_stage, created_by, created_at]
       properties:
         slug: { type: string }
         name: { type: string }
-        repo_url: { type: string }
+        repos:
+          type: array
+          description: The workspace's repositories, by name.
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              url: { type: string }
         has_release_stage: { type: boolean }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
@@ -1303,6 +1312,7 @@ components:
       required: [name, release, created_by, created_at]
       properties:
         name: { type: string }
+        repo: { type: string, description: The repository the branch belongs to. }
         into: { type: string, description: The branch this one merges into; absent on the release branch. }
         alias: { type: string, description: "Display name only: the web board's column heading shows it; everything else uses the name. Absent when none is set." }
         release: { type: boolean, description: True for the branch that merges nowhere. }
@@ -1313,6 +1323,7 @@ components:
       required: [id, version, tag, created_by, created_at, stories]
       properties:
         id: { type: string, example: R-1 }
+        repo: { type: string, description: The repository the release was cut in. }
         version: { type: string, example: v1.0.0 }
         tag: { type: string, example: v1.0.0 }
         commit: { type: string }
@@ -1328,6 +1339,7 @@ components:
       required: [id, version, tag, created_by, created_at, stories]
       properties:
         id: { type: string, example: R-1 }
+        repo: { type: string, description: The repository the release was cut in. }
         version: { type: string, example: v1.0.0 }
         tag: { type: string, example: v1.0.0 }
         commit: { type: string }
@@ -1372,6 +1384,7 @@ components:
       required: [id, title, description, goal, plan, status, blocked, blocked_by, blocks, created_by, created_at]
       properties:
         id: { type: string, example: S-2 }
+        repo: { type: string, description: The repository that holds the story. }
         title: { type: string }
         description: { type: string }
         goal: { type: string }
