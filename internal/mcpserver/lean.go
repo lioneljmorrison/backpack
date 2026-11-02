@@ -106,16 +106,22 @@ func phaseSummaries(ps []board.Phase) []phaseSummary {
 
 // releaseSummary carries how many stories shipped, not which.
 type releaseSummary struct {
-	ID      string `json:"id"`
+	ID string `json:"id"`
+	// Repo labels the release, only when the workspace has several repositories.
+	Repo    string `json:"repo,omitempty"`
 	Version string `json:"version"`
 	Tag     string `json:"tag"`
 	Stories int    `json:"stories"`
 }
 
-func releaseSummaries(rs []board.Release) []releaseSummary {
+func releaseSummaries(rs []board.Release, several bool) []releaseSummary {
 	out := make([]releaseSummary, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, releaseSummary{ID: r.ID, Version: r.Version, Tag: r.Tag, Stories: len(r.Stories)})
+		x := releaseSummary{ID: r.ID, Version: r.Version, Tag: r.Tag, Stories: len(r.Stories)}
+		if several {
+			x.Repo = r.Repo
+		}
+		out = append(out, x)
 	}
 	return out
 }
@@ -123,7 +129,9 @@ func releaseSummaries(rs []board.Release) []releaseSummary {
 // leanRelease is a release read as a changelog: its stories in the lean form
 // and no who-and-when, like the story itself.
 type leanRelease struct {
-	ID      string      `json:"id"`
+	ID string `json:"id"`
+	// Repo labels the release, only when the workspace has several repositories.
+	Repo    string      `json:"repo,omitempty"`
 	Version string      `json:"version"`
 	Tag     string      `json:"tag"`
 	Commit  string      `json:"commit,omitempty"`
@@ -131,12 +139,16 @@ type leanRelease struct {
 	Stories []leanStory `json:"stories"`
 }
 
-func leanReleaseOf(d board.ReleaseDetail) leanRelease {
+func leanReleaseOf(d board.ReleaseDetail, several bool) leanRelease {
 	ss := make([]leanStory, 0, len(d.Entries))
 	for _, s := range d.Entries {
 		ss = append(ss, lean(s))
 	}
-	return leanRelease{ID: d.ID, Version: d.Version, Tag: d.Tag, Commit: d.Commit, Notes: d.Notes, Stories: ss}
+	l := leanRelease{ID: d.ID, Version: d.Version, Tag: d.Tag, Commit: d.Commit, Notes: d.Notes, Stories: ss}
+	if several {
+		l.Repo = d.Repo
+	}
+	return l
 }
 
 type workspaceSummary struct {

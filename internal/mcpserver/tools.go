@@ -29,6 +29,12 @@ type storyIn struct {
 
 // position places a story directly before or after another; with neither,
 // at the bottom of the backlog.
+// listReleasesIn narrows the list to one repository when it names one.
+type listReleasesIn struct {
+	in
+	repoIn
+}
+
 type releaseIn struct {
 	in
 	ID string `json:"id"`
@@ -108,6 +114,7 @@ type cutReleaseIn struct {
 	in
 	Version string `json:"version" jsonschema:"version, such as v1.0.0"`
 	Tag     string `json:"tag" jsonschema:"git tag"`
+	Repo    string `json:"repo,omitempty" jsonschema:"repository; needed when there are several"`
 	Commit  string `json:"commit,omitempty" jsonschema:"commit the tag points at"`
 	Notes   string `json:"notes,omitempty" jsonschema:"release notes"`
 }
@@ -272,8 +279,8 @@ func addTools(s *mcp.Server, t tools) {
 	later(r, "move_story", "Move a story before or after another, or to the bottom. Answers with id.", t.moveStory)
 	write(r, "set_status", "Move a story one column forward, or back before merged; or on_hold, or closed (final). Approve a proposal with backlog. Released comes only from cut_release. Answers with id and status.", t.setStatus)
 	later(r, "merge_branch", "Record a branch merged into its target at a commit; its merged stories move on. Answers with the story ids moved.", t.mergeBranch)
-	later(r, "cut_release", "Record a release (version, git tag, optional commit and notes). Stories merged into the release branch become Released. Answers with id, version and story count.", t.cutRelease)
-	laterRead(r, "list_releases", "Every release, newest first: id, version, tag, story count.", t.listReleases)
+	later(r, "cut_release", "Record a release (version, git tag, optional commit and notes). Stories the repository has merged into its release branch become Released. Answers with id, version and story count.", t.cutRelease)
+	laterRead(r, "list_releases", "Every release, newest first: id, version, tag, story count. repo narrows it to one repository.", t.listReleases)
 	laterRead(r, "get_release", "One release by id (R-n), with its stories in delivery order.", t.getRelease)
 	later(r, "add_branch", "Add a branch merging into an existing one, such as staging into main. Answers with name and target.", t.addBranch)
 	later(r, "update_branch", "Change a branch's name, alias (web column heading) or merge target; others stay. Answers with name and fields changed.", t.updateBranch)
@@ -451,17 +458,37 @@ func (t tools) mergeBranch(ctx context.Context, a mergeBranchIn) (any, error) {
 	return map[string]any{"stories": ids}, nil
 }
 
+// severalRepos says whether the workspace has more than one repository, which
+// is when release answers say which one a release belongs to.
+func (t tools) severalRepos(ws string) (bool, error) {
+	rs, err := t.b.Repos(ws)
+	return len(rs) > 1, err
+}
+
 func (t tools) cutRelease(ctx context.Context, a cutReleaseIn) (any, error) {
-	r, err := t.b.CutRelease(a.Workspace, actor(ctx), board.NewRelease{Version: a.Version, Tag: a.Tag, Commit: a.Commit, Notes: a.Notes})
+	r, err := t.b.CutRelease(a.Workspace, actor(ctx), board.NewRelease{Repo: a.Repo, Version: a.Version, Tag: a.Tag, Commit: a.Commit, Notes: a.Notes})
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"id": r.ID, "version": r.Version, "stories": len(r.Stories)}, nil
+	out := map[string]any{"id": r.ID, "version": r.Version, "stories": len(r.Stories)}
+	if several, err := t.severalRepos(a.Workspace); err != nil {
+		return nil, err
+	} else if several {
+		out["repo"] = r.Repo
+	}
+	return out, nil
 }
 
-func (t tools) listReleases(_ context.Context, a in) (any, error) {
-	rs, err := t.b.ListReleases(a.Workspace)
-	return map[string]any{"releases": releaseSummaries(rs)}, err
+func (t tools) listReleases(_ context.Context, a listReleasesIn) (any, error) {
+	rs, err := t.b.ListReleases(a.Workspace, a.Repo)
+	if err != nil {
+		return nil, err
+	}
+	several, err := t.severalRepos(a.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"releases": releaseSummaries(rs, several)}, nil
 }
 
 func (t tools) getRelease(_ context.Context, a releaseIn) (any, error) {
@@ -469,7 +496,11 @@ func (t tools) getRelease(_ context.Context, a releaseIn) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return leanReleaseOf(d), nil
+	several, err := t.severalRepos(a.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	return leanReleaseOf(d, several), nil
 }
 
 func (t tools) addBranch(ctx context.Context, a addBranchIn) (any, error) {

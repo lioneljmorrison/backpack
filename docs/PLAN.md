@@ -670,9 +670,26 @@ not part of the board.
   another repository's branch is refused like any unknown one, with the
   repository named ("api has no branch \"staging\""). There is no new input:
   the story knows its repository. The merges offered on board cards and story
-  pages come from the same branches. (The board's column layout and releases
-  still read branches workspace-wide; making them per repository is later
-  work, S-73 and S-69.)
+  pages come from the same branches. (The board's column layout still reads
+  branches workspace-wide; making it per repository is later work, S-73.)
+- **Releases belong to their repository** (2026-11-02, S-69). Each repository
+  cuts its own releases from its own release branch, and takes only the merged
+  stories it holds, so two repositories can both release v1.0.0. A version is
+  unique within its repository ("api already has a release v1.0.0"); release
+  ids stay one series across the workspace (R-1, R-2 …). `cut_release` takes
+  an optional `repo`, resolved in the same single query as the branch actions:
+  a workspace with one repository needs none; with several, none named is
+  refused (400) naming the choices, and an unknown one is 404. Over HTTP it is
+  a field in the `POST /releases` body, and `?repo=` narrows `GET /releases`;
+  over MCP `cut_release` and `list_releases` take it. A release shows its
+  repository: always over HTTP, and over MCP (`cut_release`, `list_releases`,
+  `get_release`) and on the web release pages only when the workspace has
+  several repositories, so one-repository answers read as before. "Where are
+  we" gathers what waits for a release against each repository's own release
+  branch; the stories carry their repository in the JSON, and the text is
+  unchanged for one repository (its layout for several is S-72). The release
+  stage (the second Merged column) is on when any repository has a merge
+  step.
 - **Setup.** When an agent first connects a repository it works out the
   branching (default, integration and protected branches, how pull requests
   flow), proposes it in conversation, and a person approves or adjusts it.

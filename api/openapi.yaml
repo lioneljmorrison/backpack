@@ -438,8 +438,16 @@ paths:
     get:
       summary: The workspace's releases, newest first
       description: >-
-        Newest first by number (R-10 before R-9). Each release lists the ids
-        of its stories in delivery order; read one release for them in full.
+        Newest first by number (R-10 before R-9), every repository's, each
+        labelled with its `repo`. With `repo` it lists that repository's
+        releases only (404 when unknown). Each release lists the ids of its
+        stories in delivery order; read one release for them in full.
+      parameters:
+        - name: repo
+          in: query
+          required: false
+          description: Only this repository's releases.
+          schema: { type: string }
       responses:
         "200":
           description: The releases; an empty list when none has been cut
@@ -455,17 +463,21 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
-      summary: Cut a release, releasing every story merged into the release branch
+      summary: Cut a release, releasing every story merged into the repository's release branch
       description: >-
-        Records an official release (R-n) with a version and the git tag that
-        marks it. In one change, every story merged into the release branch
-        that is not in a release yet becomes Released, is linked to the new
-        release, and gets a status entry in its log from merged to released
-        that names the release (and the release commit, when given). Stories
-        merged into other branches, and those in progress or in review, stay
-        put. Backpack does not talk to GitHub; the caller records the tag. A
-        version already released is a conflict, and so is a cut with nothing
-        to release.
+        Records an official release (R-n) of one repository with a version and
+        the git tag that marks it. In one change, every story the repository
+        holds that is merged into its release branch and is not in a release
+        yet becomes Released, is linked to the new release, and gets a status
+        entry in its log from merged to released that names the release (and
+        the release commit, when given). Stories merged into other branches,
+        those in progress or in review, and those of other repositories, stay
+        put. Release ids are one series across the workspace. Backpack does
+        not talk to GitHub; the caller records the tag. A version the
+        repository already released is a conflict, and so is a cut with
+        nothing to release. A workspace with one repository needs no `repo`;
+        with several, none named is refused with 400 naming the choices, and
+        an unknown one is 404.
       requestBody:
         required: true
         content:
@@ -475,6 +487,7 @@ paths:
               required: [version, tag]
               additionalProperties: false
               properties:
+                repo: { type: string, description: "The repository to release. Left out when the workspace has one repository; with several, none is refused (400) and an unknown one is 404" }
                 version: { type: string, example: v1.0.0 }
                 tag: { type: string, description: The git tag that marks the release, example: v1.0.0 }
                 commit: { type: string, description: The commit the tag points at }

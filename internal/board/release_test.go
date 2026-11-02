@@ -266,7 +266,7 @@ func TestSettingReleasedOrDeployedIsRefusedAndNamesCutRelease(t *testing.T) {
 
 func TestReleasesListNewestFirstByNumberNotByText(t *testing.T) {
 	b := newReleasingWorkspace(t)
-	if rs, err := b.ListReleases("demo"); err != nil || rs == nil || len(rs) != 0 {
+	if rs, err := b.ListReleases("demo", ""); err != nil || rs == nil || len(rs) != 0 {
 		t.Fatalf("no releases yet: %v, %v", rs, err)
 	}
 	for i := 1; i <= 10; i++ {
@@ -276,7 +276,7 @@ func TestReleasesListNewestFirstByNumberNotByText(t *testing.T) {
 			t.Fatal(err, s.ID)
 		}
 	}
-	rs, err := b.ListReleases("demo")
+	rs, err := b.ListReleases("demo", "")
 	if err != nil || len(rs) != 10 {
 		t.Fatalf("%d releases, %v", len(rs), err)
 	}
@@ -288,7 +288,7 @@ func TestReleasesListNewestFirstByNumberNotByText(t *testing.T) {
 		top.CreatedBy != actor || top.CreatedAt == "" || !slices.Equal(top.Stories, []string{"S-10"}) {
 		t.Fatalf("top %+v", top)
 	}
-	_, err = b.ListReleases("nope")
+	_, err = b.ListReleases("nope", "")
 	wantKind(t, err, board.NotFound)
 }
 
@@ -421,7 +421,7 @@ func TestMigrationPutsReleasedStoriesWithNoReleaseInR0(t *testing.T) {
 	g, reopen := beforeReleases(t, true)
 	for range 2 { // the second run finds nothing left over
 		b := reopen()
-		rs, err := b.ListReleases("demo")
+		rs, err := b.ListReleases("demo", "")
 		if err != nil || len(rs) != 1 {
 			t.Fatalf("releases %+v, %v", rs, err)
 		}
@@ -473,7 +473,7 @@ func TestMigrationPutsReleasedStoriesWithNoReleaseInR0(t *testing.T) {
 func TestMigrationMakesNoR0WhenNothingIsOrphaned(t *testing.T) {
 	_, reopen := beforeReleases(t, false)
 	b := reopen()
-	if rs, err := b.ListReleases("demo"); err != nil || len(rs) != 0 {
+	if rs, err := b.ListReleases("demo", ""); err != nil || len(rs) != 0 {
 		t.Fatalf("releases %+v, %v", rs, err)
 	}
 }
@@ -486,7 +486,7 @@ func TestR0ListsLastAndCuttingStillStartsAtR1(t *testing.T) {
 	if err != nil || r.ID != "R-1" || !slices.Equal(r.Stories, []string{"S-3", s.ID}) {
 		t.Fatalf("cut %+v, %v", r, err)
 	}
-	rs, err := b.ListReleases("demo")
+	rs, err := b.ListReleases("demo", "")
 	if err != nil || len(rs) != 2 || rs[0].ID != "R-1" || rs[1].ID != "R-0" {
 		t.Fatalf("order %+v, %v", rs, err)
 	}

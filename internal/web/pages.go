@@ -189,7 +189,7 @@ func (s *site) releasesPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	rs, err := s.board.ListReleases(ws.Slug)
+	rs, err := s.board.ListReleases(ws.Slug, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return
