@@ -139,7 +139,7 @@ func TestABranchChangeArrivesAsABranchEvent(t *testing.T) {
 	lines := watch(t, srv, "/w/demo/events", "bp_good")
 
 	alias := "Dev"
-	must[board.Branch](t)(b.UpdateBranch("demo", "tester", "main", board.BranchPatch{Alias: &alias}))
+	must[board.Branch](t)(b.UpdateBranch("demo", "tester", "", "main", board.BranchPatch{Alias: &alias}))
 	if got, want := nextData(t, lines), `{"kind":"branch","id":""}`; got != want {
 		t.Fatalf("data %s, want %s", got, want)
 	}

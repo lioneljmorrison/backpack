@@ -2,7 +2,12 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/lioneljmorrison/backpack/internal/board"
+	"github.com/lioneljmorrison/backpack/internal/falkor/falkortest"
+	"github.com/lioneljmorrison/backpack/internal/health"
 )
 
 func TestAWorkspaceIsCreatedWithAnOptionalRepoAndListsItsRepositories(t *testing.T) {
@@ -28,5 +33,89 @@ func TestAWorkspaceIsCreatedWithAnOptionalRepoAndListsItsRepositories(t *testing
 	s := want(t, call(t, h, "GET", "/v1/workspaces/demo/stories/S-1", ""), http.StatusOK)
 	if s["repo"] != "demo" {
 		t.Fatalf("story %v", s)
+	}
+}
+
+// twoRepoAPI serves workspace "demo" with repositories api (dev into main)
+// and web (dev into main, a story merged into dev). The second repository is
+// written straight into the graph, as no route adds one yet.
+func twoRepoAPI(t *testing.T) http.Handler {
+	t.Helper()
+	db, prefix := falkortest.Prefix(t)
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tester := func(string) (string, bool, error) { return "tester", true, nil }
+	h := New(map[string]health.Check{}, tester, b, nil, nil)
+	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "demo", "name": "Demo", "repo": "api", "has_release_stage": true}`), http.StatusCreated)
+	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
+		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
+		(r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: 'test', created_at: 'x'}),
+		(r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'dev', rank: 'n'})`, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+func branchLayout(t *testing.T, h http.Handler, query string) string {
+	t.Helper()
+	var out []string
+	for _, x := range want(t, call(t, h, "GET", "/v1/workspaces/demo/branches"+query, ""), http.StatusOK)["branches"].([]any) {
+		b := x.(map[string]any)
+		out = append(out, b["repo"].(string)+"/"+b["name"].(string))
+	}
+	return strings.Join(out, " ")
+}
+
+func TestBranchRoutesTakeARepositoryAndNeedOneWhenThereAreSeveral(t *testing.T) {
+	h := twoRepoAPI(t)
+	const base = "/v1/workspaces/demo/branches"
+
+	// GET lists every repository's branches, or one's.
+	if got := branchLayout(t, h, ""); got != "api/dev api/main web/dev web/main" {
+		t.Fatalf("all: %s", got)
+	}
+	if got := branchLayout(t, h, "?repo=web"); got != "web/dev web/main" {
+		t.Fatalf("web: %s", got)
+	}
+	want(t, call(t, h, "GET", base+"?repo=x", ""), http.StatusNotFound)
+
+	// POST: repo in the body.
+	want(t, call(t, h, "POST", base, `{"name": "hotfix", "into": "main"}`), http.StatusBadRequest)
+	added := want(t, call(t, h, "POST", base, `{"name": "hotfix", "into": "main", "repo": "web"}`), http.StatusCreated)
+	if added["repo"] != "web" {
+		t.Fatalf("added %v", added)
+	}
+	want(t, call(t, h, "POST", base, `{"name": "hotfix", "into": "main", "repo": "x"}`), http.StatusNotFound)
+
+	// PATCH: ?repo=.
+	r := want(t, call(t, h, "PATCH", base+"/hotfix", `{"alias": "Fix"}`), http.StatusBadRequest)
+	if msg := r["error"]; msg != "demo has several repos; name the repo: api or web" {
+		t.Fatalf("refusal %v", r)
+	}
+	if got := want(t, call(t, h, "PATCH", base+"/hotfix?repo=web", `{"alias": "Fix"}`), http.StatusOK); got["alias"] != "Fix" || got["repo"] != "web" {
+		t.Fatalf("patched %v", got)
+	}
+	want(t, call(t, h, "PATCH", base+"/hotfix?repo=api", `{"alias": "Fix"}`), http.StatusNotFound)
+
+	// POST .../merged: ?repo=.
+	want(t, call(t, h, "POST", base+"/dev/merged", `{"commit": "x9"}`), http.StatusBadRequest)
+	moved := want(t, call(t, h, "POST", base+"/dev/merged?repo=web", `{"commit": "x9"}`), http.StatusOK)["stories"].([]any)
+	if len(moved) != 1 || moved[0].(map[string]any)["id"] != "W-1" {
+		t.Fatalf("moved %v", moved)
+	}
+	if moved = want(t, call(t, h, "POST", base+"/dev/merged?repo=api", `{"commit": "x9"}`), http.StatusOK)["stories"].([]any); len(moved) != 0 {
+		t.Fatalf("api moved %v", moved)
+	}
+	want(t, call(t, h, "POST", base+"/dev/merged?repo=x", `{"commit": "x9"}`), http.StatusNotFound)
+
+	// DELETE: ?repo=.
+	want(t, call(t, h, "DELETE", base+"/hotfix", ""), http.StatusBadRequest)
+	want(t, call(t, h, "DELETE", base+"/hotfix?repo=x", ""), http.StatusNotFound)
+	want(t, call(t, h, "DELETE", base+"/main?repo=web", ""), http.StatusConflict)
+	want(t, call(t, h, "DELETE", base+"/hotfix?repo=web", ""), http.StatusNoContent)
+	if got := branchLayout(t, h, ""); got != "api/dev api/main web/dev web/main" {
+		t.Fatalf("after: %s", got)
 	}
 }

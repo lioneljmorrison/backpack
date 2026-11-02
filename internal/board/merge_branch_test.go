@@ -33,7 +33,7 @@ func threeMergedAndOneInReview(t *testing.T) *board.Board {
 
 func TestMergingABranchMovesEveryStoryMergedIntoItAndLogsTheCommit(t *testing.T) {
 	b := threeMergedAndOneInReview(t)
-	moved, err := b.MergeBranch("demo", actor, "dev", "x9")
+	moved, err := b.MergeBranch("demo", actor, "", "dev", "x9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestMergingABranchMovesEveryStoryMergedIntoItAndLogsTheCommit(t *testing.T)
 func TestMergingABranchWritesTheSameEntryAsMergingOneStory(t *testing.T) {
 	b := threeMergedAndOneInReview(t)
 	setStatus(t, b, "S-1", board.StatusChange{To: board.Merged, Into: "main", Commit: "x9"})
-	if _, err := b.MergeBranch("demo", actor, "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	one, all := readLog(t, b, "S-1"), readLog(t, b, "S-2")
@@ -84,7 +84,7 @@ func TestMergingABranchWritesTheSameEntryAsMergingOneStory(t *testing.T) {
 func TestMergingABranchHandsOutSequentialUniqueLogIds(t *testing.T) {
 	b := threeMergedAndOneInReview(t)
 	// Eleven entries so far: three stories with three each, the fourth with two.
-	if _, err := b.MergeBranch("demo", actor, "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	var ids []string
@@ -109,7 +109,7 @@ func TestMergingABranchWithNothingOnItSucceedsAndMovesNothing(t *testing.T) {
 	b := newReleasingWorkspace(t)
 	addStory(t, b, board.NewStory{Title: "Waiting"})
 	got := recorder(b)
-	moved, err := b.MergeBranch("demo", actor, "dev", "x9")
+	moved, err := b.MergeBranch("demo", actor, "", "dev", "x9")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,10 +125,10 @@ func TestMergingABranchWithNothingOnItSucceedsAndMovesNothing(t *testing.T) {
 
 func TestMergingABranchTwiceMovesNothingTheSecondTime(t *testing.T) {
 	b := threeMergedAndOneInReview(t)
-	if _, err := b.MergeBranch("demo", actor, "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
-	moved, err := b.MergeBranch("demo", actor, "dev", "y1")
+	moved, err := b.MergeBranch("demo", actor, "", "dev", "y1")
 	if err != nil || len(moved) != 0 {
 		t.Fatalf("moved %+v, %v; stories already in main must stay", moved, err)
 	}
@@ -137,7 +137,7 @@ func TestMergingABranchTwiceMovesNothingTheSecondTime(t *testing.T) {
 func TestMergingABranchReportsEveryStoryItMoved(t *testing.T) {
 	b := threeMergedAndOneInReview(t)
 	got := recorder(b)
-	if _, err := b.MergeBranch("demo", actor, "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	var want []board.Change
@@ -164,7 +164,7 @@ func TestMergingTheReleaseBranchAnUnknownBranchOrWithoutACommitIsRefused(t *test
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := b.MergeBranch(c.ws, actor, c.branch, c.commit)
+			_, err := b.MergeBranch(c.ws, actor, "", c.branch, c.commit)
 			wantKind(t, err, c.kind)
 		})
 	}
@@ -199,7 +199,7 @@ func TestMergingABranchThatFailsPartWayMovesNothing(t *testing.T) {
 	}
 	uniqueConstraint(t, g, "LogEntry", "id")
 
-	if _, err := b.MergeBranch("demo", actor, "dev", "x9"); err == nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "x9"); err == nil {
 		t.Fatal("want the clash on L-11 to fail the merge")
 	}
 	for _, id := range []string{"S-1", "S-2", "S-3"} {

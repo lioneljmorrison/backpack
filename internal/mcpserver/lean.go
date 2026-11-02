@@ -155,7 +155,9 @@ func workspaceSummaries(ws []board.Workspace) []workspaceSummary {
 }
 
 type branchSummary struct {
-	Name    string `json:"name"`
+	Name string `json:"name"`
+	// Repo labels the branch, only when the list spans several repositories.
+	Repo    string `json:"repo,omitempty"`
 	Into    string `json:"into,omitempty"`
 	Alias   string `json:"alias,omitempty"`
 	Release bool   `json:"release"`
@@ -163,8 +165,16 @@ type branchSummary struct {
 
 func branchSummaries(bs []board.Branch) []branchSummary {
 	out := make([]branchSummary, 0, len(bs))
+	several := false
 	for _, b := range bs {
-		out = append(out, branchSummary{Name: b.Name, Into: b.Into, Alias: b.Alias, Release: b.Release})
+		several = several || b.Repo != bs[0].Repo
+	}
+	for _, b := range bs {
+		s := branchSummary{Name: b.Name, Into: b.Into, Alias: b.Alias, Release: b.Release}
+		if several {
+			s.Repo = b.Repo
+		}
+		out = append(out, s)
 	}
 	return out
 }

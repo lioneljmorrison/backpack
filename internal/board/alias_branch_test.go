@@ -9,12 +9,12 @@ import (
 )
 
 func alias(b *board.Board, branch, to string) (board.Branch, error) {
-	return b.UpdateBranch("demo", actor, branch, board.BranchPatch{Alias: &to})
+	return b.UpdateBranch("demo", actor, "", branch, board.BranchPatch{Alias: &to})
 }
 
 func aliasOf(t *testing.T, b *board.Board, name string) string {
 	t.Helper()
-	bs, err := b.Branches("demo")
+	bs, err := b.Branches("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestABranchTakesAnAliasAndLosesItWhenItIsCleared(t *testing.T) {
 		t.Fatalf("S-2 into %q", s.Into)
 	}
 	// An empty patch leaves the alias alone; "" clears it.
-	if br, err := b.UpdateBranch("demo", actor, "main", board.BranchPatch{}); err != nil || br.Alias != "Production" {
+	if br, err := b.UpdateBranch("demo", actor, "", "main", board.BranchPatch{}); err != nil || br.Alias != "Production" {
 		t.Fatalf("empty patch: %+v, %v", br, err)
 	}
 	if br, err := alias(b, "main", ""); err != nil || br.Alias != "" {
@@ -58,7 +58,7 @@ func TestABranchTakesAnAliasAndLosesItWhenItIsCleared(t *testing.T) {
 func TestRenamingAndAliasingInOnePatchAppliesBoth(t *testing.T) {
 	b := threeMergedAndOneInReview(t)
 	name, al := "develop", "Staging"
-	got, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Name: &name, Alias: &al})
+	got, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Name: &name, Alias: &al})
 	if err != nil || got.Name != "develop" || got.Alias != "Staging" {
 		t.Fatalf("%+v, %v", got, err)
 	}
@@ -90,7 +90,7 @@ func TestAnAliasIsRefusedWhenBadAndNothingChanges(t *testing.T) {
 	}
 	// A taken name refuses the whole patch, alias included.
 	name, al := "main", "Nope"
-	if _, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Name: &name, Alias: &al}); err == nil {
+	if _, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Name: &name, Alias: &al}); err == nil {
 		t.Fatal("a taken name is refused")
 	}
 	if a := aliasOf(t, b, "dev"); a != "" {

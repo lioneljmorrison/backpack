@@ -646,6 +646,25 @@ not part of the board.
   branches an empty one can be removed.) A refusal names the stories and
   branches still on it, and past log entries keep the removed name. An
   abandoned branch's stories are put on hold or closed first.
+- **Branches belong to their repository** (2026-11-01, S-67). Each repository
+  has its own branch chain with its own release branch, so two repositories can
+  each have a `main`, or any other branch name; a name is unique only within
+  its repository. Every branch action runs inside one repository, in its single
+  query: the release and starting branches, the re-point cycle walk (it cannot
+  reach another repository's chain), rename (it follows only that repository's
+  branches and the stories it holds), remove (the in-use checks) and
+  `merge_branch` (only that repository's stories move). Each takes an optional
+  `repo`: a workspace with one repository needs none and answers exactly as
+  before; with several, none named is refused (400) naming the choices ("my-app
+  has several repos; name the repo: api or web"), and an unknown one is 404.
+  Listing branches without a repo lists every repository's, each labelled
+  with it, by repository and then in merge order. Over HTTP `repo` is the
+  `?repo=` query on `GET /branches`, `PATCH` and `DELETE /branches/{name}` and
+  `POST /branches/{name}/merged`, and a field in the `POST /branches` body; the
+  MCP tools `add_branch`, `update_branch`, `remove_branch`, `merge_branch` and
+  `list_branches` take it too. (Stories, status moves and releases still read
+  branches workspace-wide; making them per repository is later work, S-69 and
+  S-70.)
 - **Setup.** When an agent first connects a repository it works out the
   branching (default, integration and protected branches, how pull requests
   flow), proposes it in conversation, and a person approves or adjusts it.
