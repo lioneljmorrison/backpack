@@ -105,6 +105,12 @@ type whatsNextIn struct {
 	Repo string `json:"repo,omitempty" jsonschema:"only this repository's"`
 }
 
+// whereIn narrows only the next stories to one repository when it names one.
+type whereIn struct {
+	in
+	Repo string `json:"repo,omitempty" jsonschema:"only this repository's next stories"`
+}
+
 type listBranchesIn struct {
 	in
 	repoIn
@@ -352,8 +358,8 @@ func (t tools) whatsNext(_ context.Context, a whatsNextIn) (any, error) {
 	return map[string]any{"story": lean(*s).inRepo(*s, several)}, nil
 }
 
-func (t tools) whereAreWe(_ context.Context, a in) (any, error) {
-	w, err := t.b.Where(a.Workspace)
+func (t tools) whereAreWe(_ context.Context, a whereIn) (any, error) {
+	w, err := t.b.WhereFor(a.Workspace, a.Repo)
 	if err != nil {
 		return nil, err
 	}

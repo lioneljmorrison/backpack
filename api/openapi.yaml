@@ -150,6 +150,16 @@ paths:
         and on hold, the top three of the backlog, and the stories and ideas
         waiting for approval. Send
         `Accept: text/plain` for a few lines of text, as the session hook does.
+        With several repositories the text names each story's repository and
+        waits for a release per repository. `repo` narrows only the top three
+        of the backlog, by the rule of `next`; everything else stays the whole
+        workspace's.
+      parameters:
+        - name: repo
+          in: query
+          required: false
+          schema: { type: string }
+          description: Only this repository's stories in the top three. An unknown repository is 404.
       responses:
         "200":
           description: Where the workspace stands

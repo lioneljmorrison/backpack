@@ -59,13 +59,29 @@ type Where struct {
 	// UpstreamChanged is the stories not yet complete whose upstream story
 	// had its goal or plan changed, in delivery order.
 	UpstreamChanged []Story `json:"upstream_changed"`
+
+	// several is true when the workspace has more than one repository, which
+	// is when the text says which repository each story is in.
+	several bool
 }
 
 // Where reads the current phase, the work under way and what comes next.
-func (b *Board) Where(ws string) (Where, error) {
+func (b *Board) Where(ws string) (Where, error) { return b.WhereFor(ws, "") }
+
+// WhereFor is Where with Next narrowed to one repository's stories, chosen
+// by the same rule as Next. Everything else stays the whole workspace's. An
+// unknown repository is NotFound.
+func (b *Board) WhereFor(ws, repo string) (Where, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
 		return Where{}, err
+	}
+	rs, err := repos(g)
+	if err != nil {
+		return Where{}, err
+	}
+	if repo != "" && !slices.ContainsFunc(rs, func(r Repo) bool { return r.Name == repo }) {
+		return Where{}, noRepo(ws, repo)
 	}
 	ps, err := phases(g, 0)
 	if err != nil {
@@ -86,7 +102,7 @@ func (b *Board) Where(ws string) (Where, error) {
 			release[br.Repo] = br.Name
 		}
 	}
-	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, StraightIn: []Story{}, Unreleased: []Story{}, UpstreamChanged: []Story{}}
+	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, StraightIn: []Story{}, Unreleased: []Story{}, UpstreamChanged: []Story{}, several: len(rs) > 1}
 	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete }); i >= 0 {
 		w.Phase = &ps[i]
 	}
@@ -111,7 +127,7 @@ func (b *Board) Where(ws string) (Where, error) {
 			if s.StraightIn {
 				w.StraightIn = append(w.StraightIn, s)
 			}
-			if len(w.Next) < upcoming {
+			if len(w.Next) < upcoming && (repo == "" || s.Repo == repo) {
 				w.Next = append(w.Next, s)
 			}
 		}
@@ -146,7 +162,11 @@ func (w Where) Text() string {
 				}
 				parts = append(parts, blocked)
 			}
-			fmt.Fprintf(&b, "  %s %s", s.ID, s.Title)
+			if w.several {
+				fmt.Fprintf(&b, "  %s [%s] %s", s.ID, s.Repo, s.Title)
+			} else {
+				fmt.Fprintf(&b, "  %s %s", s.ID, s.Title)
+			}
 			if len(parts) > 0 {
 				b.WriteString(" — " + strings.Join(parts, "; "))
 			}
@@ -169,14 +189,30 @@ func (w Where) Text() string {
 	section("On hold", w.OnHold, func(s Story) []string {
 		return []string{fmt.Sprintf("%s (was in %s)", s.HoldReason, label(s.HeldFrom))}
 	})
-	if n := len(w.Unreleased); n > 0 {
-		// A count and the latest few, so the line stays one line however
-		// long the wait for a release gets. The full list is in the JSON.
+	// One line per repository (or the one line, with a single repository): a
+	// count and the latest few, so a line stays one line however long the wait
+	// for a release gets. The full list is in the JSON.
+	var waiting []string
+	byRepo := map[string][]Story{}
+	for _, s := range w.Unreleased {
+		if _, ok := byRepo[s.Repo]; !ok {
+			waiting = append(waiting, s.Repo)
+		}
+		byRepo[s.Repo] = append(byRepo[s.Repo], s)
+	}
+	slices.Sort(waiting)
+	for _, repo := range waiting {
+		ss := byRepo[repo]
+		n := len(ss)
 		latest := make([]string, 0, upcoming)
-		for _, s := range w.Unreleased[max(0, n-upcoming):] {
+		for _, s := range ss[max(0, n-upcoming):] {
 			latest = append(latest, s.ID+" "+s.Title)
 		}
-		fmt.Fprintf(&b, "Merged, waiting for a release: %d (latest: %s)\n", n, strings.Join(latest, ", "))
+		in := ""
+		if w.several {
+			in = " in " + repo
+		}
+		fmt.Fprintf(&b, "Merged, waiting for a release%s: %d (latest: %s)\n", in, n, strings.Join(latest, ", "))
 	}
 	section("Upstream changed", w.UpstreamChanged, func(s Story) []string {
 		return []string{"after " + s.UpstreamChanged.Story}

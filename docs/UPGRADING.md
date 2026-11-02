@@ -106,3 +106,11 @@ After the person restarts Claude Code (MCP servers load at startup):
   reason that names the story. That shows `batch` reaches the rarer actions.
 
 If `actions` is not there, the server is older than 0.5.0: tell the person.
+
+## After 0.5.0: the hook can name a repository
+
+A workspace can hold several repositories. To see only one repository's next
+stories at session start, download the hook again (the same command as in
+[ADOPTING.md](ADOPTING.md) step 6) and add `"repo": "<name>"` to
+`.backpack.json`. Without `repo` the hook behaves as before. The full setup
+guide for several repositories is separate.
