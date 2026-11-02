@@ -72,12 +72,13 @@ func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 		Slug            string `json:"slug"`
 		Name            string `json:"name"`
 		RepoURL         string `json:"repo_url"`
+		Repo            string `json:"repo"`
 		HasReleaseStage bool   `json:"has_release_stage"`
 	}
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL,
+	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoName: in.Repo, RepoURL: in.RepoURL,
 		HasReleaseStage: in.HasReleaseStage})
 	respond(w, http.StatusCreated, ws, err)
 }

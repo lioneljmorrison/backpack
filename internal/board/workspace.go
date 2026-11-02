@@ -4,19 +4,32 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/lioneljmorrison/backpack/internal/falkor"
 )
 
 // Workspace is one project's board.
 type Workspace struct {
-	Slug    string `json:"slug"`
-	Name    string `json:"name"`
-	RepoURL string `json:"repo_url,omitempty"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+	// RepoName and RepoURL are given when creating, to seed the workspace's
+	// repository: the name defaults to the slug. Afterwards the repositories
+	// are the truth, listed in Repos.
+	RepoName string `json:"-"`
+	RepoURL  string `json:"-"`
+	Repos    []Repo `json:"repos"`
 	// HasReleaseStage is true when a branch merges into another. It is given
 	// when creating, to seed the branches; afterwards the branches are the truth.
 	HasReleaseStage bool   `json:"has_release_stage"`
 	CreatedBy       string `json:"created_by"`
 	CreatedAt       string `json:"created_at"`
+}
+
+// Repo is a git repository a workspace's branches, stories and releases
+// belong to.
+type Repo struct {
+	Name string `json:"name"`
+	URL  string `json:"url,omitempty"`
 }
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -33,6 +46,12 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (_ Workspace, err err
 	if w.Name == "" {
 		return Workspace{}, refuse(Invalid, "name is required")
 	}
+	if w.RepoName == "" {
+		w.RepoName = w.Slug
+	}
+	if len(w.RepoName) > 64 || !slugPattern.MatchString(w.RepoName) {
+		return Workspace{}, refuse(Invalid, "repo must be 1-64 lowercase letters, digits and single hyphens")
+	}
 	if err := plainText(w.Name, w.RepoURL); err != nil {
 		return Workspace{}, err
 	}
@@ -41,7 +60,7 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (_ Workspace, err err
 	}
 
 	g := b.graph(w.Slug)
-	if err := falkor.Migrate(g, migrations); err != nil {
+	if err := falkor.Migrate(g, migrations, repoParams(w.RepoName, w.RepoURL)); err != nil {
 		return Workspace{}, err
 	}
 	// A graph that already exists keeps its branches, and the registry
@@ -50,20 +69,26 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (_ Workspace, err err
 	at := now()
 	if _, err := g.Query(`MERGE (w:Workspace {slug: $slug})
 		ON CREATE SET w.next_story = 1, w.next_goal = 1, w.next_log = 1
-		WITH w
+		MERGE (r:Repo {name: $repo})
+			ON CREATE SET r.url = $url, r.created_by = $actor, r.created_at = $at
+		WITH w, r
 		OPTIONAL MATCH (b:Branch)
-		WITH w, count(b) AS have
+		WITH w, r, count(b) AS have
 		FOREACH (_ IN CASE WHEN have = 0 THEN [1] ELSE [] END |
-			CREATE (:Branch {name: 'main', created_by: $actor, created_at: $at}))
+			CREATE (r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: $actor, created_at: $at}))
 		FOREACH (_ IN CASE WHEN have = 0 AND $release THEN [1] ELSE [] END |
-			CREATE (:Branch {name: 'dev', into: 'main', created_by: $actor, created_at: $at}))`,
-		map[string]any{"slug": w.Slug, "release": w.HasReleaseStage, "actor": actor, "at": at}, nil); err != nil {
+			CREATE (r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: $actor, created_at: $at}))`,
+		map[string]any{"slug": w.Slug, "release": w.HasReleaseStage, "actor": actor, "at": at,
+			"repo": w.RepoName, "url": orNull(w.RepoURL)}, nil); err != nil {
 		return Workspace{}, fmt.Errorf("create workspace graph: %w", err)
 	}
 	if w.HasReleaseStage, err = hasReleaseStage(g); err != nil {
 		return Workspace{}, err
 	}
 
+	if w.Repos, err = repos(g); err != nil {
+		return Workspace{}, err
+	}
 	w.CreatedBy, w.CreatedAt = actor, at
 	res, err := b.system.Query(`
 		OPTIONAL MATCH (taken:WorkspaceEntry {slug: $slug})
@@ -84,8 +109,36 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (_ Workspace, err err
 	return w, nil
 }
 
-// Workspaces lists every registered workspace by slug.
+// Workspaces lists every registered workspace by slug, each with its
+// repositories.
 func (b *Board) Workspaces() ([]Workspace, error) {
+	out, err := b.entries()
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].Repos, err = repos(b.graph(out[i].Slug)); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// repos reads a workspace graph's repositories by name.
+func repos(g *falkordb.Graph) ([]Repo, error) {
+	res, err := g.ROQuery("MATCH (r:Repo) RETURN r.name AS name, r.url AS url ORDER BY r.name", nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("read repositories: %w", err)
+	}
+	out := []Repo{}
+	for res.Next() {
+		out = append(out, Repo{Name: str(res.Record(), "name"), URL: str(res.Record(), "url")})
+	}
+	return out, nil
+}
+
+// entries lists the registry: every workspace, without its repositories.
+func (b *Board) entries() ([]Workspace, error) {
 	res, err := b.system.ROQuery(`
 		MATCH (e:WorkspaceEntry)
 		RETURN e.slug AS slug, e.name AS name, e.repo_url AS repo,
@@ -97,7 +150,7 @@ func (b *Board) Workspaces() ([]Workspace, error) {
 	out := []Workspace{}
 	for res.Next() {
 		r := res.Record()
-		out = append(out, Workspace{Slug: str(r, "slug"), Name: str(r, "name"), RepoURL: str(r, "repo"),
+		out = append(out, Workspace{Slug: str(r, "slug"), Name: str(r, "name"), RepoURL: str(r, "repo"), Repos: []Repo{},
 			HasReleaseStage: flag(r, "release"), CreatedBy: str(r, "by"), CreatedAt: str(r, "at")})
 	}
 	return out, nil

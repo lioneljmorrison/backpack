@@ -140,16 +140,16 @@ func leanReleaseOf(d board.ReleaseDetail) leanRelease {
 }
 
 type workspaceSummary struct {
-	Slug            string `json:"slug"`
-	Name            string `json:"name"`
-	RepoURL         string `json:"repo_url,omitempty"`
-	HasReleaseStage bool   `json:"has_release_stage"`
+	Slug            string       `json:"slug"`
+	Name            string       `json:"name"`
+	Repos           []board.Repo `json:"repos"`
+	HasReleaseStage bool         `json:"has_release_stage"`
 }
 
 func workspaceSummaries(ws []board.Workspace) []workspaceSummary {
 	out := make([]workspaceSummary, 0, len(ws))
 	for _, w := range ws {
-		out = append(out, workspaceSummary{Slug: w.Slug, Name: w.Name, RepoURL: w.RepoURL, HasReleaseStage: w.HasReleaseStage})
+		out = append(out, workspaceSummary{Slug: w.Slug, Name: w.Name, Repos: w.Repos, HasReleaseStage: w.HasReleaseStage})
 	}
 	return out
 }

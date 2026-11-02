@@ -300,9 +300,15 @@ Each slice is its own branch and pull request into `dev`.
   of the backlog when neither is given.
 - Stories are numbered `S-1`, `S-2` … and goals `G-1` … within each
   workspace. A phase is referred to by its number.
-- A workspace has a slug, a name and optionally its repository. Whether it
+- A workspace has a slug, a name and a repository. Whether it
   has a Released stage arrives with slice 3. (Replaced by branches on
-  2026-10-13; see "Branches and releases".)
+  2026-10-13; see "Branches and releases".) Every workspace has at least one
+  repository, which holds its branches, stories and releases: a new workspace
+  is given one named after its slug (or the `repo` name given when creating)
+  with the optional `repo_url`, and a workspace from before repositories was
+  given one at start-up by migration 11. Ids stay workspace-wide counters,
+  and a repository name follows the slug rule and is unique in its workspace.
+  The workspace list shows each workspace's repositories, name and URL.
 
 4. **How a story reaches Merged and beyond** (2026-10-10). The agent records
    it when it happens: the merge, with its commit, or the release. Doing so is
@@ -706,6 +712,7 @@ the data volume. Backup copies the RDB file off the host.
 | Node | Key properties |
 |---|---|
 | `Workspace` | `slug`, `next_story`, `next_goal`, `next_log`, `next_idea` (counters for `S-n`, `G-n`, `L-n` and `I-n` IDs), and `next_release` (the `R-n` counter) once releases exist. `has_release_stage` is history: replaced by `Branch` nodes |
+| `Repo` | `name` (the slug rule; unique in the workspace), `url` (optional), `created_by`, `created_at`. Owns the branches, stories and releases of one git repository |
 | `Branch` | `name`, `into` (the name of the branch it merges into, a property rather than an edge; none for the release branch), `alias` (display only), `created_by`, `created_at` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
@@ -724,13 +731,27 @@ the data volume. Backup copies the RDB file off the host.
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
 | `(Story)-[:IN_RELEASE]->(Release)` | |
+| `(Repo)-[:HAS_BRANCH]->(Branch)` | every branch has exactly one repository; the branch's `repo` field is that repository's name |
+| `(Repo)-[:HOLDS]->(Story)` | every story has exactly one repository (`repo` on a story read) |
+| `(Repo)-[:HAS_RELEASE]->(Release)` | every release has exactly one repository, R-0 included (`repo` on a release read) |
+
+Migration 11 gives each existing workspace graph one `Repo` named after the
+workspace slug, with the registry's `repo_url`, and links every branch, story
+and release to it; a repeat links nothing. The URL lives in the system graph,
+so `falkor.Migrate` takes parameters that `board.New` fills from each
+registry entry. While a workspace has one repository, new stories, branches
+and releases join it and nothing else about the board changes. Later work adds
+an optional `repo` input: a repository that identifies something goes in the
+HTTP query, and one that is a field of something new goes in the body.
 
 The upstream-changed mark is two properties on `Story`, not a node or an edge,
 and nothing looks stories up by it, so it needs no index or migration.
 
 A separate `backpack` graph holds actors with hashed tokens and the workspace
 registry: `WorkspaceEntry {slug, name, repo_url, has_release_stage,
-created_by, created_at}`. Until 2026-10-13 `has_release_stage` was also kept
+created_by, created_at}`. `repo_url` is the URL the workspace was created
+with: it seeds the workspace's first `Repo` (migration 11 and creation read
+it) and is not read afterwards; the repositories are the truth. Until 2026-10-13 `has_release_stage` was also kept
 on the workspace graph's `Workspace` node, so the status query could read it.
 Branches replace it: the status query reads `Branch` nodes, and a new
 workspace's branches are seeded from the creation setting (one branch, or

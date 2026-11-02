@@ -149,7 +149,9 @@ curl -fsS -X POST https://backpack.example.com/v1/workspaces \
   -d '{"slug": "my-app", "name": "My app", "repo_url": "https://github.com/you/my-app", "has_release_stage": false}'
 ```
 
-`slug` and `name` are required. `repo_url` is optional. A `409` means the slug
+`slug` and `name` are required. `repo_url` is optional and is the URL of the
+workspace's repository. That repository is named after the slug unless you
+give `repo` (a slug-style name). A `409` means the slug
 is already taken, so check with the person whether that workspace is this
 project's.
 

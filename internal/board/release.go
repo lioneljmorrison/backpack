@@ -12,7 +12,9 @@ import (
 // ids of the stories it holds, in delivery order. Backpack does not talk to
 // GitHub; the caller records the tag as it records commits.
 type Release struct {
-	ID        string   `json:"id"`
+	ID string `json:"id"`
+	// Repo is the repository the release was cut in, by name.
+	Repo      string   `json:"repo,omitempty"`
 	Version   string   `json:"version"`
 	Tag       string   `json:"tag"`
 	Commit    string   `json:"commit,omitempty"`
@@ -55,26 +57,28 @@ func (b *Board) CutRelease(ws, actor string, n NewRelease) (_ Release, err error
 	at := now()
 	res, err := g.Query(`
 		MATCH (w:Workspace)
+		OPTIONAL MATCH (rp:Repo)
 		OPTIONAL MATCH (b:Branch) WHERE b.into IS NULL
-		WITH w, collect(b.name)[0] AS branch, coalesce(w.next_log, 1) AS n, coalesce(w.next_release, 1) AS rn
+		WITH w, rp, collect(b.name)[0] AS branch, coalesce(w.next_log, 1) AS n, coalesce(w.next_release, 1) AS rn
 		OPTIONAL MATCH (d:Release {version: $version})
-		WITH w, branch, n, rn, count(d) AS dups
+		WITH w, rp, branch, n, rn, count(d) AS dups
 		OPTIONAL MATCH (s:Story {status: 'merged'}) WHERE s.into = branch
-		WITH w, branch, n, rn, dups, s ORDER BY s.rank, s.id
-		WITH w, branch, n, rn, dups, collect(s) AS ss
-		WITH w, branch, n, rn, ss, 'R-' + toString(rn) AS id,
+		WITH w, rp, branch, n, rn, dups, s ORDER BY s.rank, s.id
+		WITH w, rp, branch, n, rn, dups, collect(s) AS ss
+		WITH w, rp, branch, n, rn, ss, 'R-' + toString(rn) AS id,
 			CASE WHEN dups > 0 THEN 'duplicate' WHEN size(ss) = 0 THEN 'nothing' END AS violation
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 			SET w.next_release = rn + 1, w.next_log = n + size(ss)
 			CREATE (r:Release {id: id, version: $version, tag: $tag, commit: $commit, notes: $notes,
 				created_by: $actor, created_at: $at})
+			FOREACH (q IN CASE WHEN rp IS NULL THEN [] ELSE [rp] END | CREATE (q)-[:HAS_RELEASE]->(r))
 			FOREACH (i IN range(0, size(ss) - 1) | FOREACH (s IN [ss[i]] |
 				SET s.status = 'released', s.upstream_id = null, s.upstream_at = null
 				CREATE (s)-[:IN_RELEASE]->(r)
 				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $at, actor: $actor, kind: 'status',
 					from: 'merged', to: 'released', commit: $commit, into: branch,
 					text: 'Released in ' + id + ' (' + $version + ')'}))))
-		RETURN violation, id, branch, [s IN ss | s.id] AS ids`,
+		RETURN violation, id, rp.name AS repo, branch, [s IN ss | s.id] AS ids`,
 		map[string]any{"version": n.Version, "tag": n.Tag, "commit": orNull(n.Commit), "notes": orNull(n.Notes),
 			"actor": actor, "at": at}, nil)
 	if err != nil {
@@ -95,7 +99,7 @@ func (b *Board) CutRelease(ws, actor string, n NewRelease) (_ Release, err error
 	for _, id := range ids {
 		b.changed(nil, Change{ws, KindStory, id})
 	}
-	return Release{ID: str(r, "id"), Version: n.Version, Tag: n.Tag, Commit: n.Commit, Notes: n.Notes,
+	return Release{ID: str(r, "id"), Repo: str(r, "repo"), Version: n.Version, Tag: n.Tag, Commit: n.Commit, Notes: n.Notes,
 		CreatedBy: actor, CreatedAt: at, Stories: ids}, nil
 }
 
@@ -149,9 +153,10 @@ func (b *Board) GetRelease(ws, id string) (ReleaseDetail, error) {
 func releases(g *falkordb.Graph, id string) ([]Release, error) {
 	res, err := g.ROQuery(`
 		MATCH (r:Release) WHERE $id = '' OR r.id = $id
+		OPTIONAL MATCH (rp:Repo)-[:HAS_RELEASE]->(r)
 		OPTIONAL MATCH (s:Story)-[:IN_RELEASE]->(r)
-		WITH r, s ORDER BY s.rank, s.id
-		RETURN r.id AS id, r.version AS version, r.tag AS tag, r.commit AS commit, r.notes AS notes,
+		WITH r, rp, s ORDER BY s.rank, s.id
+		RETURN r.id AS id, rp.name AS repo, r.version AS version, r.tag AS tag, r.commit AS commit, r.notes AS notes,
 			r.created_by AS by, r.created_at AS at, collect(s.id) AS ids`,
 		map[string]any{"id": id}, nil)
 	if err != nil {
@@ -160,7 +165,7 @@ func releases(g *falkordb.Graph, id string) ([]Release, error) {
 	out := []Release{}
 	for res.Next() {
 		r := res.Record()
-		out = append(out, Release{ID: str(r, "id"), Version: str(r, "version"), Tag: str(r, "tag"),
+		out = append(out, Release{ID: str(r, "id"), Repo: str(r, "repo"), Version: str(r, "version"), Tag: str(r, "tag"),
 			Commit: str(r, "commit"), Notes: str(r, "notes"), CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
 			Stories: strs(r, "ids")})
 	}

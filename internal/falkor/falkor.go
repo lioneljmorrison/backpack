@@ -47,14 +47,15 @@ func Version(g *falkordb.Graph) (int, error) {
 // a query with a write, so each migration is followed by its own version
 // update; a failure leaves the version at the last migration that succeeded.
 // An index that already exists counts as applied: it is what a crash between
-// the two queries leaves behind.
-func Migrate(g *falkordb.Graph, ms []string) error {
+// the two queries leaves behind. params are given to every migration, for
+// what the graph does not hold itself (a workspace's repository URL).
+func Migrate(g *falkordb.Graph, ms []string, params map[string]any) error {
 	v, err := Version(g)
 	if err != nil {
 		return err
 	}
 	for i := v; i < len(ms); i++ {
-		if _, err := g.Query(ms[i], nil, nil); err != nil && !strings.Contains(err.Error(), "already indexed") {
+		if _, err := g.Query(ms[i], params, nil); err != nil && !strings.Contains(err.Error(), "already indexed") {
 			return fmt.Errorf("migration %d: %w", i+1, err)
 		}
 		if _, err := g.Query("MERGE (s:SchemaVersion) SET s.v = $v", map[string]any{"v": i + 1}, nil); err != nil {
