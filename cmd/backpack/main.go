@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -195,7 +196,33 @@ func join(cfg config, args []string, out, errOut io.Writer) int {
 		return report(errOut, err)
 	}
 	fmt.Fprint(out, plan.AppliedReport())
+	fmt.Fprint(out, reindexJoined(cfg, b, plan, errOut))
 	return 0
+}
+
+// reindexJoined makes the new workspace searchable and drops the sources'
+// indexes, and answers the line the join prints about it. The board change
+// has stood by now, so a search failure never fails the join: it answers the
+// reindex hint instead. Only the sources' own collections are dropped, and
+// only after the new one was built.
+func reindexJoined(cfg config, b *board.Board, plan board.JoinPlan, errOut io.Writer) string {
+	const hint = "search: run make reindex\n"
+	x := search.New(cfg.TypesenseURL, cfg.TypesenseKey, cfg.CollectionPrefix, b)
+	ctx, cancel := context.WithTimeout(context.Background(), rebuildTimeout)
+	defer cancel()
+	if err := x.Rebuild(ctx, plan.Request.Into); err != nil {
+		fmt.Fprintf(errOut, "backpack: search was not rebuilt: %v\n", err)
+		return hint
+	}
+	var dropped []string
+	for _, s := range plan.Sources {
+		if err := x.Drop(ctx, s.Slug); err != nil {
+			fmt.Fprintf(errOut, "backpack: the search index of %s was not dropped: %v\n", s.Slug, err)
+			continue
+		}
+		dropped = append(dropped, s.Slug)
+	}
+	return fmt.Sprintf("search: rebuilt %s, dropped %s\n", plan.Request.Into, strings.Join(dropped, ", "))
 }
 
 func report(errOut io.Writer, err error) int {

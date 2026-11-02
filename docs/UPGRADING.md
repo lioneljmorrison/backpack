@@ -164,5 +164,10 @@ workspace; the old workspace refuses every request and drops out of
    as `S-3` still name the old one. Branch names recorded on stories are
    unchanged. Check what the project's own files (a plan, a commit message, a
    pull request description) say about ids before relying on them.
-5. **Check it works.** `whats_next` with the `repo` answers from the new
+5. **Search is ready.** The join rebuilds the new workspace's search index and
+   drops the old workspaces' indexes, so searching the new workspace works at
+   once and finds the join notes. Only if the person tells you the join printed
+   `search: run make reindex` (Typesense was down) does search wait until they
+   run it.
+6. **Check it works.** `whats_next` with the `repo` answers from the new
    workspace.

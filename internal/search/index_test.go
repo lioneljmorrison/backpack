@@ -412,3 +412,37 @@ func TestSearchingAJoinedWorkspaceGivesThePointer(t *testing.T) {
 		t.Fatalf("error = %v, want the pointer", err)
 	}
 }
+
+func TestDropRemovesOnlyTheNamedWorkspacesCollection(t *testing.T) {
+	b, x, ts := newTarget(t)
+	workspace(t, b, "demo-api")
+	workspace(t, b, "demo-web")
+	if err := x.RebuildAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := x.Drop(ctx, "demo-api"); err != nil {
+		t.Fatal(err)
+	}
+	if code := typesensetest.Do(ts.url, ts.key, http.MethodGet, "/collections/"+ts.prefix+"demo-api", ""); code != http.StatusNotFound {
+		t.Fatalf("dropped collection answers %d, want 404", code)
+	}
+	if code := typesensetest.Do(ts.url, ts.key, http.MethodGet, "/collections/"+ts.prefix+"demo-web", ""); code != http.StatusOK {
+		t.Fatalf("the other collection answers %d, want 200", code)
+	}
+}
+
+func TestDropOfAMissingCollectionIsNotAnError(t *testing.T) {
+	_, x, _ := newTarget(t)
+	if err := x.Drop(ctx, "demo-gone"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDropRefusesNamesThatAreNotWorkspaceSlugs(t *testing.T) {
+	_, x, _ := newTarget(t)
+	for _, ws := range []string{"", "_warm", "a/b", "../x", "Demo", "*"} {
+		if err := x.Drop(ctx, ws); err == nil {
+			t.Errorf("Drop(%q) succeeded, want a refusal", ws)
+		}
+	}
+}
