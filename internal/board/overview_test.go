@@ -24,7 +24,7 @@ func TestWhatsNextIsTheTopBacklogStoryThatIsNotBlocked(t *testing.T) {
 	addStory(t, b, board.NewStory{Title: "C", Goal: "g", Plan: "p"})
 	depend(t, b, "S-2", "S-1")
 	walk(t, b, "S-1", "in_progress")
-	next, err := b.Next("demo")
+	next, err := b.Next("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,10 +35,10 @@ func TestWhatsNextIsTheTopBacklogStoryThatIsNotBlocked(t *testing.T) {
 
 func TestWhatsNextIsNothingWhenTheBacklogHasNothingReady(t *testing.T) {
 	b := newWorkspace(t)
-	if next, err := b.Next("demo"); err != nil || next != nil {
+	if next, err := b.Next("demo", ""); err != nil || next != nil {
 		t.Fatalf("next %+v, %v", next, err)
 	}
-	_, err := b.Next("nope")
+	_, err := b.Next("nope", "")
 	wantKind(t, err, board.NotFound)
 }
 

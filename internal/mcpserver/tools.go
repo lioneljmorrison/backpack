@@ -99,6 +99,12 @@ type repoIn struct {
 	Repo string `json:"repo,omitempty" jsonschema:"repository; needed when the workspace has several"`
 }
 
+// whatsNextIn narrows the answer to one repository when it names one.
+type whatsNextIn struct {
+	in
+	Repo string `json:"repo,omitempty" jsonschema:"only this repository's"`
+}
+
 type listBranchesIn struct {
 	in
 	repoIn
@@ -334,8 +340,8 @@ func (t tools) listBranches(_ context.Context, a listBranchesIn) (any, error) {
 	return map[string]any{"branches": branchSummaries(bs)}, err
 }
 
-func (t tools) whatsNext(_ context.Context, a in) (any, error) {
-	s, err := t.b.Next(a.Workspace)
+func (t tools) whatsNext(_ context.Context, a whatsNextIn) (any, error) {
+	s, err := t.b.Next(a.Workspace, a.Repo)
 	if err != nil || s == nil {
 		return map[string]any{"story": nil}, err
 	}

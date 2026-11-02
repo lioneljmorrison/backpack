@@ -113,7 +113,18 @@ paths:
       - $ref: "#/components/parameters/Workspace"
     get:
       summary: What's next
-      description: The highest-ranked backlog story that is not blocked.
+      description: |
+        The highest-ranked backlog story that is not blocked. With `repo` it is
+        the top ready story in that repository, even when another repository's
+        story ranks higher; a story blocked by unfinished work in another
+        repository is still blocked. Without `repo` it is the whole
+        workspace's, whatever the number of repositories.
+      parameters:
+        - name: repo
+          in: query
+          required: false
+          schema: { type: string }
+          description: Only this repository's stories. An unknown repository is 404.
       responses:
         "200":
           description: The story, or null when nothing in the backlog is ready

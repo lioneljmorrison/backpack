@@ -73,3 +73,25 @@ func TestOneRepositoryAnswersCarryNoRepoAndUpdateStoryCannotMoveAStory(t *testin
 	// The repository is fixed: update_story has no such field.
 	refused(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1", "repo": "web"})
 }
+
+func TestWhatsNextTakesARepositoryAndAnswersItsTopReadyStory(t *testing.T) {
+	cs := twoRepos(t)
+	for _, repo := range []string{"api", "web"} {
+		got := use(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "In " + repo, "reasoning": "r", "repo": repo})
+		use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": got["id"], "to": "backlog"})
+	}
+	// Without a repository the answer is the whole workspace's, as before.
+	if s := use(t, cs, "whats_next", map[string]any{"workspace": "demo"})["story"].(map[string]any); s["id"] != "S-1" || s["repo"] != "api" {
+		t.Fatalf("whole workspace %v", s)
+	}
+	if s := use(t, cs, "whats_next", map[string]any{"workspace": "demo", "repo": "web"})["story"].(map[string]any); s["id"] != "S-2" || s["repo"] != "web" {
+		t.Fatalf("web %v", s)
+	}
+	if got := refused(t, cs, "whats_next", map[string]any{"workspace": "demo", "repo": "ios"}); got != `demo has no repo "ios"` {
+		t.Fatalf("unknown repo: %s", got)
+	}
+	use(t, cs, "set_status", map[string]any{"workspace": "demo", "id": "S-2", "to": "in_progress"})
+	if got := use(t, cs, "whats_next", map[string]any{"workspace": "demo", "repo": "web"}); got["story"] != nil {
+		t.Fatalf("nothing ready in web: %v", got)
+	}
+}

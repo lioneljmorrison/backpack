@@ -150,7 +150,7 @@ func (a boardAPI) getRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {
-	s, err := a.b.Next(r.PathValue("ws"))
+	s, err := a.b.Next(r.PathValue("ws"), r.URL.Query().Get("repo"))
 	respond(w, http.StatusOK, map[string]any{"story": s}, err)
 }
 

@@ -164,7 +164,12 @@ agent see what was done in which commit, and what was later found wrong.
 
 **Two quick reads.**
 - **What's next:** the highest-ranked backlog story whose dependencies are all
-  complete, with its description, goal and plan. It reads nothing else.
+  complete, with its description, goal and plan. It reads nothing else. With
+  a `repo` (MCP `whats_next`, `GET .../next?repo=`) it is the top ready story
+  in that repository, even when another repository's story ranks higher; a
+  story blocked by unfinished work in another repository is still blocked, and
+  an unknown repository is a 404. With no `repo` it is the whole workspace's,
+  even with several repositories.
 - **Where are we:**
   - the current phase and how far along it is;
   - what is in progress and what each story is doing;
