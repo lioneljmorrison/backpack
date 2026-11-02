@@ -47,6 +47,8 @@ make forward             # bring a remote stack's ports here over SSH
 make token ACTOR=<name>  # issue a token for a person or agent (shown once)
 make reindex             # rebuild the search index from the board
 make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"  # what joining workspaces would do; writes nothing
+make join INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"          # join workspaces into a new one (preview first)
+make join-abort INTO=<slug>                                         # undo an interrupted join
 make gates               # gofmt, vet, tests, build
 ```
 
@@ -109,8 +111,8 @@ project. The agent creates the workspace, connects the MCP server, adds
 track. It asks the person only for the address, a few choices and a token,
 and tells them how to get one. A project that spans several repositories gets
 one workspace with each repository's `.backpack.json` naming its repository;
-the guide has a section for it. (Joining workspaces that already exist
-separately is not available yet.) To set up a new project, point its agent at:
+the guide has a section for it. (Workspaces that already exist
+separately are joined into one by the person running the board: `make join`.) To set up a new project, point its agent at:
 
 ```
 https://github.com/lioneljmorrison/backpack/blob/main/docs/ADOPTING.md

@@ -4,7 +4,8 @@
 //	backpack token create --actor <name>
 //	backpack token revoke --actor <name>
 //	backpack reindex [--workspace <slug>]
-//	backpack join --into <slug> --name <name> --actor <who> <workspace> <workspace>...
+//	backpack join --into <slug> --name <name> --actor <who> [--apply] <workspace> <workspace>...
+//	backpack join --abort --into <slug>
 package main
 
 import (
@@ -34,7 +35,8 @@ const usage = `usage:
   backpack token create --actor <name>
   backpack token revoke --actor <name>
   backpack reindex [--workspace <slug>]
-  backpack join --into <slug> --name <name> --actor <who> <workspace> <workspace>...
+  backpack join --into <slug> --name <name> --actor <who> [--apply] <workspace> <workspace>...
+  backpack join --abort --into <slug>
 `
 
 // rebuildTimeout bounds loading the search model and a full rebuild of the
@@ -139,15 +141,27 @@ func reindex(cfg config, args []string, out, errOut io.Writer) int {
 	return 0
 }
 
-// join reports what joining workspaces into one new workspace would do. It
-// writes nothing.
+// join joins workspaces into one new workspace. Without --apply it reports
+// what that would do and writes nothing; --apply does it; --abort undoes an
+// interrupted join into the named workspace.
 func join(cfg config, args []string, out, errOut io.Writer) int {
 	fs := flag.NewFlagSet("join", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	into := fs.String("into", "", "the new workspace's slug")
 	name := fs.String("name", "", "the new workspace's name")
 	actor := fs.String("actor", "", "who the join is for")
-	if err := fs.Parse(args); err != nil || *into == "" || *name == "" || *actor == "" || fs.NArg() < 2 {
+	apply := fs.Bool("apply", false, "do the join instead of previewing it")
+	abort := fs.Bool("abort", false, "undo an interrupted join into --into")
+	if err := fs.Parse(args); err != nil || *into == "" {
+		fmt.Fprint(errOut, usage)
+		return 2
+	}
+	if *abort {
+		if *apply || *name != "" || *actor != "" || fs.NArg() != 0 {
+			fmt.Fprint(errOut, usage)
+			return 2
+		}
+	} else if *name == "" || *actor == "" || fs.NArg() < 2 {
 		fmt.Fprint(errOut, usage)
 		return 2
 	}
@@ -160,11 +174,27 @@ func join(cfg config, args []string, out, errOut io.Writer) int {
 	if err != nil {
 		return report(errOut, err)
 	}
-	plan, err := b.PreviewJoin(board.JoinRequest{Into: *into, Name: *name, Actor: *actor, From: fs.Args()})
+	if *abort {
+		if err := b.AbortJoin(*into); err != nil {
+			return report(errOut, err)
+		}
+		fmt.Fprintf(out, "aborted the join into %s: the half-built workspace is gone and the sources accept writes again\n", *into)
+		return 0
+	}
+	req := board.JoinRequest{Into: *into, Name: *name, Actor: *actor, From: fs.Args()}
+	if !*apply {
+		plan, err := b.PreviewJoin(req)
+		if err != nil {
+			return report(errOut, err)
+		}
+		fmt.Fprint(out, plan.Report())
+		return 0
+	}
+	plan, err := b.ApplyJoin(req, board.JoinHooks{})
 	if err != nil {
 		return report(errOut, err)
 	}
-	fmt.Fprint(out, plan.Report())
+	fmt.Fprint(out, plan.AppliedReport())
 	return 0
 }
 

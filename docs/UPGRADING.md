@@ -129,5 +129,40 @@ required.
   [ADOPTING.md](ADOPTING.md) step 3. From then on a story, branch action,
   merge or release that names no repository is refused, so agents must pass
   `repo`.
-- **Not available yet:** joining workspaces that already exist separately into
-  one, and renaming or removing a repository.
+- **Joining workspaces** that already exist separately into one is done by the
+  person running the board (`make join`); if it was done for yours, see "Your
+  workspaces were joined" below. Renaming or removing a repository is not
+  available yet.
+
+## Your workspaces were joined
+
+Follow this only when the person tells you the project's workspace was joined
+into another (`make join`), or when a request answers `<old> was joined into
+<new>; use workspace <new> with repo <r>` (404). The work was copied to the new
+workspace; the old workspace refuses every request and drops out of
+`list_workspaces`, and its data is kept.
+
+1. **Point the project at the new workspace.** In the project's
+   `.backpack.json` set `"workspace"` to the new workspace's slug and add
+   `"repo"` set to the old workspace's slug. The old workspace's repository
+   keeps its name, and the refusal names it. If the refusal lists several
+   (`r1 or r2`), this project is the one that holds that repository: use its
+   name. Leave `"url"` as it is.
+2. **Several repositories now apply.** The new workspace holds the repositories
+   of every workspace that was joined, so a story, branch action, merge or
+   release that names no repository is refused. Bring in the tracking section
+   from [ADOPTING.md](ADOPTING.md) step 7 and the hook from step 6, as in
+   "Several repositories (optional)" above, so that `repo` from
+   `.backpack.json` is passed to `whats_next`, `add_story` and `add_bug_fix`.
+3. **Tokens are unchanged.** Tokens belong to people and agents, not to a
+   workspace; the existing ones work on the new workspace. Do not ask for a new
+   one.
+4. **Ids changed.** In the new workspace a story, idea, goal, release and log
+   entry may have a new id. Each keeps its old id and workspace as `old_id` and
+   `old_workspace`, and each story's log ends with a note saying where it came
+   from. Text is copied exactly, so descriptions and plans that name an id such
+   as `S-3` still name the old one. Branch names recorded on stories are
+   unchanged. Check what the project's own files (a plan, a commit message, a
+   pull request description) say about ids before relying on them.
+5. **Check it works.** `whats_next` with the `repo` answers from the new
+   workspace.
