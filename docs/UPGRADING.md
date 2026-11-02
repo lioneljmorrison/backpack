@@ -171,3 +171,13 @@ workspace; the old workspace refuses every request and drops out of
    run it.
 6. **Check it works.** `whats_next` with the `repo` answers from the new
    workspace.
+
+### The hook shows why Backpack refused
+
+The session hook used to print "Backpack unreachable — orientation skipped"
+for every refusal. Now, when Backpack refuses the request (a joined workspace,
+an unknown repository, a bad token), it prints Backpack's reason, such as
+`Backpack: <old> was joined into <new>; use workspace <new> with repo <r>`.
+Projects get this by downloading the hook again (the same command as in
+[ADOPTING.md](ADOPTING.md) step 6, which overwrites the old copy). A project
+with the old hook keeps working, but still prints "unreachable" for a refusal.

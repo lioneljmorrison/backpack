@@ -335,8 +335,12 @@ The hook reads the workspace and address (and `repo`, if there is one, which
 narrows "Next" to that repository) from `.backpack.json`, and the token from
 `BACKPACK_TOKEN`. It never fails a session:
 - without `.backpack.json` it prints nothing;
-- without a token, or if Backpack can't be reached within 3 seconds, it prints
-  "Backpack unreachable — orientation skipped".
+- without a token, or if Backpack can't be reached within 3 seconds (or
+  answers with a server error), it prints "Backpack unreachable —
+  orientation skipped";
+- if Backpack refuses the request (a joined workspace, an unknown repository, a
+  bad token), it prints Backpack's own reason, for example "Backpack: demo was
+  joined into combined; use workspace combined with repo demo".
 
 ## 7. Tell the project's agents how to track
 
