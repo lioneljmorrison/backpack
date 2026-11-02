@@ -863,6 +863,24 @@ Branches replace it: the status query reads `Branch` nodes, and a new
 workspace's branches are seeded from the creation setting (one branch, or
 `dev` into `main`).
 
+A registry entry can also carry the marks of a join (Phase 6). `joined_into`
+(the target workspace's slug), `joined_repos` (the repositories the work went
+to), `joined_at` and `joined_by` say the workspace was joined into another;
+`joining` (the target's slug) says a join is under way, on a source and also
+on the entry that reserves the slug of a target still being built. Nothing in
+this slice sets them; the join does, and tests set them directly. The one
+workspace lookup every request goes through (HTTP, MCP, web and search) reads
+them: a joined workspace is 404 with `<ws> was joined into <t>; use workspace
+<t> with repo <r>` (several repositories read `r1 or r2`), and one being joined
+is 409 with `<ws> is being joined into <t>; try again shortly`. A joined
+workspace is left out of the registry listing, so it drops out of
+`list_workspaces` and the web list, and start-up neither migrates it nor
+rebuilds its search index; its graph is kept. A workspace being joined stays
+listed and migrated. Creating a workspace checks the registry directly, so a
+slug that is registered (joined or not) or that a join is building is a 409
+before any graph is touched. Workspaces that are not joined answer exactly as
+before.
+
 - **Rank** is a fractional string key over `0-9A-Za-z` (ASCII order, so Go
   and FalkorDB compare keys alike). Between two neighbours there is always a
   key, so a move rewrites only the moved story. `Story.rank` is deliberately

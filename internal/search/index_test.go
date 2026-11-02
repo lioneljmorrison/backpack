@@ -393,3 +393,22 @@ func TestAStoryIsFoundByItsBugKind(t *testing.T) {
 	addStory(t, b, "demo", board.NewStory{Title: "Export invoices"})
 	wantIDs(t, x, "demo", "bug", "S-1")
 }
+
+// Fixtures are invented: demo-api is joined into demo-web.
+func TestSearchingAJoinedWorkspaceGivesThePointer(t *testing.T) {
+	db, prefix := falkortest.Prefix(t)
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	url, key, cprefix := typesensetest.Prefix(t)
+	x := search.New(url, key, cprefix, b)
+	workspace(t, b, "demo-api")
+	falkortest.MarkEntry(t, db, prefix+"system", "demo-api", map[string]any{"joined_into": "demo-web", "joined_repos": []string{"api"}})
+	_, err = x.Search(ctx, "demo-api", "invoices")
+	var be *board.Error
+	if !errors.As(err, &be) || be.Kind != board.NotFound ||
+		be.Msg != "demo-api was joined into demo-web; use workspace demo-web with repo api" {
+		t.Fatalf("error = %v, want the pointer", err)
+	}
+}

@@ -34,6 +34,10 @@ func (s *site) workspace(slug string) (*board.Workspace, error) {
 			return &all[i], nil
 		}
 	}
+	// The board says more about a joined workspace than that it is missing.
+	if _, err := s.board.Repos(slug); err != nil {
+		return nil, err
+	}
 	return nil, &board.Error{Kind: board.NotFound, Msg: "no workspace " + slug}
 }
 

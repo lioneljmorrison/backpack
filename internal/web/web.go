@@ -186,6 +186,10 @@ func (s *site) fail(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, e.Msg, http.StatusNotFound)
 		return
 	}
+	if e := (*board.Error)(nil); errors.As(err, &e) && e.Kind == board.Conflict {
+		http.Error(w, e.Msg, http.StatusConflict)
+		return
+	}
 	log.Printf("web: %s %s: %v", r.Method, r.URL.Path, err)
 	http.Error(w, "the board is unavailable", http.StatusServiceUnavailable)
 }
