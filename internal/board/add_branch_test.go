@@ -14,7 +14,7 @@ func addBranch(b *board.Board, name, into string) (board.Branch, error) {
 }
 
 func repoint(b *board.Board, branch, into string) (board.Branch, error) {
-	return b.UpdateBranch("demo", actor, branch, board.BranchPatch{Into: &into})
+	return b.UpdateBranch("demo", actor, "", branch, board.BranchPatch{Into: &into})
 }
 
 func mustAddBranch(t *testing.T, b *board.Board, name, into string) board.Branch {
@@ -28,7 +28,7 @@ func mustAddBranch(t *testing.T, b *board.Board, name, into string) board.Branch
 
 func intoOf(t *testing.T, b *board.Board, name string) string {
 	t.Helper()
-	bs, err := b.Branches("demo")
+	bs, err := b.Branches("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestAddingStagingAndRepointingDevLeavesEveryStoryInPlace(t *testing.T) {
 	if err != nil || re.Into != "staging" || re.Name != "dev" {
 		t.Fatalf("re-pointing: %+v, %v", re, err)
 	}
-	bs, err := b.Branches("demo")
+	bs, err := b.Branches("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestAddingStagingAndRepointingDevLeavesEveryStoryInPlace(t *testing.T) {
 	}
 
 	// Merging dev now goes to staging, then staging to main.
-	moved, err := b.MergeBranch("demo", actor, "dev", "x1")
+	moved, err := b.MergeBranch("demo", actor, "", "dev", "x1")
 	if err != nil || len(moved) != 2 {
 		t.Fatalf("merging dev: %+v, %v", moved, err)
 	}
@@ -94,7 +94,7 @@ func TestAddingStagingAndRepointingDevLeavesEveryStoryInPlace(t *testing.T) {
 			t.Fatalf("%s went to %q, want staging", s.ID, s.Into)
 		}
 	}
-	moved, err = b.MergeBranch("demo", actor, "staging", "x2")
+	moved, err = b.MergeBranch("demo", actor, "", "staging", "x2")
 	if err != nil || len(moved) != 2 || moved[0].Into != "main" {
 		t.Fatalf("merging staging: %+v, %v", moved, err)
 	}
@@ -188,10 +188,10 @@ func TestAddBranchRefusesWhatCannotBeAdded(t *testing.T) {
 		{"taken by the release branch", board.Branch{Name: "main", Into: "dev"}, board.Conflict},
 		{"unknown into", board.Branch{Name: "x", Into: "nope"}, board.NotFound},
 	} {
-		before, _ := b.Branches("demo")
+		before, _ := b.Branches("demo", "")
 		_, err := b.AddBranch("demo", actor, c.br)
 		wantKind(t, err, c.kind)
-		if after, _ := b.Branches("demo"); !reflect.DeepEqual(before, after) {
+		if after, _ := b.Branches("demo", ""); !reflect.DeepEqual(before, after) {
 			t.Fatalf("%s: a refused add changed the branches: %v", c.name, after)
 		}
 	}
@@ -268,7 +268,7 @@ func TestRepointingToWhereItAlreadyMergesAndAnEmptyPatchChangeNothing(t *testing
 	if got, err := repoint(b, "dev", "main"); err != nil || got.Into != "main" {
 		t.Fatalf("%+v, %v", got, err)
 	}
-	if got, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{}); err != nil || got.Into != "main" {
+	if got, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{}); err != nil || got.Into != "main" {
 		t.Fatalf("empty patch: %+v, %v", got, err)
 	}
 	// Clearing the release branch's into, which it has not got, is nothing.
@@ -281,15 +281,15 @@ func TestACombinedPatchOfNameAliasAndIntoIsOneChangeOrNone(t *testing.T) {
 	b := newReleasingWorkspace(t)
 	mustAddBranch(t, b, "staging", "main")
 	name, al, into := "develop", "Dev", "staging"
-	got, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Name: &name, Alias: &al, Into: &into})
+	got, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Name: &name, Alias: &al, Into: &into})
 	if err != nil || got.Name != "develop" || got.Alias != "Dev" || got.Into != "staging" {
 		t.Fatalf("%+v, %v", got, err)
 	}
 	// A refused part (a cycle) leaves the rename and alias undone too.
 	n2, a2, i2 := "again", "Again", "develop"
-	_, err = b.UpdateBranch("demo", actor, "staging", board.BranchPatch{Name: &n2, Alias: &a2, Into: &i2})
+	_, err = b.UpdateBranch("demo", actor, "", "staging", board.BranchPatch{Name: &n2, Alias: &a2, Into: &i2})
 	wantKind(t, err, board.Conflict)
-	bs, _ := b.Branches("demo")
+	bs, _ := b.Branches("demo", "")
 	if g, want := names(bs), [][2]string{{"develop", "staging"}, {"staging", "main"}, {"main", ""}}; !reflect.DeepEqual(g, want) {
 		t.Fatalf("branches %v, want %v", g, want)
 	}

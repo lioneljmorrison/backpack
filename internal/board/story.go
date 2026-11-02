@@ -10,7 +10,9 @@ import (
 
 // Story is one deliverable piece of work.
 type Story struct {
-	ID          string `json:"id"`
+	ID string `json:"id"`
+	// Repo is the repository that holds the story, by name.
+	Repo        string `json:"repo,omitempty"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Goal        string `json:"goal"`
@@ -92,7 +94,10 @@ type NewStory struct {
 	Plan        string `json:"plan"`
 	Kind        string `json:"kind"`
 	// FoundIn names the story this one was found while building.
-	FoundIn   string `json:"found_in"`
+	FoundIn string `json:"found_in"`
+	// Repo names the repository that holds the story, fixed from then on. It
+	// can be left out when the workspace has one.
+	Repo      string `json:"repo"`
 	Phase     int    `json:"phase"`
 	Proposed  bool   `json:"-"`
 	Reasoning string `json:"-"`
@@ -244,17 +249,20 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			return Story{}, err
 		}
 		res, err := g.Query(`
+			`+resolveRepo+`
 			MATCH (w:Workspace)
 			OPTIONAL MATCH (p:Phase {number: $phase})
 			OPTIONAL MATCH (anchor:Story {id: $anchor})
 			OPTIONAL MATCH (f:Story {id: $found})
 			OPTIONAL MATCH (fp:Phase)-[:CONTAINS]->(f)
 			OPTIONAL MATCH (o:Story) WHERE ($lo = '' OR o.rank > $lo) AND ($hi = '' OR o.rank < $hi)
-			WITH w, p, anchor, f, fp, count(o) AS between
+			WITH w, rps, rp, p, anchor, f, fp, count(o) AS between
 			OPTIONAL MATCH (p)-[:CONTAINS]->(x:Story) WHERE x.status <> 'closed'
-			WITH w, p, anchor, f, fp, between, count(x) AS total,
+			WITH w, rps, rp, p, anchor, f, fp, between, count(x) AS total,
 				toInteger(sum(CASE WHEN x.status IN $complete THEN 1 ELSE 0 END)) AS done
-			WITH w, p, f, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
+			WITH w, rps, rp, p, f, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
+				WHEN size(rps) = 0 THEN 'no repo'
+				WHEN size(rps) > 1 THEN 'several repos'
 				WHEN $phase <> 0 AND p IS NULL THEN 'phase'
 				WHEN $found <> '' AND f IS NULL THEN 'found_in'
 				WHEN f.status = 'closed' THEN 'found_closed'
@@ -266,15 +274,16 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 				SET w.next_story = w.next_story + 1
 				CREATE (s:Story {id: id, title: $title, description: $description, goal: $goal,
 					plan: $plan, kind: $kind, straight_in: $straightIn, rank: $rank, status: $status, created_by: $actor, created_at: $now})
+				CREATE (rp)-[:HOLDS]->(s)
 				FOREACH (q IN CASE WHEN p IS NULL THEN [] ELSE [p] END | CREATE (q)-[:CONTAINS]->(s))
 				FOREACH (q IN CASE WHEN f IS NULL THEN [] ELSE [f] END | CREATE (s)-[:FOUND_IN]->(q))
 				FOREACH (__ IN CASE WHEN $reasoning IS NULL THEN [] ELSE [1] END |
 					SET w.next_log = n + 1
 					CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n), at: $now, actor: $actor,
 						kind: 'decision', text: $placed, reason: $reasoning})))
-			RETURN violation, id`,
+			RETURN violation, id, `+repoNames+``,
 			map[string]any{
-				"phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
+				"repo": s.Repo, "phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
 				"rank": Between(at.lo, at.hi), "title": s.Title, "description": s.Description,
 				"goal": s.Goal, "plan": s.Plan, "kind": orNull(s.Kind), "found": s.FoundIn, "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
 				"actor": actor, "now": now(), "straight": s.StraightIn != nil, "straightIn": straight, "complete": complete,
@@ -284,6 +293,9 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 		}
 		res.Next()
 		r := res.Record()
+		if err := repoRefusal(ws, s.Repo, str(r, "violation"), strs(r, "repos")); err != nil {
+			return Story{}, err
+		}
 		switch str(r, "violation") {
 		case "":
 			return story(g, str(r, "id"))
@@ -554,19 +566,20 @@ func story(g *falkordb.Graph, id string) (Story, error) {
 func stories(g *falkordb.Graph, id string) ([]Story, error) {
 	res, err := g.ROQuery(`
 		MATCH (s:Story) WHERE $id = '' OR s.id = $id
+		OPTIONAL MATCH (rp:Repo)-[:HOLDS]->(s)
 		OPTIONAL MATCH (p:Phase)-[:CONTAINS]->(s)
 		OPTIONAL MATCH (rel:Release)<-[:IN_RELEASE]-(s)
 		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(t:Story)
-		WITH s, p, rel, collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS blocked_by, count(t) AS deps
+		WITH s, rp, p, rel, collect(CASE WHEN NOT t.status IN $complete THEN t.id END) AS blocked_by, count(t) AS deps
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s)
-		WITH s, p, rel, blocked_by, deps,
+		WITH s, rp, p, rel, blocked_by, deps,
 			collect(CASE WHEN NOT s.status IN $complete AND d.status <> $closed THEN d.id END) AS blocks,
 			deps + count(d) > 0 AS linked
 		OPTIONAL MATCH (s)-[:FOUND_IN]->(fi:Story)
-		WITH s, p, rel, blocked_by, blocks, linked, fi
+		WITH s, rp, p, rel, blocked_by, blocks, linked, fi
 		OPTIONAL MATCH (fd:Story)-[:FOUND_IN]->(s)
-		WITH s, p, rel, blocked_by, blocks, linked, fi, collect(fd.id) AS found
-		RETURN s.id AS id, s.title AS title, s.description AS description, s.goal AS goal,
+		WITH s, rp, p, rel, blocked_by, blocks, linked, fi, collect(fd.id) AS found
+		RETURN s.id AS id, rp.name AS repo, s.title AS title, s.description AS description, s.goal AS goal,
 			s.plan AS plan, s.kind AS kind, s.straight_in AS straight_in, fi.id AS found_in, found, s.status AS status, p.number AS phase, blocked_by, blocks, linked,
 			rel.id AS release_id, rel.version AS release_version,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
@@ -593,7 +606,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 			up = &UpstreamRef{Story: id, At: str(r, "upstream_at")}
 		}
 		out = append(out, Story{
-			ID: str(r, "id"), Title: str(r, "title"), Description: str(r, "description"),
+			ID: str(r, "id"), Repo: str(r, "repo"), Title: str(r, "title"), Description: str(r, "description"),
 			Goal: str(r, "goal"), Plan: str(r, "plan"), Kind: str(r, "kind"), StraightIn: flag(r, "straight_in"), FoundIn: str(r, "found_in"), Found: byNumber(strs(r, "found")), Status: str(r, "status"), Phase: num(r, "phase"),
 			BlockedBy: blockedBy, Blocks: byNumber(strs(r, "blocks")),
 			Blocked: len(blockedBy) > 0, linked: flag(r, "linked"),

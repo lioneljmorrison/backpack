@@ -113,7 +113,7 @@ func TestGetStoryOfAReleasedStoryIncludesItsRelease(t *testing.T) {
 	stagedWorkspace(t, b)
 	mergedIntoDev(t, b, "First")
 	mergedIntoDev(t, b, "Second")
-	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("staged", "tester", "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.CutRelease("staged", "tester", board.NewRelease{Version: "v1.0.0", Tag: "v1.0.0"}); err != nil {

@@ -7,6 +7,7 @@
 <h1><span class="id">{{.ID}}</span> {{.Title}}</h1>
 <div class="tags">
   <span class="tag status">{{storyLabel .}}</span>
+  {{with $.Data.Tone}}<span class="tag repo {{.}}">{{$.Data.Story.Repo}}</span>{{end}}
   {{if eq .Kind "bug"}}<span class="tag bug">Bug</span>{{end}}
   {{if .StraightIn}}<span class="tag warn" title="Skipped approval">Straight in</span>{{end}}
   {{if .Phase}}<a class="tag" href="/w/{{$ws}}/phases#phase-{{.Phase}}">Phase {{.Phase}}</a>{{end}}

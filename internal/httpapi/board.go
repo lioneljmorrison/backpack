@@ -20,6 +20,8 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	a := boardAPI{b}
 	mux.HandleFunc("GET /v1/workspaces", a.listWorkspaces)
 	mux.HandleFunc("POST /v1/workspaces", a.createWorkspace)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/repos", a.listRepos)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/repos", a.addRepo)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/branches", a.listBranches)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/branches", a.addBranch)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/branches/{name}", a.updateBranch)
@@ -72,18 +74,33 @@ func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 		Slug            string `json:"slug"`
 		Name            string `json:"name"`
 		RepoURL         string `json:"repo_url"`
+		Repo            string `json:"repo"`
 		HasReleaseStage bool   `json:"has_release_stage"`
 	}
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoURL: in.RepoURL,
+	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoName: in.Repo, RepoURL: in.RepoURL,
 		HasReleaseStage: in.HasReleaseStage})
 	respond(w, http.StatusCreated, ws, err)
 }
 
+func (a boardAPI) listRepos(w http.ResponseWriter, r *http.Request) {
+	rs, err := a.b.Repos(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"repos": rs}, err)
+}
+
+func (a boardAPI) addRepo(w http.ResponseWriter, r *http.Request) {
+	var in board.Repo
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	repo, err := a.b.AddRepo(r.PathValue("ws"), actor(r), in)
+	respond(w, http.StatusCreated, repo, err)
+}
+
 func (a boardAPI) listBranches(w http.ResponseWriter, r *http.Request) {
-	bs, err := a.b.Branches(r.PathValue("ws"))
+	bs, err := a.b.Branches(r.PathValue("ws"), r.URL.Query().Get("repo"))
 	respond(w, http.StatusOK, map[string]any{"branches": bs}, err)
 }
 
@@ -92,11 +109,12 @@ func (a boardAPI) addBranch(w http.ResponseWriter, r *http.Request) {
 		Name  string `json:"name"`
 		Into  string `json:"into"`
 		Alias string `json:"alias"`
+		Repo  string `json:"repo"`
 	}
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	br, err := a.b.AddBranch(r.PathValue("ws"), actor(r), board.Branch{Name: in.Name, Into: in.Into, Alias: in.Alias})
+	br, err := a.b.AddBranch(r.PathValue("ws"), actor(r), board.Branch{Name: in.Name, Into: in.Into, Alias: in.Alias, Repo: in.Repo})
 	respond(w, http.StatusCreated, br, err)
 }
 
@@ -105,12 +123,12 @@ func (a boardAPI) updateBranch(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &patch) {
 		return
 	}
-	br, err := a.b.UpdateBranch(r.PathValue("ws"), actor(r), r.PathValue("name"), patch)
+	br, err := a.b.UpdateBranch(r.PathValue("ws"), actor(r), r.URL.Query().Get("repo"), r.PathValue("name"), patch)
 	respond(w, http.StatusOK, br, err)
 }
 
 func (a boardAPI) removeBranch(w http.ResponseWriter, r *http.Request) {
-	if err := a.b.RemoveBranch(r.PathValue("ws"), actor(r), r.PathValue("name")); err != nil {
+	if err := a.b.RemoveBranch(r.PathValue("ws"), actor(r), r.URL.Query().Get("repo"), r.PathValue("name")); err != nil {
 		fail(w, err)
 		return
 	}
@@ -124,7 +142,7 @@ func (a boardAPI) mergeBranch(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	moved, err := a.b.MergeBranch(r.PathValue("ws"), actor(r), r.PathValue("name"), in.Commit)
+	moved, err := a.b.MergeBranch(r.PathValue("ws"), actor(r), r.URL.Query().Get("repo"), r.PathValue("name"), in.Commit)
 	respond(w, http.StatusOK, map[string]any{"stories": moved}, err)
 }
 
@@ -138,7 +156,7 @@ func (a boardAPI) cutRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a boardAPI) listReleases(w http.ResponseWriter, r *http.Request) {
-	rs, err := a.b.ListReleases(r.PathValue("ws"))
+	rs, err := a.b.ListReleases(r.PathValue("ws"), r.URL.Query().Get("repo"))
 	respond(w, http.StatusOK, map[string]any{"releases": rs}, err)
 }
 
@@ -148,14 +166,14 @@ func (a boardAPI) getRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a boardAPI) next(w http.ResponseWriter, r *http.Request) {
-	s, err := a.b.Next(r.PathValue("ws"))
+	s, err := a.b.Next(r.PathValue("ws"), r.URL.Query().Get("repo"))
 	respond(w, http.StatusOK, map[string]any{"story": s}, err)
 }
 
 // where answers as JSON, or as plain text when the caller asks for text and
 // not JSON, as the session hook does.
 func (a boardAPI) where(w http.ResponseWriter, r *http.Request) {
-	where, err := a.b.Where(r.PathValue("ws"))
+	where, err := a.b.WhereFor(r.PathValue("ws"), r.URL.Query().Get("repo"))
 	accept := r.Header.Get("Accept")
 	if err != nil || !strings.Contains(accept, "text/plain") || strings.Contains(accept, "application/json") {
 		respond(w, http.StatusOK, where, err)

@@ -106,3 +106,28 @@ After the person restarts Claude Code (MCP servers load at startup):
   reason that names the story. That shows `batch` reaches the rarer actions.
 
 If `actions` is not there, the server is older than 0.5.0: tell the person.
+
+### 5. Several repositories (optional)
+
+A workspace can hold several repositories. A project that stays with one
+repository needs nothing: the board answers as before, and `repo` is never
+required.
+
+- **The hook.** To see only one repository's next stories at session start,
+  download the hook again (the same command as in
+  [ADOPTING.md](ADOPTING.md) step 6, which overwrites the old copy) and add
+  `"repo": "<name>"` to `.backpack.json`. Without `repo`, or with the old hook,
+  the session shows the whole workspace's next stories.
+- **Tracking section.** Bring in the current one from ADOPTING.md step 7: it
+  tells agents to pass `repo` from `.backpack.json` to `whats_next`,
+  `add_story` and `add_bug_fix`.
+- **A second repository in an existing workspace.** The existing repository is
+  already there, named after the workspace slug (see it with `list_repos`
+  through `actions`). Add the new one with `add_repo` (through `batch`), shape
+  its branches with `add_branch` and `repo`, then give each repository's
+  `.backpack.json` a `"repo"`. Details: "Several repositories" in
+  [ADOPTING.md](ADOPTING.md) step 3. From then on a story, branch action,
+  merge or release that names no repository is refused, so agents must pass
+  `repo`.
+- **Not available yet:** joining workspaces that already exist separately into
+  one, and renaming or removing a repository.

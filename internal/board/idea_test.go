@@ -68,7 +68,7 @@ func TestIdeasAndStoriesNeverShareAnOrder(t *testing.T) {
 	if _, err := b.AddIdea("demo", actor, board.NewIdea{Title: "X", Position: board.Position{After: "S-1"}}); err == nil {
 		t.Fatal("an idea was placed next to a story")
 	}
-	if next, _ := b.Next("demo"); next == nil || next.ID != "S-1" {
+	if next, _ := b.Next("demo", ""); next == nil || next.ID != "S-1" {
 		t.Fatalf("next %+v", next)
 	}
 }

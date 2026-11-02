@@ -17,7 +17,7 @@ func names(bs []board.Branch) (out [][2]string) {
 
 func TestANewWorkspaceWithoutAReleaseStageHasOnlyMain(t *testing.T) {
 	b := newWorkspace(t)
-	got, err := b.Branches("demo")
+	got, err := b.Branches("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestANewWorkspaceWithAReleaseStageHasDevIntoMainAndMain(t *testing.T) {
 	if _, err := b.CreateWorkspace(actor, board.Workspace{Slug: "staged", Name: "Staged", HasReleaseStage: true}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := b.Branches("staged")
+	got, err := b.Branches("staged", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestANewWorkspaceWithAReleaseStageHasDevIntoMainAndMain(t *testing.T) {
 
 func TestBranchesOfAnUnknownWorkspaceAreRefused(t *testing.T) {
 	b := newBoard(t)
-	if _, err := b.Branches("nope"); err == nil {
+	if _, err := b.Branches("nope", ""); err == nil {
 		t.Fatal("want a refusal")
 	}
 }
@@ -73,7 +73,7 @@ func TestMigrationBuildsBranchesFromTheOldReleaseStageFlag(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: %v", c.flag, err)
 			}
-			got, err := b.Branches("old")
+			got, err := b.Branches("old", "")
 			if err != nil {
 				t.Fatal(err)
 			}

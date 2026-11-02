@@ -16,7 +16,9 @@ type leanStory struct {
 	FoundIn     string `json:"found_in,omitempty"`
 	StraightIn  bool   `json:"straight_in,omitempty"`
 	Phase       int    `json:"phase,omitempty"`
-	Status      string `json:"status"`
+	// Repo is sent only when the workspace has several repositories.
+	Repo   string `json:"repo,omitempty"`
+	Status string `json:"status"`
 	// Blocked is sent only when true.
 	Blocked         bool               `json:"blocked,omitempty"`
 	BlockedBy       []string           `json:"blocked_by,omitempty"`
@@ -45,12 +47,12 @@ func lean(s board.Story) leanStory {
 	}
 }
 
-// leanResult is a handler's story result in its lean form, keeping its error.
-func leanResult(s board.Story, err error) (any, error) {
-	if err != nil {
-		return nil, err
+// inRepo labels the story with its repository, when the workspace has several.
+func (l leanStory) inRepo(s board.Story, several bool) leanStory {
+	if several {
+		l.Repo = s.Repo
 	}
-	return lean(s), nil
+	return l
 }
 
 // Lists answer summaries: an id, a name, the state and one useful detail.
@@ -106,16 +108,22 @@ func phaseSummaries(ps []board.Phase) []phaseSummary {
 
 // releaseSummary carries how many stories shipped, not which.
 type releaseSummary struct {
-	ID      string `json:"id"`
+	ID string `json:"id"`
+	// Repo labels the release, only when the workspace has several repositories.
+	Repo    string `json:"repo,omitempty"`
 	Version string `json:"version"`
 	Tag     string `json:"tag"`
 	Stories int    `json:"stories"`
 }
 
-func releaseSummaries(rs []board.Release) []releaseSummary {
+func releaseSummaries(rs []board.Release, several bool) []releaseSummary {
 	out := make([]releaseSummary, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, releaseSummary{ID: r.ID, Version: r.Version, Tag: r.Tag, Stories: len(r.Stories)})
+		x := releaseSummary{ID: r.ID, Version: r.Version, Tag: r.Tag, Stories: len(r.Stories)}
+		if several {
+			x.Repo = r.Repo
+		}
+		out = append(out, x)
 	}
 	return out
 }
@@ -123,7 +131,9 @@ func releaseSummaries(rs []board.Release) []releaseSummary {
 // leanRelease is a release read as a changelog: its stories in the lean form
 // and no who-and-when, like the story itself.
 type leanRelease struct {
-	ID      string      `json:"id"`
+	ID string `json:"id"`
+	// Repo labels the release, only when the workspace has several repositories.
+	Repo    string      `json:"repo,omitempty"`
 	Version string      `json:"version"`
 	Tag     string      `json:"tag"`
 	Commit  string      `json:"commit,omitempty"`
@@ -131,31 +141,37 @@ type leanRelease struct {
 	Stories []leanStory `json:"stories"`
 }
 
-func leanReleaseOf(d board.ReleaseDetail) leanRelease {
+func leanReleaseOf(d board.ReleaseDetail, several bool) leanRelease {
 	ss := make([]leanStory, 0, len(d.Entries))
 	for _, s := range d.Entries {
-		ss = append(ss, lean(s))
+		ss = append(ss, lean(s).inRepo(s, several))
 	}
-	return leanRelease{ID: d.ID, Version: d.Version, Tag: d.Tag, Commit: d.Commit, Notes: d.Notes, Stories: ss}
+	l := leanRelease{ID: d.ID, Version: d.Version, Tag: d.Tag, Commit: d.Commit, Notes: d.Notes, Stories: ss}
+	if several {
+		l.Repo = d.Repo
+	}
+	return l
 }
 
 type workspaceSummary struct {
-	Slug            string `json:"slug"`
-	Name            string `json:"name"`
-	RepoURL         string `json:"repo_url,omitempty"`
-	HasReleaseStage bool   `json:"has_release_stage"`
+	Slug            string       `json:"slug"`
+	Name            string       `json:"name"`
+	Repos           []board.Repo `json:"repos"`
+	HasReleaseStage bool         `json:"has_release_stage"`
 }
 
 func workspaceSummaries(ws []board.Workspace) []workspaceSummary {
 	out := make([]workspaceSummary, 0, len(ws))
 	for _, w := range ws {
-		out = append(out, workspaceSummary{Slug: w.Slug, Name: w.Name, RepoURL: w.RepoURL, HasReleaseStage: w.HasReleaseStage})
+		out = append(out, workspaceSummary{Slug: w.Slug, Name: w.Name, Repos: w.Repos, HasReleaseStage: w.HasReleaseStage})
 	}
 	return out
 }
 
 type branchSummary struct {
-	Name    string `json:"name"`
+	Name string `json:"name"`
+	// Repo labels the branch, only when the list spans several repositories.
+	Repo    string `json:"repo,omitempty"`
 	Into    string `json:"into,omitempty"`
 	Alias   string `json:"alias,omitempty"`
 	Release bool   `json:"release"`
@@ -163,8 +179,16 @@ type branchSummary struct {
 
 func branchSummaries(bs []board.Branch) []branchSummary {
 	out := make([]branchSummary, 0, len(bs))
+	several := false
 	for _, b := range bs {
-		out = append(out, branchSummary{Name: b.Name, Into: b.Into, Alias: b.Alias, Release: b.Release})
+		several = several || b.Repo != bs[0].Repo
+	}
+	for _, b := range bs {
+		s := branchSummary{Name: b.Name, Into: b.Into, Alias: b.Alias, Release: b.Release}
+		if several {
+			s.Repo = b.Repo
+		}
+		out = append(out, s)
 	}
 	return out
 }

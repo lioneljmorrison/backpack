@@ -3,6 +3,8 @@ package web
 import (
 	"errors"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,14 +43,48 @@ type boardData struct {
 	// Ideas are the open ideas, shown as the first column.
 	Ideas   []board.Idea
 	Columns []column
+	// Repos are the repository filter, in name order, when the workspace has
+	// several; none otherwise, and then nothing about repositories shows.
+	Repos []repoTab
+	// AllCurrent is true when the filter is off.
+	AllCurrent bool
+}
+
+// repoTab is one repository in the board's filter and legend.
+type repoTab struct {
+	Name string
+	// Tone is the CSS class that colours the repository's cards.
+	Tone    string
+	Current bool
 }
 
 type column struct {
 	Status string
-	// Into names the branch of a merged column.
+	// Repo and Into name the repository and branch of a merged column, when
+	// the workspace has several repositories.
+	Repo  string
 	Into  string
 	Title string
 	Cards []card
+}
+
+// tones is how many colours repositories cycle through (see style.css).
+const tones = 6
+
+// toneOf is the class that colours the cards of the i-th repository.
+func toneOf(i int) string { return "repo-" + strconv.Itoa(i%tones) }
+
+// repoTones names each repository's tone, by repository order; nil for a
+// workspace with one repository, which has no colours.
+func repoTones(rs []board.Repo) map[string]string {
+	if len(rs) < 2 {
+		return nil
+	}
+	out := make(map[string]string, len(rs))
+	for i, r := range rs {
+		out[r.Name] = toneOf(i)
+	}
+	return out
 }
 
 func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
@@ -59,13 +95,31 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 	}
 	var d boardData
 	var cols []board.Column
-	bs, err := s.board.Branches(ws.Slug)
+	bs, err := s.board.Branches(ws.Slug, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
+	rs, err := s.board.Repos(ws.Slug)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	tone := repoTones(rs)
+	// The filter narrows the board to one repository; with one it is moot.
+	only := ""
+	if tone != nil {
+		if only = r.URL.Query().Get("repo"); only != "" && tone[only] == "" {
+			s.fail(w, r, &board.Error{Kind: board.NotFound, Msg: ws.Slug + " has no repo " + strconv.Quote(only)})
+			return
+		}
+		d.AllCurrent = only == ""
+		for _, rp := range rs {
+			d.Repos = append(d.Repos, repoTab{Name: rp.Name, Tone: tone[rp.Name], Current: rp.Name == only})
+		}
+	}
 	if d.Where, err = s.board.Where(ws.Slug); err == nil {
-		if d.Next, err = s.board.Next(ws.Slug); err == nil {
+		if d.Next, err = s.board.Next(ws.Slug, ""); err == nil {
 			if cols, err = s.board.Board(ws.Slug); err == nil {
 				d.Ideas, err = s.board.Ideas(ws.Slug)
 			}
@@ -76,34 +130,46 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A column's heading shows its branch's alias; everything else keeps the name.
-	aliases := map[string]string{}
+	// A branch name is only unique within its repository.
+	aliases := map[[2]string]string{}
 	for _, br := range bs {
 		if br.Alias != "" {
-			aliases[br.Name] = br.Alias
+			aliases[[2]string{br.Repo, br.Name}] = br.Alias
 		}
 	}
 	for _, c := range cols {
 		// Released work is read on the Releases pages, not on the board.
-		if c.Status == board.Released {
+		if c.Status == board.Released || (only != "" && c.Repo != "" && c.Repo != only) {
 			continue
 		}
 		heading := c.Branch
-		if a, ok := aliases[heading]; ok {
+		if a, ok := aliases[[2]string{c.Repo, c.Branch}]; ok {
 			heading = a
 		}
-		col := column{Status: c.Status, Into: c.Branch, Title: statusLabel(c.Status, heading), Cards: make([]card, len(c.Stories))}
-		for i, st := range c.Stories {
+		col := column{Status: c.Status, Into: c.Branch, Title: statusLabel(c.Status, heading)}
+		if tone != nil && c.Repo != "" {
+			col.Repo, col.Title = c.Repo, c.Repo+" · "+col.Title
+		}
+		stories := c.Stories
+		if only != "" {
+			stories = slices.DeleteFunc(slices.Clone(stories), func(st board.Story) bool { return st.Repo != only })
+		}
+		col.Cards = make([]card, len(stories))
+		for i, st := range stories {
 			col.Cards[i] = cardOf(ws.Slug, st)
+			if tone != nil {
+				col.Cards[i].Repo, col.Cards[i].Tone = st.Repo, tone[st.Repo]
+			}
 			col.Cards[i].Moves = moveKeys(board.Moves(st, bs))
 			// The backlog is where order is chosen; a card moves past its
 			// neighbours there.
 			if c.Status == board.Backlog {
 				col.Cards[i].Movable = true
 				if i > 0 {
-					col.Cards[i].Up = c.Stories[i-1].ID
+					col.Cards[i].Up = stories[i-1].ID
 				}
-				if i < len(c.Stories)-1 {
-					col.Cards[i].Down = c.Stories[i+1].ID
+				if i < len(stories)-1 {
+					col.Cards[i].Down = stories[i+1].ID
 				}
 			}
 		}
@@ -114,6 +180,9 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 
 type storyData struct {
 	Story board.Story
+	// Tone is the colour class of the story's repository, set only when the
+	// workspace has several.
+	Tone string
 	// Moves are the statuses the story can change to.
 	Moves []string
 	Log   []board.LogEntry
@@ -138,12 +207,18 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	bs, err := s.board.Branches(ws.Slug)
+	bs, err := s.board.Branches(ws.Slug, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	d.Moves = moveKeys(board.Moves(d.Story, bs))
+	rs, err := s.board.Repos(ws.Slug)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	d.Tone = repoTones(rs)[d.Story.Repo]
 	d.Titles = make(map[string]string, len(all))
 	for _, st := range all {
 		d.Titles[st.ID] = st.Title
@@ -189,7 +264,7 @@ func (s *site) releasesPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	rs, err := s.board.ListReleases(ws.Slug)
+	rs, err := s.board.ListReleases(ws.Slug, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return

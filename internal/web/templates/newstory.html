@@ -9,6 +9,14 @@
   <label>Plan <textarea name="plan" rows="3"></textarea></label>
   <label class="check"><input type="checkbox" name="kind" value="bug"> Bug</label>
   {{with .Data}}
+  {{with .Repos}}
+  <label>Repository (can't be changed later)
+    <select name="repo" required>
+      <option value="">Choose a repository</option>
+      {{range .}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+    </select>
+  </label>
+  {{end}}
   <label>Phase (can't be changed later)
     <select name="phase">
       <option value="">No phase</option>

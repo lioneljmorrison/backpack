@@ -123,7 +123,7 @@ func TestWhatsNextAndTheNextThreeSkipProposals(t *testing.T) {
 	b := newWorkspace(t)
 	propose(t, b, board.NewStory{Title: "A"})
 	addStory(t, b, board.NewStory{Title: "B"})
-	next, err := b.Next("demo")
+	next, err := b.Next("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -164,7 +164,12 @@ agent see what was done in which commit, and what was later found wrong.
 
 **Two quick reads.**
 - **What's next:** the highest-ranked backlog story whose dependencies are all
-  complete, with its description, goal and plan. It reads nothing else.
+  complete, with its description, goal and plan. It reads nothing else. With
+  a `repo` (MCP `whats_next`, `GET .../next?repo=`) it is the top ready story
+  in that repository, even when another repository's story ranks higher; a
+  story blocked by unfinished work in another repository is still blocked, and
+  an unknown repository is a 404. With no `repo` it is the whole workspace's,
+  even with several repositories.
 - **Where are we:**
   - the current phase and how far along it is;
   - what is in progress and what each story is doing;
@@ -174,7 +179,19 @@ agent see what was done in which commit, and what was later found wrong.
     text shows one line, the count and the latest three (last in delivery
     order), for example `Merged, waiting for a release: 12 (latest: S-9 …,
     S-10 …, S-11 …)`, so the line stays short however long the wait. The
-    JSON keeps the full `unreleased` list.
+    JSON keeps the full `unreleased` list. With several repositories (S-72)
+    each story line carries its repository, `S-9 [api] Title — building`, and
+    the waiting line becomes one per repository that has any, in name order,
+    `Merged, waiting for a release in api: 3 (latest: …)`. With one repository
+    the text is byte for byte what it was.
+
+  `where_are_we` (MCP) and `GET .../status` take an optional `repo`
+  (`?repo=`), which narrows only the next three, by the rule `whats_next`
+  uses with a repo (blocked stories still show, as they always do there).
+  Everything else stays the whole workspace's. An unknown repository is 404.
+  The events list names the repository in a merge line only when there are
+  several, `merged into api/main (abc1234)`; it is worked out from the story's
+  repository when read, so no log entry changes.
 
   - the stories marked "upstream changed", one line each, for example
     `S-9 Title — after S-4`. The JSON keeps them as `upstream_changed`.
@@ -300,9 +317,15 @@ Each slice is its own branch and pull request into `dev`.
   of the backlog when neither is given.
 - Stories are numbered `S-1`, `S-2` … and goals `G-1` … within each
   workspace. A phase is referred to by its number.
-- A workspace has a slug, a name and optionally its repository. Whether it
+- A workspace has a slug, a name and a repository. Whether it
   has a Released stage arrives with slice 3. (Replaced by branches on
-  2026-10-13; see "Branches and releases".)
+  2026-10-13; see "Branches and releases".) Every workspace has at least one
+  repository, which holds its branches, stories and releases: a new workspace
+  is given one named after its slug (or the `repo` name given when creating)
+  with the optional `repo_url`, and a workspace from before repositories was
+  given one at start-up by migration 11. Ids stay workspace-wide counters,
+  and a repository name follows the slug rule and is unique in its workspace.
+  The workspace list shows each workspace's repositories, name and URL.
 
 4. **How a story reaches Merged and beyond** (2026-10-10). The agent records
    it when it happens: the merge, with its commit, or the release. Doing so is
@@ -640,6 +663,95 @@ not part of the board.
   branches an empty one can be removed.) A refusal names the stories and
   branches still on it, and past log entries keep the removed name. An
   abandoned branch's stories are put on hold or closed first.
+- **Branches belong to their repository** (2026-11-01, S-67). Each repository
+  has its own branch chain with its own release branch, so two repositories can
+  each have a `main`, or any other branch name; a name is unique only within
+  its repository. Every branch action runs inside one repository, in its single
+  query: the release and starting branches, the re-point cycle walk (it cannot
+  reach another repository's chain), rename (it follows only that repository's
+  branches and the stories it holds), remove (the in-use checks) and
+  `merge_branch` (only that repository's stories move). Each takes an optional
+  `repo`: a workspace with one repository needs none and answers exactly as
+  before; with several, none named is refused (400) naming the choices ("my-app
+  has several repos; name the repo: api or web"), and an unknown one is 404.
+  Listing branches without a repo lists every repository's, each labelled
+  with it, by repository and then in merge order. Over HTTP `repo` is the
+  `?repo=` query on `GET /branches`, `PATCH` and `DELETE /branches/{name}` and
+  `POST /branches/{name}/merged`, and a field in the `POST /branches` body; the
+  MCP tools `add_branch`, `update_branch`, `remove_branch`, `merge_branch` and
+  `list_branches` take it too.
+- **A story's merges follow its own repository** (2026-11-01, S-68). A status
+  change reads only the branches of the repository that holds the story: the
+  starting branch a merge from review defaults to, the "name the branch"
+  refusal, the one-step-at-a-time rule and the `into` checks. An `into` naming
+  another repository's branch is refused like any unknown one, with the
+  repository named ("api has no branch \"staging\""). There is no new input:
+  the story knows its repository. The merges offered on board cards and story
+  pages come from the same branches. (The board's column layout still reads
+  branches workspace-wide; making it per repository is later work, S-73.)
+- **Releases belong to their repository** (2026-11-02, S-69). Each repository
+  cuts its own releases from its own release branch, and takes only the merged
+  stories it holds, so two repositories can both release v1.0.0. A version is
+  unique within its repository ("api already has a release v1.0.0"); release
+  ids stay one series across the workspace (R-1, R-2 …). `cut_release` takes
+  an optional `repo`, resolved in the same single query as the branch actions:
+  a workspace with one repository needs none; with several, none named is
+  refused (400) naming the choices, and an unknown one is 404. Over HTTP it is
+  a field in the `POST /releases` body, and `?repo=` narrows `GET /releases`;
+  over MCP `cut_release` and `list_releases` take it. A release shows its
+  repository: always over HTTP, and over MCP (`cut_release`, `list_releases`,
+  `get_release`) and on the web release pages only when the workspace has
+  several repositories, so one-repository answers read as before. "Where are
+  we" gathers what waits for a release against each repository's own release
+  branch; the stories carry their repository in the JSON, and the text is
+  unchanged for one repository (its layout for several is in the where-are-we
+  entry above). The release
+  stage (the second Merged column) is on when any repository has a merge
+  step.
+- **A story is added to a repository** (2026-11-02, S-70). `add_story`,
+  `add_bug_fix` (direct or through `batch`) and `POST /stories` take an
+  optional `repo`, resolved in the add's single query by the same resolver as
+  the branch actions, which replaces the interim "join the repository" step.
+  A workspace with one repository needs none; with several, none named is
+  refused (400, "demo has several repos; name the repo: api or web", before
+  any other check, a straight-in bug fix included) and an unknown one is 404.
+  The repository is fixed at creation, like the phase: no update changes it,
+  and a `repo` on `PATCH` or `update_story` is refused as an unknown field.
+  Dependencies cross repositories freely and the rank rule is unchanged,
+  since there is one backlog. Over MCP a story read (`get_story`,
+  `whats_next`, a release's stories) shows `repo` only when the workspace has
+  several repositories; over HTTP it is always there. (The web new-story form
+  choosing a repository is in "The web pages show the repositories", below.)
+- **The web pages show the repositories** (2026-11-02, S-73). The board is one
+  view of all the work. With several repositories it gains a filter
+  (`/w/{ws}?repo=api`, 404 for an unknown one; the links sit beside "New
+  story" and mark the chosen one) and each repository's cards get their own
+  colour, by repository order (six colours that repeat, with light and dark
+  values among the page's colour tokens), plus a label with the repository's
+  name so colour is never the only signal. The shared columns (Proposed to In
+  review, On hold, Closed) stay shared; each repository's Merged columns sit
+  together, headed "api · Merged (dev)" and keyed by `data-repo` beside
+  `data-into`. A card is dropped only on its own repository's columns: the
+  page lights up only those, and a status change that names another
+  repository (a `repo` field beside `into`) is refused with "S-1 is in api,
+  not web" even when both have a branch of that name. Branch aliases are per
+  repository and branch. The story page names the repository, and the
+  new-story form offers a required repository choice. With one repository
+  nothing changes: no filter, colours, labels or `data-repo`. The board JSON's
+  Merged columns carry `repo` beside `branch` (additive; repositories in name
+  order, each one's branches in merge order).
+- **Adding a repository** (2026-11-02, S-74). `add_repo` (`name`, optional
+  `url`; a change, so it runs inside `batch`) and `list_repos` (a read, through
+  `actions`) are on-request actions, so the tool menu does not grow. Over HTTP
+  they are `POST /v1/workspaces/{ws}/repos` (201) and `GET .../repos`. The name
+  follows the slug rule (1-64 lowercase letters, digits and single hyphens;
+  400 otherwise) and is unique in the workspace (409 when taken). A new
+  repository starts with `main` alone, its release branch, linked by
+  `HAS_BRANCH`, in one query; it is shaped afterwards with `add_branch` and
+  its `repo`. Adding one sends the same change notice as a branch change, so
+  open pages redraw. From then on a workspace has several repositories: a
+  story or branch action that names none is refused with the choice. Renaming
+  or removing a repository is later work.
 - **Setup.** When an agent first connects a repository it works out the
   branching (default, integration and protected branches, how pull requests
   flow), proposes it in conversation, and a person approves or adjusts it.
@@ -706,6 +818,7 @@ the data volume. Backup copies the RDB file off the host.
 | Node | Key properties |
 |---|---|
 | `Workspace` | `slug`, `next_story`, `next_goal`, `next_log`, `next_idea` (counters for `S-n`, `G-n`, `L-n` and `I-n` IDs), and `next_release` (the `R-n` counter) once releases exist. `has_release_stage` is history: replaced by `Branch` nodes |
+| `Repo` | `name` (the slug rule; unique in the workspace), `url` (optional), `created_by`, `created_at`. Owns the branches, stories and releases of one git repository |
 | `Branch` | `name`, `into` (the name of the branch it merges into, a property rather than an edge; none for the release branch), `alias` (display only), `created_by`, `created_at` |
 | `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
@@ -724,13 +837,27 @@ the data volume. Backup copies the RDB file off the host.
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
 | `(Story)-[:IN_RELEASE]->(Release)` | |
+| `(Repo)-[:HAS_BRANCH]->(Branch)` | every branch has exactly one repository; the branch's `repo` field is that repository's name |
+| `(Repo)-[:HOLDS]->(Story)` | every story has exactly one repository (`repo` on a story read) |
+| `(Repo)-[:HAS_RELEASE]->(Release)` | every release has exactly one repository, R-0 included (`repo` on a release read) |
+
+Migration 11 gives each existing workspace graph one `Repo` named after the
+workspace slug, with the registry's `repo_url`, and links every branch, story
+and release to it; a repeat links nothing. The URL lives in the system graph,
+so `falkor.Migrate` takes parameters that `board.New` fills from each
+registry entry. While a workspace has one repository, new stories, branches
+and releases join it and nothing else about the board changes. Later work adds
+an optional `repo` input: a repository that identifies something goes in the
+HTTP query, and one that is a field of something new goes in the body.
 
 The upstream-changed mark is two properties on `Story`, not a node or an edge,
 and nothing looks stories up by it, so it needs no index or migration.
 
 A separate `backpack` graph holds actors with hashed tokens and the workspace
 registry: `WorkspaceEntry {slug, name, repo_url, has_release_stage,
-created_by, created_at}`. Until 2026-10-13 `has_release_stage` was also kept
+created_by, created_at}`. `repo_url` is the URL the workspace was created
+with: it seeds the workspace's first `Repo` (migration 11 and creation read
+it) and is not read afterwards; the repositories are the truth. Until 2026-10-13 `has_release_stage` was also kept
 on the workspace graph's `Workspace` node, so the status query could read it.
 Branches replace it: the status query reads `Branch` nodes, and a new
 workspace's branches are seeded from the creation setting (one branch, or
@@ -788,7 +915,7 @@ workspace's branches are seeded from the creation setting (one branch, or
 GET  /healthz                                        (unauthenticated)
 GET  /v1/workspaces                                  POST
 GET  /v1/workspaces/{ws}/next                        what's next
-GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook)
+GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook); ?repo= narrows Next
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
 GET  /v1/workspaces/{ws}/events                      the latest events; ?before= ?after= ?since=
 GET  /v1/workspaces/{ws}/releases                    POST (cut); GET /releases/{id}
@@ -869,7 +996,9 @@ each with its route's own status and body.
 ### Per-project config and hook (slice 5)
 
 The committed file `.backpack.json` holds `{ "workspace": "my-app", "url":
-"https://backpack.<domain>" }`. The token comes from `BACKPACK_TOKEN` in the
+"https://backpack.<domain>" }`, and optionally `"repo": "api"`, which the hook
+sends as `?repo=` so a session in one repository sees that repository's next
+stories (S-72). The token comes from `BACKPACK_TOKEN` in the
 environment. The hook, `deploy/hook.sh`, is `curl -fsS --max-time 3` against
 `/status` as plain text. Without `.backpack.json` it prints nothing; on any
 other failure it prints "Backpack unreachable — orientation skipped". It always

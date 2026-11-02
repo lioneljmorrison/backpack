@@ -2,6 +2,7 @@ package board
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -13,7 +14,9 @@ import (
 // Branch is a branch a workspace delivers through. Into names the branch it
 // merges into; the release branch merges nowhere.
 type Branch struct {
-	Name      string `json:"name"`
+	Name string `json:"name"`
+	// Repo is the repository the branch belongs to, by name.
+	Repo      string `json:"repo,omitempty"`
 	Into      string `json:"into,omitempty"`
 	Alias     string `json:"alias,omitempty"`
 	Release   bool   `json:"release"`
@@ -21,19 +24,60 @@ type Branch struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// Branches lists a workspace's branches in merge order: each comes before the
-// one it merges into, the release branch last.
-func (b *Board) Branches(ws string) ([]Branch, error) {
+// Branches lists a workspace's branches, each labelled with its repository:
+// by repository, then in merge order (each comes before the one it merges
+// into, the release branch last). With a repository named it lists that one's
+// branches only; an unknown one is NotFound.
+func (b *Board) Branches(ws, repo string) ([]Branch, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
 		return nil, err
 	}
-	return branches(g)
+	if repo != "" {
+		rs, err := repos(g)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(rs, func(r Repo) bool { return r.Name == repo }) {
+			return nil, noRepo(ws, repo)
+		}
+	}
+	return branches(g, repo)
 }
 
-func branches(g *falkordb.Graph) ([]Branch, error) {
+// resolveRepo starts every branch action's query: it finds the repository the
+// action is for, as rp, and every repository the name allows, as rps. A name
+// picks one; none picks the only repository, and with several rp is null.
+// repoViolation turns that into a refusal, which comes before every other.
+const (
+	resolveRepo = `MATCH (w:Workspace)
+		OPTIONAL MATCH (r:Repo) WHERE $repo = '' OR r.name = $repo
+		WITH w, collect(r) AS rps
+		WITH rps, CASE WHEN size(rps) = 1 THEN rps[0] END AS rp`
+	repoViolation = `CASE WHEN size(rps) = 0 THEN 'no repo' WHEN size(rps) > 1 THEN 'several repos' END`
+	repoNames     = `[r IN rps | r.name] AS repos`
+)
+
+func noRepo(ws, repo string) error { return refuse(NotFound, "%s has no repo %q", ws, repo) }
+
+// repoRefusal answers a violation that came from resolveRepo, with the
+// repositories the query found; nil for any other violation.
+func repoRefusal(ws, repo, violation string, names []string) error {
+	switch violation {
+	case "no repo":
+		return noRepo(ws, repo)
+	case "several repos":
+		return refuse(Invalid, "%s has several repos; name the repo: %s", ws, orList(names))
+	}
+	return nil
+}
+
+func branches(g *falkordb.Graph, repo string) ([]Branch, error) {
 	res, err := g.ROQuery(`MATCH (b:Branch)
-		RETURN b.name AS name, b.into AS into, b.alias AS alias, b.created_by AS by, b.created_at AS at`, nil, nil)
+		OPTIONAL MATCH (rp:Repo)-[:HAS_BRANCH]->(b)
+		WITH b, rp WHERE $repo = '' OR rp.name = $repo
+		RETURN b.name AS name, rp.name AS repo, b.into AS into, b.alias AS alias, b.created_by AS by, b.created_at AS at`,
+		map[string]any{"repo": repo}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read branches: %w", err)
 	}
@@ -41,22 +85,27 @@ func branches(g *falkordb.Graph) ([]Branch, error) {
 	for res.Next() {
 		r := res.Record()
 		into := str(r, "into")
-		out = append(out, Branch{Name: str(r, "name"), Into: into, Alias: str(r, "alias"), Release: into == "",
+		out = append(out, Branch{Name: str(r, "name"), Repo: str(r, "repo"), Into: into, Alias: str(r, "alias"), Release: into == "",
 			CreatedBy: str(r, "by"), CreatedAt: str(r, "at")})
 	}
+	// A name is only unique within its repository, so the chains are too.
+	key := func(repo, name string) string { return repo + "\x00" + name }
 	into := map[string]string{}
 	for _, br := range out {
-		into[br.Name] = br.Into
+		into[key(br.Repo, br.Name)] = br.Into
 	}
 	// Steps to the release branch; the bound keeps a cycle from looping.
-	depth := func(n string) (d int) {
-		for ; into[n] != "" && d <= len(out); n = into[n] {
+	depth := func(br Branch) (d int) {
+		for n := br.Name; into[key(br.Repo, n)] != "" && d <= len(out); n = into[key(br.Repo, n)] {
 			d++
 		}
 		return d
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if di, dj := depth(out[i].Name), depth(out[j].Name); di != dj {
+		if out[i].Repo != out[j].Repo {
+			return out[i].Repo < out[j].Repo
+		}
+		if di, dj := depth(out[i]), depth(out[j]); di != dj {
 			return di > dj
 		}
 		return out[i].Name < out[j].Name
@@ -79,9 +128,10 @@ func (b *Board) ReleaseStage(ws string) (bool, error) {
 // branch and gets the same log entry a single merge writes; stories still in
 // progress or in review stay put. It answers with the stories it moved, none
 // when the branch holds nothing. The release branch merges nowhere, so
-// merging it is refused. All of it is one query, so every story moves or none
-// does.
-func (b *Board) MergeBranch(ws, actor, branch, commit string) (_ []Story, err error) {
+// merging it is refused. Only the stories of the branch's repository move: a
+// repository is named when the workspace has several (see resolveRepo). All of
+// it is one query, so every story moves or none does.
+func (b *Board) MergeBranch(ws, actor, repo, branch, commit string) (_ []Story, err error) {
 	if commit == "" {
 		return nil, refuse(Invalid, "a commit is required to record a merge")
 	}
@@ -97,20 +147,24 @@ func (b *Board) MergeBranch(ws, actor, branch, commit string) (_ []Story, err er
 	}
 	res, err := g.Query(`
 		MATCH (w:Workspace)
-		OPTIONAL MATCH (b:Branch {name: $branch})
-		WITH w, b, coalesce(w.next_log, 1) AS n,
-			CASE WHEN b IS NULL THEN 'no branch' WHEN b.into IS NULL THEN 'release' END AS violation
-		OPTIONAL MATCH (s:Story {status: 'merged', into: $branch}) WHERE violation IS NULL
-		WITH w, b, n, violation, s ORDER BY s.rank, s.id
-		WITH w, b, n, violation, collect(s) AS ss
+		OPTIONAL MATCH (r:Repo) WHERE $repo = '' OR r.name = $repo
+		WITH w, collect(r) AS rps
+		WITH w, rps, CASE WHEN size(rps) = 1 THEN rps[0] END AS rp
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(b:Branch {name: $branch})
+		WITH w, rp, rps, b, coalesce(w.next_log, 1) AS n,
+			CASE WHEN size(rps) = 0 THEN 'no repo' WHEN size(rps) > 1 THEN 'several repos'
+				WHEN b IS NULL THEN 'no branch' WHEN b.into IS NULL THEN 'release' END AS violation
+		OPTIONAL MATCH (rp)-[:HOLDS]->(s:Story {status: 'merged', into: $branch}) WHERE violation IS NULL
+		WITH w, rps, b, n, violation, s ORDER BY s.rank, s.id
+		WITH w, rps, b, n, violation, collect(s) AS ss
 		FOREACH (_ IN CASE WHEN violation IS NULL AND size(ss) > 0 THEN [1] ELSE [] END |
 			SET w.next_log = n + size(ss))
 		FOREACH (i IN range(0, size(ss) - 1) | FOREACH (s IN [ss[i]] |
 			SET s.into = b.into, s.upstream_id = null, s.upstream_at = null
 			CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $now, actor: $actor, kind: 'status',
 				from: 'merged', to: 'merged', commit: $commit, into: b.into})))
-		RETURN violation, b.into AS into, [s IN ss | s.id] AS ids`,
-		map[string]any{"branch": branch, "commit": commit, "actor": actor, "now": now()}, nil)
+		RETURN violation, b.into AS into, [s IN ss | s.id] AS ids, [r IN rps | r.name] AS repos`,
+		map[string]any{"repo": repo, "branch": branch, "commit": commit, "actor": actor, "now": now()}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("merge branch: %w", err)
 	}
@@ -118,6 +172,9 @@ func (b *Board) MergeBranch(ws, actor, branch, commit string) (_ []Story, err er
 		return nil, refuse(NotFound, "no workspace %q", ws)
 	}
 	r := res.Record()
+	if err := repoRefusal(ws, repo, str(r, "violation"), strs(r, "repos")); err != nil {
+		return nil, err
+	}
 	switch str(r, "violation") {
 	case "":
 	case "no branch":
@@ -164,8 +221,8 @@ func checkBranchAlias(a string) error {
 }
 
 // branchNamed reads one branch as it is now.
-func branchNamed(g *falkordb.Graph, op, name string) (Branch, error) {
-	bs, err := branches(g)
+func branchNamed(g *falkordb.Graph, op, repo, name string) (Branch, error) {
+	bs, err := branches(g, repo)
 	if err != nil {
 		return Branch{}, err
 	}
@@ -183,7 +240,9 @@ func branchNamed(g *falkordb.Graph, op, name string) (Branch, error) {
 // empty, has whitespace or runs past 100 characters, is a refusal, and so is an
 // unknown branch to merge into (NotFound, as update_branch answers for a branch
 // it does not know). No story moves, because stories name their branch, not a
-// place in the order. Alias is optional. It is one query, so the branch exists
+// place in the order. Alias is optional. Repo names the repository the branch
+// joins, and may be left out when the workspace has one; the branch to merge
+// into is looked for there only. It is one query, so the branch exists
 // with everything or not at all. It answers with the branch.
 func (b *Board) AddBranch(ws, actor string, br Branch) (Branch, error) {
 	if err := checkBranchName(br.Name); err != nil {
@@ -203,21 +262,26 @@ func (b *Board) AddBranch(ws, actor string, br Branch) (Branch, error) {
 		return Branch{}, err
 	}
 	res, err := g.Query(`
-		MATCH (w:Workspace)
-		OPTIONAL MATCH (x:Branch) WHERE x.name = $name
-		OPTIONAL MATCH (y:Branch) WHERE y.name = $into
-		WITH x, y, CASE WHEN x IS NOT NULL THEN 'taken' WHEN y IS NULL THEN 'no target' END AS violation
+		`+resolveRepo+`
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(x:Branch) WHERE x.name = $name
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(y:Branch) WHERE y.name = $into
+		WITH rps, rp, x, y, CASE WHEN size(rps) = 0 THEN 'no repo' WHEN size(rps) > 1 THEN 'several repos'
+			WHEN x IS NOT NULL THEN 'taken' WHEN y IS NULL THEN 'no target' END AS violation
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
-			CREATE (:Branch {name: $name, into: $into, alias: $alias, created_by: $actor, created_at: $now}))
-		RETURN violation`,
-		map[string]any{"name": br.Name, "into": br.Into, "alias": orNull(br.Alias), "actor": actor, "now": now()}, nil)
+			CREATE (rp)-[:HAS_BRANCH]->(:Branch {name: $name, into: $into, alias: $alias, created_by: $actor, created_at: $now}))
+		RETURN violation, rp.name AS repo, `+repoNames+``,
+		map[string]any{"repo": br.Repo, "name": br.Name, "into": br.Into, "alias": orNull(br.Alias), "actor": actor, "now": now()}, nil)
 	if err != nil {
 		return Branch{}, fmt.Errorf("add branch: %w", err)
 	}
 	if !res.Next() {
 		return Branch{}, refuse(NotFound, "no workspace %q", ws)
 	}
-	switch str(res.Record(), "violation") {
+	r := res.Record()
+	if err := repoRefusal(ws, br.Repo, str(r, "violation"), strs(r, "repos")); err != nil {
+		return Branch{}, err
+	}
+	switch str(r, "violation") {
 	case "":
 	case "taken":
 		return Branch{}, refuse(Conflict, "%s already has a branch named %q", ws, br.Name)
@@ -225,7 +289,7 @@ func (b *Board) AddBranch(ws, actor string, br Branch) (Branch, error) {
 		return Branch{}, refuse(NotFound, "%s has no branch %q to merge into", ws, br.Into)
 	}
 	b.changed(nil, Change{Workspace: ws, Kind: KindBranch})
-	return branchNamed(g, "add branch", br.Name)
+	return branchNamed(g, "add branch", str(r, "repo"), br.Name)
 }
 
 // BranchPatch changes a branch; a field left nil is left as it is. An empty
@@ -252,16 +316,18 @@ type BranchPatch struct {
 // already merges, or clearing the release branch's, changes nothing. It is one
 // query, so every reference follows or none does. It answers with the branch as
 // it is now, and tells the board's watchers about each story it renamed and,
-// when anything changed, that the branches did.
-func (b *Board) UpdateBranch(ws, actor, branch string, patch BranchPatch) (Branch, error) {
-	br, _, err := b.UpdateBranchDetail(ws, actor, branch, patch)
+// when anything changed, that the branches did. The branch, the names it
+// meets and the stories it renames are those of one repository, named when the
+// workspace has several (see resolveRepo).
+func (b *Board) UpdateBranch(ws, actor, repo, branch string, patch BranchPatch) (Branch, error) {
+	br, _, err := b.UpdateBranchDetail(ws, actor, repo, branch, patch)
 	return br, err
 }
 
 // UpdateBranchDetail is UpdateBranch, also answering which of name, alias and
 // into actually changed (in that order), worked out against the values before
 // the write in the same single query.
-func (b *Board) UpdateBranchDetail(ws, actor, branch string, patch BranchPatch) (_ Branch, _ []string, err error) {
+func (b *Board) UpdateBranchDetail(ws, actor, repo, branch string, patch BranchPatch) (_ Branch, _ []string, err error) {
 	if patch.Name != nil {
 		if err := checkBranchName(*patch.Name); err != nil {
 			return Branch{}, nil, err
@@ -287,16 +353,17 @@ func (b *Board) UpdateBranchDetail(ws, actor, branch string, patch BranchPatch) 
 	// not an edge, so a variable-length path match is not available; the walk
 	// is a reduce over the branches collected in the same query.
 	res, err := g.Query(`
-		MATCH (w:Workspace)
-		OPTIONAL MATCH (b:Branch {name: $branch})
-		OPTIONAL MATCH (x:Branch) WHERE x.name = $name
-		OPTIONAL MATCH (y:Branch) WHERE y.name = $into
-		OPTIONAL MATCH (a:Branch)
-		WITH b, x, y, collect(a) AS every
-		WITH b, x, y, reduce(p = [$into], i IN range(1, size(every)) |
+		`+resolveRepo+`
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(b:Branch {name: $branch})
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(x:Branch) WHERE x.name = $name
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(y:Branch) WHERE y.name = $into
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(a:Branch)
+		WITH rps, rp, b, x, y, collect(a) AS every
+		WITH rps, rp, b, x, y, reduce(p = [$into], i IN range(1, size(every)) |
 			p + [head([a IN every WHERE a.name = p[size(p) - 1] | a.into])]) AS walk
-		WITH b, x, y,
-			CASE WHEN b IS NULL THEN 'no branch'
+		WITH rps, rp, b, x, y,
+			CASE WHEN size(rps) = 0 THEN 'no repo' WHEN size(rps) > 1 THEN 'several repos'
+				WHEN b IS NULL THEN 'no branch'
 				WHEN x IS NOT NULL AND x.name <> b.name THEN 'taken'
 				WHEN $into IS NOT NULL AND $into <> '' AND y IS NULL THEN 'no target'
 				WHEN $into IS NOT NULL AND $into <> '' AND b.into IS NULL THEN 'release'
@@ -305,10 +372,10 @@ func (b *Board) UpdateBranchDetail(ws, actor, branch string, patch BranchPatch) 
 			b IS NOT NULL AND $name IS NOT NULL AND $name <> b.name AS renames,
 			b IS NOT NULL AND $alias IS NOT NULL AND coalesce(b.alias, '') <> $alias AS aliased,
 			b IS NOT NULL AND $into IS NOT NULL AND $into <> '' AND coalesce(b.into, '') <> $into AS repointed
-		OPTIONAL MATCH (s:Story {into: $branch}) WHERE violation IS NULL AND renames
-		WITH b, violation, renames, aliased, repointed, collect(s) AS ss
-		OPTIONAL MATCH (c:Branch {into: $branch}) WHERE violation IS NULL AND renames
-		WITH b, violation, renames, aliased, repointed, ss, collect(c) AS cs
+		OPTIONAL MATCH (rp)-[:HOLDS]->(s:Story {into: $branch}) WHERE violation IS NULL AND renames
+		WITH rps, rp, b, violation, renames, aliased, repointed, collect(s) AS ss
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(c:Branch {into: $branch}) WHERE violation IS NULL AND renames
+		WITH rps, rp, b, violation, renames, aliased, repointed, ss, collect(c) AS cs
 		FOREACH (_ IN CASE WHEN violation IS NULL AND renames THEN [1] ELSE [] END |
 			SET b.name = $name
 			FOREACH (s IN ss | SET s.into = $name)
@@ -317,8 +384,8 @@ func (b *Board) UpdateBranchDetail(ws, actor, branch string, patch BranchPatch) 
 			SET b.alias = CASE WHEN $alias = '' THEN null ELSE $alias END)
 		FOREACH (_ IN CASE WHEN violation IS NULL AND $into IS NOT NULL AND $into <> '' THEN [1] ELSE [] END |
 			SET b.into = $into)
-		RETURN violation, renames, aliased, repointed, [s IN ss | s.id] AS ids`,
-		map[string]any{"branch": branch, "name": opt(patch.Name), "alias": opt(patch.Alias), "into": opt(patch.Into)}, nil)
+		RETURN violation, renames, aliased, repointed, [s IN ss | s.id] AS ids, rp.name AS repo, `+repoNames+``,
+		map[string]any{"repo": repo, "branch": branch, "name": opt(patch.Name), "alias": opt(patch.Alias), "into": opt(patch.Into)}, nil)
 	if err != nil {
 		return Branch{}, nil, fmt.Errorf("update branch: %w", err)
 	}
@@ -326,6 +393,9 @@ func (b *Board) UpdateBranchDetail(ws, actor, branch string, patch BranchPatch) 
 		return Branch{}, nil, refuse(NotFound, "no workspace %q", ws)
 	}
 	r := res.Record()
+	if err := repoRefusal(ws, repo, str(r, "violation"), strs(r, "repos")); err != nil {
+		return Branch{}, nil, err
+	}
 	switch str(r, "violation") {
 	case "":
 	case "no branch":
@@ -363,7 +433,7 @@ func (b *Board) UpdateBranchDetail(ws, actor, branch string, patch BranchPatch) 
 	if len(changed) > 0 {
 		b.changed(nil, Change{Workspace: ws, Kind: KindBranch})
 	}
-	br, err := branchNamed(g, "update branch", name)
+	br, err := branchNamed(g, "update branch", str(r, "repo"), name)
 	return br, changed, err
 }
 
@@ -374,8 +444,10 @@ func (b *Board) UpdateBranchDetail(ws, actor, branch string, patch BranchPatch) 
 // review is merged first. With several such starting branches an empty one can
 // go. An unknown branch is NotFound. Past log entries keep the removed name,
 // because a log is never edited. It is one query, so the branch is removed with
-// every check made or not at all.
-func (b *Board) RemoveBranch(ws, actor, branch string) error {
+// every check made or not at all. The checks, and the release and first
+// branch, are those of one repository, named when the workspace has several
+// (see resolveRepo).
+func (b *Board) RemoveBranch(ws, actor, repo, branch string) error {
 	if branch == "" {
 		return refuse(Invalid, "a branch is required")
 	}
@@ -387,24 +459,25 @@ func (b *Board) RemoveBranch(ws, actor, branch string) error {
 		return err
 	}
 	res, err := g.Query(`
-		MATCH (w:Workspace)
-		OPTIONAL MATCH (b:Branch {name: $branch})
-		OPTIONAL MATCH (a:Branch)
-		WITH b, collect(a) AS every
-		WITH b,
+		`+resolveRepo+`
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(b:Branch {name: $branch})
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(a:Branch)
+		WITH rps, rp, b, collect(a) AS every
+		WITH rps, rp, b,
 			[a IN every WHERE size([d IN every WHERE d.into = a.name]) = 0 | a.name] AS starting,
 			[a IN every WHERE a.into = $branch | a.name] AS merging
-		OPTIONAL MATCH (s:Story {into: $branch})
-		WITH b, starting, merging, s ORDER BY s.rank, s.id
-		WITH b, starting, merging, collect(s.id) AS stories
-		WITH b, merging, stories,
-			CASE WHEN b IS NULL THEN 'no branch'
+		OPTIONAL MATCH (rp)-[:HOLDS]->(s:Story {into: $branch})
+		WITH rps, b, starting, merging, s ORDER BY s.rank, s.id
+		WITH rps, b, starting, merging, collect(s.id) AS stories
+		WITH rps, b, merging, stories,
+			CASE WHEN size(rps) = 0 THEN 'no repo' WHEN size(rps) > 1 THEN 'several repos'
+				WHEN b IS NULL THEN 'no branch'
 				WHEN b.into IS NULL THEN 'release'
 				WHEN b.name IN starting AND size(starting) = 1 THEN 'first'
 				WHEN size(stories) > 0 OR size(merging) > 0 THEN 'in use' END AS violation
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END | DELETE b)
-		RETURN violation, merging, stories`,
-		map[string]any{"branch": branch}, nil)
+		RETURN violation, merging, stories, `+repoNames+``,
+		map[string]any{"repo": repo, "branch": branch}, nil)
 	if err != nil {
 		return fmt.Errorf("remove branch: %w", err)
 	}
@@ -412,6 +485,9 @@ func (b *Board) RemoveBranch(ws, actor, branch string) error {
 		return refuse(NotFound, "no workspace %q", ws)
 	}
 	r := res.Record()
+	if err := repoRefusal(ws, repo, str(r, "violation"), strs(r, "repos")); err != nil {
+		return err
+	}
 	switch str(r, "violation") {
 	case "":
 		b.changed(nil, Change{Workspace: ws, Kind: KindBranch})

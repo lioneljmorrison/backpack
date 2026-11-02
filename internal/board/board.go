@@ -74,6 +74,23 @@ var migrations = []string{
 				CREATE (s)-[:IN_RELEASE]->(r)
 				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: at, actor: 'migration', kind: 'note',
 					text: 'Released before releases were recorded; placed in R-0 (Before releases)'}))))`,
+	// Every workspace has a repository, named after its slug ($repo) with the
+	// registry's URL ($url), that holds its branches, stories and releases.
+	// MERGE and the unlinked tests make a repeat link nothing. A graph with no
+	// Workspace node yet is seeded by CreateWorkspace instead.
+	`MATCH (w:Workspace)
+		MERGE (r:Repo {name: $repo})
+			ON CREATE SET r.url = $url, r.created_by = 'migration', r.created_at = toString(localdatetime()) + 'Z'
+		WITH r
+		OPTIONAL MATCH (b:Branch) WHERE NOT ()-[:HAS_BRANCH]->(b)
+		WITH r, collect(b) AS bs
+		OPTIONAL MATCH (s:Story) WHERE NOT ()-[:HOLDS]->(s)
+		WITH r, bs, collect(s) AS ss
+		OPTIONAL MATCH (x:Release) WHERE NOT ()-[:HAS_RELEASE]->(x)
+		WITH r, bs, ss, collect(x) AS xs
+		FOREACH (b IN bs | CREATE (r)-[:HAS_BRANCH]->(b))
+		FOREACH (s IN ss | CREATE (r)-[:HOLDS]->(s))
+		FOREACH (x IN xs | CREATE (r)-[:HAS_RELEASE]->(x))`,
 }
 
 // Kind says why the board refused a request.
@@ -114,12 +131,12 @@ func New(db *falkordb.FalkorDB, systemGraph, workspacePrefix string) (*Board, er
 	if _, err := b.system.Query("RETURN 1", nil, nil); err != nil {
 		return nil, fmt.Errorf("open system graph: %w", err)
 	}
-	ws, err := b.Workspaces()
+	ws, err := b.entries()
 	if err != nil {
 		return nil, err
 	}
 	for _, w := range ws {
-		if err := falkor.Migrate(b.graph(w.Slug), migrations); err != nil {
+		if err := falkor.Migrate(b.graph(w.Slug), migrations, repoParams(w.Slug, w.RepoURL)); err != nil {
 			return nil, fmt.Errorf("workspace %s: %w", w.Slug, err)
 		}
 	}
@@ -191,4 +208,10 @@ func strs(r *falkordb.Record, key string) []string {
 		}
 	}
 	return out
+}
+
+// repoParams are what the repository migration needs: the repository's name
+// and URL, which only the registry holds.
+func repoParams(name, url string) map[string]any {
+	return map[string]any{"repo": name, "url": orNull(url)}
 }

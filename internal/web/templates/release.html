@@ -1,9 +1,11 @@
 {{define "content"}}
 {{$ws := .WS.Slug}}
+{{$several := gt (len .WS.Repos) 1}}
 {{with .Data}}
 <p class="muted"><a href="/w/{{$ws}}/releases">← Releases</a></p>
 <h1><span class="id">{{.ID}}</span> {{.Version}}</h1>
 <div class="tags">
+  {{if $several}}<span class="tag">Repository <code>{{.Repo}}</code></span>{{end}}
   {{with .Tag}}<span class="tag">Tag <code>{{.}}</code></span>{{end}}
   {{with .Commit}}<span class="tag">Commit <code>{{.}}</code></span>{{end}}
   <span class="tag">{{when .CreatedAt}} by {{.CreatedBy}}</span>
