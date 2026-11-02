@@ -185,8 +185,10 @@ paths:
     get:
       summary: Every story by column, each column in delivery order
       description: >-
-        Merged has one column per branch, in merge order, each naming its
-        branch; a story is in the column of the furthest branch it reached.
+        Merged has one column per branch of every repository (repositories in
+        name order, each one's branches in merge order), each naming its
+        repository and branch; a story is in the column of the furthest branch
+        of its own repository that it reached.
         Released, the last step, follows the Merged columns; Closed is last.
       responses:
         "200":
@@ -204,6 +206,7 @@ paths:
                       required: [status, stories]
                       properties:
                         status: { $ref: "#/components/schemas/Status" }
+                        repo: { type: string, description: "On a merged column: the repository it is for" }
                         branch: { type: string, description: "On a merged column: the branch it is for" }
                         stories:
                           type: array

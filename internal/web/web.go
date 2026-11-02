@@ -91,6 +91,9 @@ type card struct {
 	S        board.Story
 	Up, Down string
 	Movable  bool
+	// Repo and Tone are the story's repository and its colour class, set only
+	// when the workspace has several repositories.
+	Repo, Tone string
 	// Moves are the columns the card may be dropped on, from board.Moves: a
 	// status, or "merged:branch" for a merge.
 	Moves []string

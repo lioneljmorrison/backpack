@@ -124,12 +124,21 @@ func (s *site) setStatus(w http.ResponseWriter, r *http.Request) {
 		c.To, c.Into = m.To, m.Into
 	}
 	ws, id := r.PathValue("ws"), r.PathValue("id")
-	// A drop on the board comes back to the board. Only this one fixed value
-	// is understood: back is never an address.
-	back := storyURL(r, id)
-	if r.PostFormValue("back") == "board" {
-		back = boardURL(r)
+	// A drop on a column names the column's repository. A story only ever
+	// moves within its own, so a drop on another's is refused, even when the
+	// branch has a name both repositories use.
+	if repo := strings.TrimSpace(r.PostFormValue("repo")); repo != "" {
+		st, err := s.board.Story(ws, id)
+		if err == nil && st.Repo != repo {
+			err = &board.Error{Kind: board.Conflict, Msg: id + " is in " + st.Repo + ", not " + repo}
+		}
+		if err != nil {
+			s.done(w, r, statusBack(r, id), err)
+			return
+		}
 	}
+	// A drop on the board comes back to the board.
+	back := statusBack(r, id)
 	// A story dropped into the backlog lands where it was dropped: placed
 	// first, then its status changes. A drop the status flow would refuse is
 	// left alone, so it never moves a story it won't then change.
@@ -146,6 +155,16 @@ func (s *site) setStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err := s.board.SetStatus(ws, actor(r), id, c)
 	s.done(w, r, back, err)
+}
+
+// statusBack is where a status change returns: the board for a drop on it,
+// the story's page otherwise. Only this one fixed value is understood: back
+// is never an address.
+func statusBack(r *http.Request, id string) string {
+	if r.PostFormValue("back") == "board" {
+		return boardURL(r)
+	}
+	return storyURL(r, id)
 }
 
 func (s *site) setActivity(w http.ResponseWriter, r *http.Request) {
@@ -182,6 +201,8 @@ func (s *site) addLog(w http.ResponseWriter, r *http.Request) {
 }
 
 type newStoryData struct {
+	// Repos are offered as a choice when the workspace has several.
+	Repos   []board.Repo
 	Phases  []board.Phase
 	Stories []board.Story
 }
@@ -195,6 +216,11 @@ func (s *site) newStoryPage(w http.ResponseWriter, r *http.Request) {
 	var d newStoryData
 	if d.Phases, err = s.board.Phases(ws.Slug); err == nil {
 		d.Stories, err = s.board.Stories(ws.Slug)
+	}
+	if err == nil {
+		if d.Repos, err = s.board.Repos(ws.Slug); len(d.Repos) < 2 {
+			d.Repos = nil
+		}
 	}
 	if err != nil {
 		s.fail(w, r, err)
@@ -212,6 +238,7 @@ func (s *site) addStory(w http.ResponseWriter, r *http.Request) {
 		Goal:        strings.TrimSpace(r.PostFormValue("goal")),
 		Plan:        strings.TrimSpace(r.PostFormValue("plan")),
 		Kind:        r.PostFormValue("kind"),
+		Repo:        r.PostFormValue("repo"),
 		Position:    board.Position{After: r.PostFormValue("after")},
 	}
 	if p := r.PostFormValue("phase"); p != "" {

@@ -230,15 +230,18 @@ func (w Where) Text() string {
 }
 
 // Column is one column of the board, its stories in delivery order. A merged
-// column names its branch.
+// column names its repository and branch.
 type Column struct {
 	Status  string  `json:"status"`
+	Repo    string  `json:"repo,omitempty"`
 	Branch  string  `json:"branch,omitempty"`
 	Stories []Story `json:"stories"`
 }
 
 // Board reads every story grouped by column. Merged has one column per
-// branch, in merge order, holding the stories whose furthest branch it is.
+// branch of every repository, repositories in name order and each one's
+// branches in merge order, holding the stories of that repository whose
+// furthest branch it is.
 func (b *Board) Board(ws string) ([]Column, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -256,7 +259,7 @@ func (b *Board) Board(ws string) ([]Column, error) {
 	for _, s := range ss {
 		k := s.Status
 		if k == Merged {
-			k += ":" + s.Into
+			k += ":" + s.Repo + ":" + s.Into
 		}
 		in[k] = append(in[k], s)
 	}
@@ -267,7 +270,7 @@ func (b *Board) Board(ws string) ([]Column, error) {
 			continue
 		}
 		for _, br := range bs {
-			cols = append(cols, Column{Status: status, Branch: br.Name, Stories: append([]Story{}, in[status+":"+br.Name]...)})
+			cols = append(cols, Column{Status: status, Repo: br.Repo, Branch: br.Name, Stories: append([]Story{}, in[status+":"+br.Repo+":"+br.Name]...)})
 		}
 	}
 	return cols, nil

@@ -40,7 +40,15 @@
 </form>
 {{end}}
 
-<div class="toolbar"><a class="button" href="/w/{{$ws}}/stories/new">New story</a></div>
+<div class="toolbar">
+  {{with .Repos}}
+  <nav class="repos" aria-label="Repositories">
+    <a href="/w/{{$ws}}"{{if $.Data.AllCurrent}} aria-current="true"{{end}}>All</a>
+    {{range .}}<a class="tone {{.Tone}}" href="/w/{{$ws}}?repo={{.Name}}"{{if .Current}} aria-current="true"{{end}}>{{.Name}}</a>{{end}}
+  </nav>
+  {{end}}
+  <a class="button" href="/w/{{$ws}}/stories/new">New story</a>
+</div>
 
 <div class="board">
   <section class="column" aria-label="Ideas">
@@ -50,7 +58,7 @@
     {{else}}<p class="empty">Nothing here</p>{{end}}
   </section>
   {{range .Columns}}
-  <section class="column" aria-label="{{.Title}}" data-status="{{.Status}}"{{with .Into}} data-into="{{.}}"{{end}}>
+  <section class="column" aria-label="{{.Title}}" data-status="{{.Status}}"{{with .Repo}} data-repo="{{.}}"{{end}}{{with .Into}} data-into="{{.}}"{{end}}>
     <h2>{{.Title}} <span class="count">{{len .Cards}}</span></h2>
     {{range .Cards}}{{template "card" .}}{{else}}<p class="empty">Nothing here</p>{{end}}
   </section>

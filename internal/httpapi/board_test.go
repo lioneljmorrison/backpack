@@ -685,3 +685,20 @@ func TestOnlyDependenciesThatStillBlockAreListedOverHTTP(t *testing.T) {
 		t.Fatalf("S-1 blocks %v, want []", first["blocks"])
 	}
 }
+
+func TestTheBoardsMergedColumnsNameTheirRepositoryAndBranch(t *testing.T) {
+	h := withDemo(t)
+	cols := want(t, call(t, h, "GET", "/v1/workspaces/demo/board", ""), http.StatusOK)["columns"].([]any)
+	for _, c := range cols {
+		col := c.(map[string]any)
+		if col["status"] != "merged" {
+			if _, ok := col["repo"]; ok {
+				t.Errorf("a shared column names a repo: %v", col)
+			}
+			continue
+		}
+		if col["repo"] != "demo" || col["branch"] != "main" {
+			t.Errorf("merged column %v, want repo demo and branch main", col)
+		}
+	}
+}
