@@ -132,6 +132,12 @@ type cutReleaseIn struct {
 	Notes   string `json:"notes,omitempty" jsonschema:"release notes"`
 }
 
+type addRepoIn struct {
+	in
+	Name string `json:"name" jsonschema:"1-64 lowercase letters, digits, single hyphens"`
+	URL  string `json:"url,omitempty" jsonschema:"where it lives"`
+}
+
 type addBranchIn struct {
 	in
 	repoIn
@@ -280,7 +286,7 @@ type dropIdeaIn struct {
 func addTools(s *mcp.Server, t tools) {
 	r := &registry{s: s, steps: map[string]stepFunc{}}
 	tool(s, "list_workspaces", "Every workspace: slug, name, repositories (name and URL).", t.listWorkspaces)
-	laterRead(r, "list_branches", "The branches in merge order, each with the branch it merges into.", t.listBranches)
+	laterRead(r, "list_branches", "The branches in merge order. Each has the branch it merges into.", t.listBranches)
 	tool(s, "whats_next", "The highest-ranked backlog story whose dependencies are complete, in full. Null when none is ready.", t.whatsNext)
 	tool(s, "where_are_we", "Where the project stands in brief: phase, in progress, in review, on hold, awaiting release, next up, proposals.", t.whereAreWe)
 	tool(s, "get_story", "One story: status, what blocks it and what it blocks.", t.getStory)
@@ -295,8 +301,10 @@ func addTools(s *mcp.Server, t tools) {
 	later(r, "cut_release", "Record a release (version, git tag, optional commit and notes). Stories the repository has merged into its release branch become Released. Answers with id, version and story count.", t.cutRelease)
 	laterRead(r, "list_releases", "Every release, newest first: id, version, tag, story count. repo narrows it to one repository.", t.listReleases)
 	laterRead(r, "get_release", "One release by id (R-n), with its stories in delivery order.", t.getRelease)
-	later(r, "add_branch", "Add a branch merging into an existing one, such as staging into main. Answers with name and target.", t.addBranch)
-	later(r, "update_branch", "Change a branch's name, alias (web column heading) or merge target; others stay. Answers with name and fields changed.", t.updateBranch)
+	later(r, "add_repo", "Add a repository, main alone to start. Shape it with add_branch. Answers with name.", t.addRepo)
+	laterRead(r, "list_repos", "The repositories. Each has a name and URL.", t.listRepos)
+	later(r, "add_branch", "Add a branch merging into an existing one. Such as staging into main. Answers with name and target.", t.addBranch)
+	later(r, "update_branch", "Change a branch's name, alias (web column heading) or merge target. Others stay. Answers with name and fields changed.", t.updateBranch)
 	write(r, "log", "Add an entry to a story's log. Entries are never edited; fix with a correction. Answers with entry id.", t.log)
 	laterRead(r, "read_log", "The log of a story or goal (id) or a phase (phase), oldest first.", t.readLog)
 	laterRead(r, "list_events", "The latest events, however old. One line each, oldest first: decisions, merges, holds, closes, releases, stories and ideas added. Each starts with its position: before pages back 20, after gives all since one, since all from an RFC 3339 date.", t.listEvents)
@@ -526,6 +534,19 @@ func (t tools) getRelease(_ context.Context, a releaseIn) (any, error) {
 		return nil, err
 	}
 	return leanReleaseOf(d, several), nil
+}
+
+func (t tools) addRepo(ctx context.Context, a addRepoIn) (any, error) {
+	r, err := t.b.AddRepo(a.Workspace, actor(ctx), board.Repo{Name: a.Name, URL: a.URL})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"name": r.Name}, nil
+}
+
+func (t tools) listRepos(_ context.Context, a in) (any, error) {
+	rs, err := t.b.Repos(a.Workspace)
+	return map[string]any{"repos": rs}, err
 }
 
 func (t tools) addBranch(ctx context.Context, a addBranchIn) (any, error) {

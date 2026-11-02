@@ -740,6 +740,18 @@ not part of the board.
   nothing changes: no filter, colours, labels or `data-repo`. The board JSON's
   Merged columns carry `repo` beside `branch` (additive; repositories in name
   order, each one's branches in merge order).
+- **Adding a repository** (2026-11-02, S-74). `add_repo` (`name`, optional
+  `url`; a change, so it runs inside `batch`) and `list_repos` (a read, through
+  `actions`) are on-request actions, so the tool menu does not grow. Over HTTP
+  they are `POST /v1/workspaces/{ws}/repos` (201) and `GET .../repos`. The name
+  follows the slug rule (1-64 lowercase letters, digits and single hyphens;
+  400 otherwise) and is unique in the workspace (409 when taken). A new
+  repository starts with `main` alone, its release branch, linked by
+  `HAS_BRANCH`, in one query; it is shaped afterwards with `add_branch` and
+  its `repo`. Adding one sends the same change notice as a branch change, so
+  open pages redraw. From then on a workspace has several repositories: a
+  story or branch action that names none is refused with the choice. Renaming
+  or removing a repository is later work.
 - **Setup.** When an agent first connects a repository it works out the
   branching (default, integration and protected branches, how pull requests
   flow), proposes it in conversation, and a person approves or adjusts it.

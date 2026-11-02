@@ -22,9 +22,10 @@ func severalReposBoard(t *testing.T, large bool) (*board.Board, *mcp.ClientSessi
 	if _, err := b.CreateWorkspace("tester", board.Workspace{Slug: "demo", Name: "Demo", RepoName: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: 'test', created_at: 'x'})`, nil, nil); err != nil {
+	if _, err := b.AddRepo("demo", "tester", board.Repo{Name: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AddBranch("demo", "tester", board.Branch{Repo: "web", Name: "dev", Into: "main"}); err != nil {
 		t.Fatal(err)
 	}
 	if large {

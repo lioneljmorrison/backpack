@@ -27,10 +27,10 @@ func releasingAPI(t *testing.T) http.Handler {
 	for _, c := range []string{`{"to": "in_progress"}`, `{"to": "in_review"}`, `{"to": "merged", "commit": "c1"}`, `{"to": "merged", "into": "main", "commit": "c2"}`} {
 		want(t, call(t, h, "POST", "/v1/workspaces/demo/stories/S-1/status", c), http.StatusOK)
 	}
-	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'main', rank: 'n'})`, nil, nil); err != nil {
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/repos", `{"name": "web"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/branches", `{"repo": "web", "name": "dev", "into": "main"}`), http.StatusCreated)
+	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`MATCH (r:Repo {name: 'web'})
+		CREATE (r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'main', rank: 'n'})`, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	return h

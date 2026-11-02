@@ -32,10 +32,14 @@ func releasing(t *testing.T) *mcp.ClientSession {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'main', rank: 'n'})`, nil, nil); err != nil {
+	if _, err := b.AddRepo("demo", "tester", board.Repo{Name: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AddBranch("demo", "tester", board.Branch{Repo: "web", Name: "dev", Into: "main"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`MATCH (r:Repo {name: 'web'})
+		CREATE (r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'main', rank: 'n'})`, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	return session(t, serve(t, b, nil))

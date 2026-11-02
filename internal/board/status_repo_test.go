@@ -13,7 +13,7 @@ func TestEachRepositorysStoryMergesFromReviewIntoItsOwnStartingBranch(t *testing
 	// Counting the workspace's branches together would see two starting branches.
 	a := addStory(t, b, board.NewStory{Title: "Api story"})
 	walk(t, b, a.ID, board.InProgress, board.InReview)
-	addWeb(t, g)
+	addWeb(t, b)
 	webStory(t, g, "W-1", "in_review", "")
 
 	if got := setStatus(t, b, a.ID, board.StatusChange{To: board.Merged, Commit: "c1"}); got.Into != "dev" {
@@ -28,7 +28,7 @@ func TestAnIntoFromTheOtherRepositoryIsRefused(t *testing.T) {
 	b, g := twoRepos(t)
 	a := addStory(t, b, board.NewStory{Title: "Api story"})
 	walk(t, b, a.ID, board.InProgress, board.InReview)
-	addWeb(t, g)
+	addWeb(t, b)
 	run(t, g, `MATCH (r:Repo {name: 'web'}) CREATE (r)-[:HAS_BRANCH]->(:Branch {name: 'staging', into: 'main', created_by: 'test', created_at: 'x'})`)
 	_, err := b.SetStatus("demo", actor, a.ID, board.StatusChange{To: board.Merged, Into: "staging", Commit: "c1"})
 	wantMessage(t, err, board.Conflict, `api has no branch "staging"`)
@@ -48,7 +48,7 @@ func TestTheOneStepRuleFollowsTheStorysOwnChain(t *testing.T) {
 	a := addStory(t, b, board.NewStory{Title: "Api story"})
 	walk(t, b, a.ID, board.InProgress, board.InReview)
 	setStatus(t, b, a.ID, board.StatusChange{To: board.Merged, Commit: "c1"})
-	addWeb(t, g)
+	addWeb(t, b)
 	// web's chain is dev, staging, main; api's stays dev, main.
 	run(t, g, `MATCH (r:Repo {name: 'web'})-[:HAS_BRANCH]->(d:Branch {name: 'dev'})
 		CREATE (r)-[:HAS_BRANCH]->(:Branch {name: 'staging', into: 'main', created_by: 'test', created_at: 'x'})

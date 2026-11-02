@@ -30,9 +30,9 @@ func TestReleasePagesShowTheRepositoryOnlyWhenThereAreSeveral(t *testing.T) {
 		}
 	}
 
-	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'webrepo', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'main', rank: 'n'})`, nil, nil); err != nil {
+	must[board.Repo](t)(b.AddRepo("demo", "tester", board.Repo{Name: "webrepo"}))
+	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`MATCH (r:Repo {name: 'webrepo'})
+		CREATE (r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'main', rank: 'n'})`, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	must[board.Release](t)(b.CutRelease("demo", "tester", board.NewRelease{Repo: "webrepo", Version: "v1.0.0", Tag: "v1.0.0"}))

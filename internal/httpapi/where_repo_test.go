@@ -20,10 +20,7 @@ func TestStatusTakesARepositoryAndNarrowsOnlyNext(t *testing.T) {
 	tester := func(string) (string, bool, error) { return "tester", true, nil }
 	h := New(map[string]health.Check{}, tester, b, nil, nil)
 	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "demo", "name": "Demo", "repo": "api"}`), http.StatusCreated)
-	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'})`, nil, nil); err != nil {
-		t.Fatal(err)
-	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/repos", `{"name": "web"}`), http.StatusCreated)
 	for _, repo := range []string{"api", "web"} {
 		want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "In `+repo+`", "repo": "`+repo+`"}`), http.StatusCreated)
 	}

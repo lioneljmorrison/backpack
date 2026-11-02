@@ -14,8 +14,8 @@ func readyIn(t *testing.T, b *board.Board, repo, title string) string {
 }
 
 func TestWhatsNextForARepositoryIsItsTopReadyStoryEvenWhenAnotherRanksHigher(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	a1 := readyIn(t, b, "api", "Api first")
 	w1 := readyIn(t, b, "web", "Web second")
 	readyIn(t, b, "web", "Web third")
@@ -31,8 +31,8 @@ func TestWhatsNextForARepositoryIsItsTopReadyStoryEvenWhenAnotherRanksHigher(t *
 }
 
 func TestAStoryBlockedByAnotherRepositorysUnfinishedWorkIsBlocked(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	a1 := readyIn(t, b, "api", "Api")
 	w1 := readyIn(t, b, "web", "Web needs api")
 	w2 := readyIn(t, b, "web", "Web free")
@@ -49,8 +49,8 @@ func TestAStoryBlockedByAnotherRepositorysUnfinishedWorkIsBlocked(t *testing.T) 
 }
 
 func TestWhatsNextForARepositoryWithNothingReadyIsNull(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	readyIn(t, b, "api", "Api")
 	if next, err := b.Next("demo", "web"); err != nil || next != nil {
 		t.Fatalf("next %+v, %v", next, err)
@@ -58,8 +58,8 @@ func TestWhatsNextForARepositoryWithNothingReadyIsNull(t *testing.T) {
 }
 
 func TestWhatsNextForAnUnknownRepositoryIsNotFound(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	_, err := b.Next("demo", "ios")
 	wantMessage(t, err, board.NotFound, `demo has no repo "ios"`)
 }
