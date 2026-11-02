@@ -394,7 +394,7 @@ func TestABranchAliasRenamesOnlyItsColumnHeading(t *testing.T) {
 		must[board.Story](t)(b.SetStatus("staged", "tester", s.ID, c))
 	}
 	prod := "Production"
-	must[board.Branch](t)(b.UpdateBranch("staged", "tester", "main", board.BranchPatch{Alias: &prod}))
+	must[board.Branch](t)(b.UpdateBranch("staged", "tester", "", "main", board.BranchPatch{Alias: &prod}))
 
 	page := get(h, "/w/staged", "bp_good").Body.String()
 	for _, want := range []string{
@@ -416,7 +416,7 @@ func TestABranchAliasRenamesOnlyItsColumnHeading(t *testing.T) {
 	}
 
 	empty := ""
-	must[board.Branch](t)(b.UpdateBranch("staged", "tester", "main", board.BranchPatch{Alias: &empty}))
+	must[board.Branch](t)(b.UpdateBranch("staged", "tester", "", "main", board.BranchPatch{Alias: &empty}))
 	page = get(h, "/w/staged", "bp_good").Body.String()
 	if !strings.Contains(page, `aria-label="Merged (main)"`) || strings.Contains(page, "Production") {
 		t.Error("clearing the alias does not restore the heading")

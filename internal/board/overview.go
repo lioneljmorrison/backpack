@@ -64,7 +64,7 @@ func (b *Board) Where(ws string) (Where, error) {
 	if err != nil {
 		return Where{}, err
 	}
-	bs, err := branches(g)
+	bs, err := branches(g, "")
 	if err != nil {
 		return Where{}, err
 	}
@@ -197,7 +197,7 @@ func (b *Board) Board(ws string) ([]Column, error) {
 	if err != nil {
 		return nil, err
 	}
-	bs, err := branches(g)
+	bs, err := branches(g, "")
 	if err != nil {
 		return nil, err
 	}

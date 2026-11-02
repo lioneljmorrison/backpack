@@ -68,7 +68,7 @@ func TestListReleasesAnswersAStoryCountNotNotesOrIds(t *testing.T) {
 	stagedWorkspace(t, b)
 	mergedIntoDev(t, b, "First")
 	mergedIntoDev(t, b, "Second")
-	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("staged", "tester", "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.0.0", "tag": "v1.0.0", "commit": "abc1234", "notes": "First cut"})
@@ -83,7 +83,7 @@ func TestGetReleaseStoriesAreLeanAndTheReleaseCarriesNoAuthor(t *testing.T) {
 	b, cs := connect(t)
 	stagedWorkspace(t, b)
 	mergedIntoDev(t, b, "First")
-	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("staged", "tester", "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.0.0", "tag": "v1.0.0", "notes": "n"})

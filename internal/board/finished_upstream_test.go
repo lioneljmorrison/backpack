@@ -73,7 +73,7 @@ func markedBehindTheAPI(t *testing.T) *board.Board {
 
 func TestMergingABranchDropsTheMarkOfEveryStoryItMoves(t *testing.T) {
 	b := markedBehindTheAPI(t)
-	if _, err := b.MergeBranch("demo", actor, "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	wantUnmarked(t, b, "S-1")
@@ -82,7 +82,7 @@ func TestMergingABranchDropsTheMarkOfEveryStoryItMoves(t *testing.T) {
 
 func TestCuttingAReleaseDropsTheMarkOfEveryStoryItReleases(t *testing.T) {
 	b := markedBehindTheAPI(t)
-	if _, err := b.MergeBranch("demo", actor, "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.CutRelease("demo", actor, v1); err != nil {

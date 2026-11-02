@@ -11,7 +11,7 @@ import (
 )
 
 func rename(b *board.Board, branch, to string) (board.Branch, error) {
-	return b.UpdateBranch("demo", actor, branch, board.BranchPatch{Name: &to})
+	return b.UpdateBranch("demo", actor, "", branch, board.BranchPatch{Name: &to})
 }
 
 func TestRenamingABranchKeepsEveryStoryWhereItWasAndRenamesWhatReferToIt(t *testing.T) {
@@ -27,7 +27,7 @@ func TestRenamingABranchKeepsEveryStoryWhereItWasAndRenamesWhatReferToIt(t *test
 	if got.Name != "develop" || got.Into != "main" || got.Release {
 		t.Fatalf("answered %+v", got)
 	}
-	bs, err := b.Branches("demo")
+	bs, err := b.Branches("demo", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,11 +48,11 @@ func TestRenamingABranchKeepsEveryStoryWhereItWasAndRenamesWhatReferToIt(t *test
 		t.Fatalf("log changed: %+v", logAfter)
 	}
 	// The renamed branch is what a merge now names.
-	moved, err := b.MergeBranch("demo", actor, "develop", "x9")
+	moved, err := b.MergeBranch("demo", actor, "", "develop", "x9")
 	if err != nil || len(moved) != 2 {
 		t.Fatalf("merging develop: %+v, %v", moved, err)
 	}
-	if _, err := b.MergeBranch("demo", actor, "dev", "x9"); err == nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "x9"); err == nil {
 		t.Fatal("the old name still answers")
 	}
 }
@@ -64,7 +64,7 @@ func TestRenamingTheReleaseBranchFollowsToTheBranchesMergingIntoIt(t *testing.T)
 	if err != nil || !got.Release {
 		t.Fatalf("%+v, %v", got, err)
 	}
-	bs, _ := b.Branches("demo")
+	bs, _ := b.Branches("demo", "")
 	if g := names(bs); g[0] != [2]string{"dev", "master"} || g[1] != [2]string{"master", ""} {
 		t.Fatalf("branches %v", g)
 	}
@@ -99,11 +99,11 @@ func TestRenamingABranchIsRefusedForABadOrTakenNameOrAnUnknownBranch(t *testing.
 	if _, err := rename(b, "dev", strings.Repeat("a", 100)); err != nil {
 		t.Fatalf("100 characters is allowed: %v", err)
 	}
-	bs, _ := b.Branches("demo")
+	bs, _ := b.Branches("demo", "")
 	if g := names(bs); len(g) != 2 || g[1] != [2]string{"main", ""} {
 		t.Fatalf("a refusal changed the branches: %v", g)
 	}
-	if _, err := b.UpdateBranch("nope", actor, "dev", board.BranchPatch{}); err == nil {
+	if _, err := b.UpdateBranch("nope", actor, "", "dev", board.BranchPatch{}); err == nil {
 		t.Fatal("an unknown workspace is refused")
 	}
 }
@@ -114,7 +114,7 @@ func TestRenamingABranchToItsOwnNameChangesNothingAndNotifiesNoOne(t *testing.T)
 	if br, err := rename(b, "dev", "dev"); err != nil || br.Name != "dev" {
 		t.Fatalf("%+v, %v", br, err)
 	}
-	if br, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{}); err != nil || br.Name != "dev" {
+	if br, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{}); err != nil || br.Name != "dev" {
 		t.Fatalf("an empty patch: %+v, %v", br, err)
 	}
 	if len(*got) != 0 {

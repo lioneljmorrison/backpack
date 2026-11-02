@@ -147,7 +147,7 @@ func TestCutReleaseReleasesWhatIsMergedIntoTheReleaseBranch(t *testing.T) {
 	stagedWorkspace(t, b)
 	mergedIntoDev(t, b, "First")
 	mergedIntoDev(t, b, "Second")
-	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("staged", "tester", "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	mergedIntoDev(t, b, "Third")
@@ -183,7 +183,7 @@ func TestCutReleaseRunsInsideABatch(t *testing.T) {
 	b, cs := connect(t)
 	stagedWorkspace(t, b)
 	mergedIntoDev(t, b, "First")
-	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("staged", "tester", "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	rs := resultsIn(t, cs, "staged",
@@ -397,7 +397,7 @@ func TestAddBranchRunsInsideABatch(t *testing.T) {
 		len(res) != 2 || res["name"] != "staging" || res["into"] != "main" {
 		t.Fatalf("batch: %v", rs)
 	}
-	bs, err := b.Branches("staged")
+	bs, err := b.Branches("staged", "")
 	if err != nil || len(bs) != 3 {
 		t.Fatalf("branches %+v, %v", bs, err)
 	}
@@ -420,7 +420,7 @@ func TestRemoveBranchTakesAnEmptyBranchOffAndRefusesOneInUse(t *testing.T) {
 	if got := use(t, cs, "remove_branch", map[string]any{"workspace": "staged", "branch": "staging"}); got["removed"] != true {
 		t.Fatalf("answer %v", got)
 	}
-	bs, err := b.Branches("staged")
+	bs, err := b.Branches("staged", "")
 	if err != nil || len(bs) != 2 {
 		t.Fatalf("branches %+v, %v", bs, err)
 	}
@@ -434,7 +434,7 @@ func TestReleasesAreListedAndReadWithTheirStoriesAndWhereAreWeNamesWhatWaits(t *
 	}
 	mergedIntoDev(t, b, "First")
 	mergedIntoDev(t, b, "Second")
-	if _, err := b.MergeBranch("staged", "tester", "dev", "x9"); err != nil {
+	if _, err := b.MergeBranch("staged", "tester", "", "dev", "x9"); err != nil {
 		t.Fatal(err)
 	}
 	where := say(t, cs, "where_are_we", map[string]any{"workspace": "staged"})
@@ -443,7 +443,7 @@ func TestReleasesAreListedAndReadWithTheirStoriesAndWhereAreWeNamesWhatWaits(t *
 	}
 	use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.0.0", "tag": "v1.0.0", "commit": "abc1234", "notes": "First cut"})
 	mergedIntoDev(t, b, "Third")
-	if _, err := b.MergeBranch("staged", "tester", "dev", "x10"); err != nil {
+	if _, err := b.MergeBranch("staged", "tester", "", "dev", "x10"); err != nil {
 		t.Fatal(err)
 	}
 	use(t, cs, "cut_release", map[string]any{"workspace": "staged", "version": "v1.1.0", "tag": "v1.1.0"})

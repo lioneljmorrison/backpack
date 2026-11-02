@@ -344,7 +344,7 @@ func TestAfterABranchMergeSearchFindsEveryMovedStoryAndTheOneLeftBehind(t *testi
 	if got := states(); !maps.Equal(got, before) {
 		t.Fatalf("before the merge search found %v, want %v", got, before)
 	}
-	moved, err := b.MergeBranch("demo", actor, "dev", "x9")
+	moved, err := b.MergeBranch("demo", actor, "", "dev", "x9")
 	if err != nil || len(moved) != 3 {
 		t.Fatalf("moved %+v, %v", moved, err)
 	}
@@ -377,7 +377,7 @@ func TestAfterABranchRenameSearchReadsTheNewBranchInEachStoryState(t *testing.T)
 		}
 	}
 	name := "develop"
-	if _, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Name: &name}); err != nil {
+	if _, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Name: &name}); err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range find(t, x, "demo", "export") {

@@ -59,7 +59,7 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 	}
 	var d boardData
 	var cols []board.Column
-	bs, err := s.board.Branches(ws.Slug)
+	bs, err := s.board.Branches(ws.Slug, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -138,7 +138,7 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	bs, err := s.board.Branches(ws.Slug)
+	bs, err := s.board.Branches(ws.Slug, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return

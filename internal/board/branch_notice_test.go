@@ -21,17 +21,17 @@ func TestEveryBranchChangeSendsABranchNotice(t *testing.T) {
 	}{
 		{"add", func() error { _, err := addBranch(b, "staging", "main"); return err }},
 		{"alias", func() error {
-			_, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Alias: &alias})
+			_, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Alias: &alias})
 			return err
 		}},
 		{"clear alias", func() error {
-			_, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Alias: &empty})
+			_, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Alias: &empty})
 			return err
 		}},
 		{"rename", func() error { _, err := rename(b, "staging", other); return err }},
 		{"re-point", func() error { _, err := repoint(b, "dev", other); return err }},
 		{"re-point back", func() error { _, err := repoint(b, "dev", "main"); return err }},
-		{"remove", func() error { return b.RemoveBranch("demo", actor, other) }},
+		{"remove", func() error { return b.RemoveBranch("demo", actor, "", other) }},
 	}
 	for _, s := range steps {
 		*got = nil
@@ -47,21 +47,21 @@ func TestEveryBranchChangeSendsABranchNotice(t *testing.T) {
 func TestARefusedOrUnchangedBranchChangeSendsNoBranchNotice(t *testing.T) {
 	b := newReleasingWorkspace(t)
 	alias := "Dev"
-	if _, err := b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Alias: &alias}); err != nil {
+	if _, err := b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Alias: &alias}); err != nil {
 		t.Fatal(err)
 	}
 	got := recorder(b)
 	same, into := "dev", "main"
 	_ = []error{
-		first(addBranch(b, "dev", "main")),                                            // name taken
-		first(addBranch(b, "x", "nowhere")),                                           // unknown target
-		first(rename(b, "nope", "y")),                                                 // unknown branch
-		first(repoint(b, "main", "dev")),                                              // release branch
-		b.RemoveBranch("demo", actor, "main"),                                         // release branch
-		b.RemoveBranch("demo", actor, "dev"),                                          // first branch
-		first(b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Alias: &alias})), // same alias: no change
-		first(b.UpdateBranch("demo", actor, "dev", board.BranchPatch{Name: &same, Into: &into})),
-		first(b.UpdateBranch("demo", actor, "dev", board.BranchPatch{})),
+		first(addBranch(b, "dev", "main")),                                                // name taken
+		first(addBranch(b, "x", "nowhere")),                                               // unknown target
+		first(rename(b, "nope", "y")),                                                     // unknown branch
+		first(repoint(b, "main", "dev")),                                                  // release branch
+		b.RemoveBranch("demo", actor, "", "main"),                                         // release branch
+		b.RemoveBranch("demo", actor, "", "dev"),                                          // first branch
+		first(b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Alias: &alias})), // same alias: no change
+		first(b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{Name: &same, Into: &into})),
+		first(b.UpdateBranch("demo", actor, "", "dev", board.BranchPatch{})),
 	}
 	if len(*got) != 0 {
 		t.Fatalf("notices %v", *got)

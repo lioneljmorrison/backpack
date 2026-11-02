@@ -102,7 +102,7 @@ func TestAWorkspaceFromBeforeRepositoriesIsMigratedAtStartUp(t *testing.T) {
 	if err != nil || s.Repo != "demo" {
 		t.Fatalf("story %+v, %v", s, err)
 	}
-	bs, _ := b.Branches("demo")
+	bs, _ := b.Branches("demo", "")
 	if len(bs) != 2 || bs[0].Repo != "demo" || bs[1].Repo != "demo" {
 		t.Fatalf("branches %+v", bs)
 	}
@@ -140,7 +140,7 @@ func TestANewWorkspaceGetsOneRepositoryNamedAfterItsSlug(t *testing.T) {
 	if got := reposOf(t, b, "my-app"); len(got) != 1 || got[0] != want[0] {
 		t.Fatalf("listed %+v", got)
 	}
-	bs, _ := b.Branches("my-app")
+	bs, _ := b.Branches("my-app", "")
 	if len(bs) != 2 || bs[0].Repo != "my-app" || bs[1].Repo != "my-app" {
 		t.Fatalf("branches %+v", bs)
 	}

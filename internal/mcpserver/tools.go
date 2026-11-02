@@ -86,8 +86,20 @@ type moveStoryIn struct {
 	position
 }
 
+// repoIn names the repository a branch tool is for. It can be left out when
+// the workspace has one.
+type repoIn struct {
+	Repo string `json:"repo,omitempty" jsonschema:"repository; needed when the workspace has several"`
+}
+
+type listBranchesIn struct {
+	in
+	repoIn
+}
+
 type mergeBranchIn struct {
 	in
+	repoIn
 	Branch string `json:"branch" jsonschema:"the branch that was merged, such as dev"`
 	Commit string `json:"commit" jsonschema:"the merge commit"`
 }
@@ -102,6 +114,7 @@ type cutReleaseIn struct {
 
 type addBranchIn struct {
 	in
+	repoIn
 	Name  string `json:"name" jsonschema:"no whitespace, max 100 characters"`
 	Into  string `json:"into" jsonschema:"existing branch it merges into"`
 	Alias string `json:"alias,omitempty" jsonschema:"web column heading, max 100 characters"`
@@ -109,11 +122,13 @@ type addBranchIn struct {
 
 type removeBranchIn struct {
 	in
+	repoIn
 	Branch string `json:"branch" jsonschema:"branch name"`
 }
 
 type updateBranchIn struct {
 	in
+	repoIn
 	Branch string  `json:"branch" jsonschema:"current branch name"`
 	Name   *string `json:"name,omitempty" jsonschema:"new name: no whitespace, max 100 characters"`
 	Alias  *string `json:"alias,omitempty" jsonschema:"column heading on the web board, max 100 characters; empty clears"`
@@ -306,8 +321,8 @@ func (t tools) listWorkspaces(_ context.Context, _ struct{}) (any, error) {
 	return map[string]any{"workspaces": workspaceSummaries(ws)}, err
 }
 
-func (t tools) listBranches(_ context.Context, a in) (any, error) {
-	bs, err := t.b.Branches(a.Workspace)
+func (t tools) listBranches(_ context.Context, a listBranchesIn) (any, error) {
+	bs, err := t.b.Branches(a.Workspace, a.Repo)
 	return map[string]any{"branches": branchSummaries(bs)}, err
 }
 
@@ -425,7 +440,7 @@ func (t tools) setStatus(ctx context.Context, a setStatusIn) (any, error) {
 }
 
 func (t tools) mergeBranch(ctx context.Context, a mergeBranchIn) (any, error) {
-	moved, err := t.b.MergeBranch(a.Workspace, actor(ctx), a.Branch, a.Commit)
+	moved, err := t.b.MergeBranch(a.Workspace, actor(ctx), a.Repo, a.Branch, a.Commit)
 	if err != nil {
 		return nil, err
 	}
@@ -458,7 +473,7 @@ func (t tools) getRelease(_ context.Context, a releaseIn) (any, error) {
 }
 
 func (t tools) addBranch(ctx context.Context, a addBranchIn) (any, error) {
-	br, err := t.b.AddBranch(a.Workspace, actor(ctx), board.Branch{Name: a.Name, Into: a.Into, Alias: a.Alias})
+	br, err := t.b.AddBranch(a.Workspace, actor(ctx), board.Branch{Name: a.Name, Into: a.Into, Alias: a.Alias, Repo: a.Repo})
 	if err != nil {
 		return nil, err
 	}
@@ -466,12 +481,12 @@ func (t tools) addBranch(ctx context.Context, a addBranchIn) (any, error) {
 }
 
 func (t tools) removeBranch(ctx context.Context, a removeBranchIn) (any, error) {
-	err := t.b.RemoveBranch(a.Workspace, actor(ctx), a.Branch)
+	err := t.b.RemoveBranch(a.Workspace, actor(ctx), a.Repo, a.Branch)
 	return map[string]any{"removed": true}, err
 }
 
 func (t tools) updateBranch(ctx context.Context, a updateBranchIn) (any, error) {
-	br, changed, err := t.b.UpdateBranchDetail(a.Workspace, actor(ctx), a.Branch, board.BranchPatch{Name: a.Name, Alias: a.Alias, Into: a.Into})
+	br, changed, err := t.b.UpdateBranchDetail(a.Workspace, actor(ctx), a.Repo, a.Branch, board.BranchPatch{Name: a.Name, Alias: a.Alias, Into: a.Into})
 	if err != nil {
 		return nil, err
 	}

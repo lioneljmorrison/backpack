@@ -153,7 +153,7 @@ func TestEventsAreWhatHappenedAndNothingElse(t *testing.T) {
 	log("S-1", board.NewLogEntry{Kind: "correction", Text: "It was ordering, not ranking", Corrects: d.ID})
 	walk(t, b, "S-1", board.InProgress, board.InReview)
 	setStatus(t, b, "S-1", board.StatusChange{To: board.Merged, Commit: "abc1234567"})
-	if _, err := b.MergeBranch("demo", actor, "dev", "ffff0000"); err != nil {
+	if _, err := b.MergeBranch("demo", actor, "", "dev", "ffff0000"); err != nil {
 		t.Fatal(err)
 	}
 	walk(t, b, "S-2", board.InProgress)

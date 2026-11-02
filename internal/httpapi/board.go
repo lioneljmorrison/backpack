@@ -84,7 +84,7 @@ func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a boardAPI) listBranches(w http.ResponseWriter, r *http.Request) {
-	bs, err := a.b.Branches(r.PathValue("ws"))
+	bs, err := a.b.Branches(r.PathValue("ws"), r.URL.Query().Get("repo"))
 	respond(w, http.StatusOK, map[string]any{"branches": bs}, err)
 }
 
@@ -93,11 +93,12 @@ func (a boardAPI) addBranch(w http.ResponseWriter, r *http.Request) {
 		Name  string `json:"name"`
 		Into  string `json:"into"`
 		Alias string `json:"alias"`
+		Repo  string `json:"repo"`
 	}
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	br, err := a.b.AddBranch(r.PathValue("ws"), actor(r), board.Branch{Name: in.Name, Into: in.Into, Alias: in.Alias})
+	br, err := a.b.AddBranch(r.PathValue("ws"), actor(r), board.Branch{Name: in.Name, Into: in.Into, Alias: in.Alias, Repo: in.Repo})
 	respond(w, http.StatusCreated, br, err)
 }
 
@@ -106,12 +107,12 @@ func (a boardAPI) updateBranch(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &patch) {
 		return
 	}
-	br, err := a.b.UpdateBranch(r.PathValue("ws"), actor(r), r.PathValue("name"), patch)
+	br, err := a.b.UpdateBranch(r.PathValue("ws"), actor(r), r.URL.Query().Get("repo"), r.PathValue("name"), patch)
 	respond(w, http.StatusOK, br, err)
 }
 
 func (a boardAPI) removeBranch(w http.ResponseWriter, r *http.Request) {
-	if err := a.b.RemoveBranch(r.PathValue("ws"), actor(r), r.PathValue("name")); err != nil {
+	if err := a.b.RemoveBranch(r.PathValue("ws"), actor(r), r.URL.Query().Get("repo"), r.PathValue("name")); err != nil {
 		fail(w, err)
 		return
 	}
@@ -125,7 +126,7 @@ func (a boardAPI) mergeBranch(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &in) {
 		return
 	}
-	moved, err := a.b.MergeBranch(r.PathValue("ws"), actor(r), r.PathValue("name"), in.Commit)
+	moved, err := a.b.MergeBranch(r.PathValue("ws"), actor(r), r.URL.Query().Get("repo"), r.PathValue("name"), in.Commit)
 	respond(w, http.StatusOK, map[string]any{"stories": moved}, err)
 }
 
