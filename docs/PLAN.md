@@ -179,7 +179,19 @@ agent see what was done in which commit, and what was later found wrong.
     text shows one line, the count and the latest three (last in delivery
     order), for example `Merged, waiting for a release: 12 (latest: S-9 …,
     S-10 …, S-11 …)`, so the line stays short however long the wait. The
-    JSON keeps the full `unreleased` list.
+    JSON keeps the full `unreleased` list. With several repositories (S-72)
+    each story line carries its repository, `S-9 [api] Title — building`, and
+    the waiting line becomes one per repository that has any, in name order,
+    `Merged, waiting for a release in api: 3 (latest: …)`. With one repository
+    the text is byte for byte what it was.
+
+  `where_are_we` (MCP) and `GET .../status` take an optional `repo`
+  (`?repo=`), which narrows only the next three, by the rule `whats_next`
+  uses with a repo (blocked stories still show, as they always do there).
+  Everything else stays the whole workspace's. An unknown repository is 404.
+  The events list names the repository in a merge line only when there are
+  several, `merged into api/main (abc1234)`; it is worked out from the story's
+  repository when read, so no log entry changes.
 
   - the stories marked "upstream changed", one line each, for example
     `S-9 Title — after S-4`. The JSON keeps them as `upstream_changed`.
@@ -692,7 +704,8 @@ not part of the board.
   several repositories, so one-repository answers read as before. "Where are
   we" gathers what waits for a release against each repository's own release
   branch; the stories carry their repository in the JSON, and the text is
-  unchanged for one repository (its layout for several is S-72). The release
+  unchanged for one repository (its layout for several is in the where-are-we
+  entry above). The release
   stage (the second Merged column) is on when any repository has a merge
   step.
 - **A story is added to a repository** (2026-11-02, S-70). `add_story`,
@@ -872,7 +885,7 @@ workspace's branches are seeded from the creation setting (one branch, or
 GET  /healthz                                        (unauthenticated)
 GET  /v1/workspaces                                  POST
 GET  /v1/workspaces/{ws}/next                        what's next
-GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook)
+GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text/plain for the hook); ?repo= narrows Next
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
 GET  /v1/workspaces/{ws}/events                      the latest events; ?before= ?after= ?since=
 GET  /v1/workspaces/{ws}/releases                    POST (cut); GET /releases/{id}
@@ -953,7 +966,9 @@ each with its route's own status and body.
 ### Per-project config and hook (slice 5)
 
 The committed file `.backpack.json` holds `{ "workspace": "my-app", "url":
-"https://backpack.<domain>" }`. The token comes from `BACKPACK_TOKEN` in the
+"https://backpack.<domain>" }`, and optionally `"repo": "api"`, which the hook
+sends as `?repo=` so a session in one repository sees that repository's next
+stories (S-72). The token comes from `BACKPACK_TOKEN` in the
 environment. The hook, `deploy/hook.sh`, is `curl -fsS --max-time 3` against
 `/status` as plain text. Without `.backpack.json` it prints nothing; on any
 other failure it prints "Backpack unreachable — orientation skipped". It always

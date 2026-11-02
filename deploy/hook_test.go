@@ -64,6 +64,36 @@ func TestHookPrintsWhereAreWeAsText(t *testing.T) {
 	}
 }
 
+// projectIn is project with a repo set in .backpack.json.
+func projectIn(t *testing.T, url, repo string) string {
+	t.Helper()
+	dir := t.TempDir()
+	config := `{ "workspace": "demo", "url": "` + url + `", "repo": "` + repo + `" }` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, ".backpack.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestHookAsksForTheConfiguredRepositoryOnly(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		w.Write([]byte("Next:\n  S-1 [api] Thing\n"))
+	}))
+	defer srv.Close()
+
+	if out, code := runHook(t, projectIn(t, srv.URL, "api"), "bp_test"); code != 0 || out != "Next:\n  S-1 [api] Thing\n" {
+		t.Fatalf("exit %d, output %q", code, out)
+	}
+	if out, code := runHook(t, project(t, srv.URL), "bp_test"); code != 0 || out == "" {
+		t.Fatalf("without a repo: exit %d, output %q", code, out)
+	}
+	if len(queries) != 2 || queries[0] != "repo=api" || queries[1] != "" {
+		t.Fatalf("queries %q, want repo=api then none", queries)
+	}
+}
+
 func TestHookIsSilentInAProjectWithoutBackpack(t *testing.T) {
 	out, code := runHook(t, t.TempDir(), "bp_test")
 	if code != 0 || out != "" {

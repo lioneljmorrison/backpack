@@ -59,13 +59,14 @@ const eventsQuery = `
 	OPTIONAL MATCH (s:Story)-[:LOGGED]->(e:LogEntry)
 	OPTIONAL MATCH (e)-[:CORRECTS]->(ce:LogEntry)
 	OPTIONAL MATCH (s)-[:IN_RELEASE]->(rr:Release)
+	OPTIONAL MATCH (rp:Repo)-[:HOLDS]->(s)
 	WITH pat, collect(CASE WHEN e.at IS NOT NULL AND (
 			(e.kind IN ['decision', 'correction'] AND NOT (e.kind = 'decision' AND e.at = s.created_at AND
 				(coalesce(e.text, '') STARTS WITH 'Proposed' OR coalesce(e.text, '') STARTS WITH 'Straight into the backlog')))
 			OR (e.kind = 'status' AND (e.to IN ['merged', 'on_hold', 'closed', 'deployed'] OR
 				(e.to = 'released' AND NOT (rr IS NOT NULL AND rr.id <> 'R-0' AND rr.created_at = e.at)))))
 		THEN {id: e.id, at: e.at, t: 4, n: toInteger(substring(e.id, 2)), kind: e.kind, story: s.id, to: e.to,
-			text: e.text, reason: e.reason, commit: e.commit, into: e.into, other: ce.id} END) AS logs
+			text: e.text, reason: e.reason, commit: e.commit, into: e.into, repo: rp.name, other: ce.id} END) AS logs
 	OPTIONAL MATCH (st:Story)
 	OPTIONAL MATCH (st)-[:FOUND_IN]->(f:Story)
 	WITH pat, logs, collect(CASE WHEN st.created_at IS NOT NULL
@@ -82,7 +83,7 @@ const eventsQuery = `
 	WITH ev, pat
 	WHERE ev.missing = true OR (ev.id IS NOT NULL AND (%s))
 	RETURN ev.missing AS missing, ev.id AS id, ev.at AS at, ev.t AS t, ev.n AS n, ev.kind AS kind, ev.story AS story, ev.to AS to,
-		ev.text AS text, ev.reason AS reason, ev.commit AS commit, ev.into AS into, ev.other AS other, ev.count AS count
+		ev.text AS text, ev.reason AS reason, ev.commit AS commit, ev.into AS into, ev.repo AS repo, ev.other AS other, ev.count AS count
 	ORDER BY at DESC, t DESC, n DESC %s`
 
 // Events reads the latest events, however old, oldest first, one short line
@@ -125,6 +126,10 @@ func (b *Board) Events(ws string, q EventsQuery) ([]Event, error) {
 	if err != nil {
 		return nil, err
 	}
+	rs, err := repos(g)
+	if err != nil {
+		return nil, err
+	}
 	res, err := g.ROQuery(fmt.Sprintf(eventsQuery, filter, limit),
 		map[string]any{"pos": pos, "pt": pt, "pn": pn, "since": since, "lim": eventsPage}, nil)
 	if err != nil {
@@ -137,7 +142,7 @@ func (b *Board) Events(ws string, q EventsQuery) ([]Event, error) {
 			return nil, refuse(NotFound, "no event, story, idea or release %q", pos)
 		}
 		e := Event{ID: str(r, "id"), At: str(r, "at"), Kind: str(r, "kind"), Story: str(r, "story"), To: str(r, "to")}
-		e.Line = eventLine(e, r.Get)
+		e.Line = eventLine(e, r.Get, len(rs) > 1)
 		evs = append(evs, e)
 	}
 	slices.Reverse(evs) // read newest first for the limit; given oldest first
@@ -156,8 +161,9 @@ func parseSince(s string) (time.Time, error) {
 }
 
 // eventLine writes an event as one line: its position, its time to the
-// minute, then what happened. get reads the rest of the row.
-func eventLine(e Event, get func(string) (any, bool)) string {
+// minute, then what happened. get reads the rest of the row. With several
+// repositories a merge names the story's repository.
+func eventLine(e Event, get func(string) (any, bool), several bool) string {
 	field := func(k string) string {
 		v, _ := get(k)
 		s, _ := v.(string)
@@ -200,6 +206,9 @@ func eventLine(e Event, get func(string) (any, bool)) string {
 	case "merged":
 		line := head + "merged"
 		if into := field("into"); into != "" {
+			if repo := field("repo"); several && repo != "" {
+				into = repo + "/" + into
+			}
 			line += " into " + into
 		}
 		if c := []rune(field("commit")); len(c) > 0 {

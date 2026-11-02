@@ -240,13 +240,16 @@ func TestWhatsNextIsNullWhenNothingIsReady(t *testing.T) {
 
 // An invented large board: one phase, 3 in progress, 2 in review, 2 on hold,
 // 10 in the backlog, 5 proposed and 30 merged and waiting for a release.
-func largeBoard(t *testing.T, b *board.Board) {
+func largeBoard(t *testing.T, b *board.Board, repo ...string) {
 	t.Helper()
 	if _, err := b.AddPhase("demo", "tester", "Invented phase", "Made up for a test."); err != nil {
 		t.Fatal(err)
 	}
 	add := func(title string, proposed bool, moves ...board.StatusChange) {
 		n := board.NewStory{Title: title, Phase: 1, Proposed: proposed}
+		if len(repo) > 0 {
+			n.Repo = repo[0]
+		}
 		if proposed {
 			n.Reasoning = "invented"
 		}
