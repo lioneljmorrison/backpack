@@ -11,7 +11,8 @@ state is hard to find. Backpack replaces that document: agents ask it "what's
 next" or "where are we" and get a short answer, so tracking is no longer a
 dependency of the code.
 
-- Each project has its own **workspace**.
+- Each project has its own **workspace**, which can hold several repositories
+  (Backpack's own holds one).
 - Work starts as **ideas**, which are refined into **stories**, and into
   **phases** (epics with a description, goals and stories).
 - Each workspace has **one backlog ranked in delivery order**. Rank is order,
@@ -103,29 +104,30 @@ secrets.
 
 ## How this project tracks
 
-Delivery is tracked in Backpack, workspace `backpack` (see `.backpack.json`),
+Delivery is in Backpack, workspace `backpack` (see `.backpack.json`),
 through the `backpack` MCP tools (set up: `docs/ADOPTING.md`). There is no
-tracking document, and tracking is never committed. `actions` lists the rarer
-actions; a rarer change runs through `batch`.
+tracking document, and tracking is never committed. `actions` lists rarer
+actions; run rarer changes through `batch`.
 
-- **Orientation.** The session hook has already shown "where are we"; trust it.
-  Call `where_are_we` only if the hook didn't run. `whats_next` gives the next
-  story and `get_story` its detail.
+- **Orientation.** The session hook shows "where are we"; trust it.
+  Call `where_are_we` only if the hook didn't. `whats_next` gives the next
+  story, `get_story` its detail. Pass `.backpack.json`'s `repo`, if any,
+  to `whats_next`, `add_story` and `add_bug_fix`.
 - **Record each move as it happens** with `set_status`: `in_progress` with the
-  task branch, `in_review` with the pull request link, `merged` with the merge
+  task branch, `in_review` with the PR link, `merged` with the merge
   commit. `merge_branch` moves `dev`'s stories to `main`; `cut_release` records a
   release (you create the git tag).
 - **While in progress,** keep `update_story` activity current.
 - **Log as you go** with `log`: decisions with their reason. Entries are never
-  edited; fix one with a `correction`. Stuck or not needed: `on_hold` or
+  edited; fix one with a `correction`. Stuck or unneeded: `on_hold` or
   `closed`, with a reason.
-- **Upstream changed.** Check each marked story against the new plan; update its
+- **Upstream changed.** Check each marked story against the plan; update its
   plan, or `mark_reviewed` with a reason.
 - **Search first,** before `add_story` or `add_idea`. New work goes in with
   `add_story` and its `reasoning`, waits as proposed for a person (a bug with a
   clear fix: `add_bug_fix`), then `add_dependency`. Break an `add_idea`
-  thought into proposed stories and any phase yourself, then `refine_idea` it.
-- **Many changes at once** go in one `batch`; read every answer.
+  into proposed stories and any phase, then `refine_idea` it.
+- **Many changes** go in one `batch`; read each answer.
 
 ## Working through the backlog
 

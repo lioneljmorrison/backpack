@@ -15,7 +15,8 @@ current state is hard to find. Backpack replaces that document: agents ask it
 "what's next" or "where are we" and get a short answer.
 
 - Each project has its own **workspace**, with one backlog ranked in delivery
-  order.
+  order. A workspace can hold several repositories, each with its own branches
+  and releases, and every story belongs to one.
 - Stories move (Proposed →) Backlog → In progress → In review → Merged →
   Released, where Merged is one column per branch (such as Merged (dev) and
   Merged (main)), Released means the story is in an official release (cut with
@@ -105,7 +106,10 @@ screens; the forms and arrows do.
 project. The agent creates the workspace, connects the MCP server, adds
 `.backpack.json` and the session hook, and tells the project's agents how to
 track. It asks the person only for the address, a few choices and a token,
-and tells them how to get one. To set up a new project, point its agent at:
+and tells them how to get one. A project that spans several repositories gets
+one workspace with each repository's `.backpack.json` naming its repository;
+the guide has a section for it. (Joining workspaces that already exist
+separately is not available yet.) To set up a new project, point its agent at:
 
 ```
 https://github.com/lioneljmorrison/backpack/blob/main/docs/ADOPTING.md

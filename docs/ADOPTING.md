@@ -70,6 +70,11 @@ Also ask the person, without guessing:
 - **The workspace slug**: the project's short name on the board, using
   lowercase letters, digits and single hyphens, up to 64 characters. Suggest
   one from the repository's name (for example `my-app`) and let them confirm.
+- **Whether the project spans several repositories** (for example `api` and
+  `web`) that should share one board. Most projects have one, and the steps
+  below are written for that. If it has several, also ask for each repository's
+  name (a slug, like the workspace's) and URL, and read "Several repositories"
+  at the end of step 3.
 - **Whether a team shares this project**, which decides how the MCP server is
   set up in step 4.
 
@@ -150,8 +155,8 @@ curl -fsS -X POST https://backpack.example.com/v1/workspaces \
 ```
 
 `slug` and `name` are required. `repo_url` is optional and is the URL of the
-workspace's repository. That repository is named after the slug unless you
-give `repo` (a slug-style name). A `409` means the slug
+workspace's first repository. That repository is named after the slug unless
+you give `repo` (a slug-style name). A `409` means the slug
 is already taken, so check with the person whether that workspace is this
 project's.
 
@@ -185,6 +190,40 @@ For example, to add `staging`: `batch` with `actions` of
 While two or more branches both merge into the release branch (`dev` and
 `staging` into `main`), a story from review is merged into one of them by
 naming it (`into`).
+
+### e. Several repositories
+
+Skip this for a project with one repository. A workspace can hold several, all
+on one board and one ranked backlog. Each repository has its own branches and
+releases, and each story belongs to one repository.
+
+1. **One workspace for the project.** If it doesn't exist, create it as in
+   step d, giving `repo` as the first repository's name (`api`) and its
+   `repo_url`. If it exists, use it: don't create another.
+2. **Add each further repository.** `add_repo` (through `batch`) with `name`
+   (`web`) and an optional `url`, or `POST /v1/workspaces/{ws}/repos` with
+   `{"name": "web", "url": "https://github.com/you/web"}`. A `409` means the
+   name is taken. List them with `actions` naming `list_repos`. A new
+   repository starts with `main` alone, as its release branch.
+3. **Shape each repository's branches,** by steps a to d, once per repository.
+   Read each repository's own flow, and get the person's approval for each.
+   Every branch action takes `repo` to name the repository:
+   `{"tool": "add_branch", "args": {"repo": "web", "name": "dev", "into": "main"}}`.
+   `has_release_stage` seeds only the first repository's branches. Check one
+   repository's branches with `list_branches` and its `repo`.
+4. **Name the repository wherever it is needed.** Once there are several, a
+   branch action, `merge_branch`, `cut_release`, `add_story` or `add_bug_fix`
+   that names none is refused, and the answer lists the choices. A story's
+   repository is fixed when it is added.
+5. **Each repository gets its own `.backpack.json`** (step 5), naming the
+   workspace and the repository, and its own session hook and tracking section.
+
+A repository joining a workspace that other repositories already use needs only
+items 2, 3 and 5 above, and the hook and tracking section (steps 6 and 7).
+
+Not available yet: joining separate workspaces that already exist into one, and
+renaming or removing a repository. Start a shared board by creating the
+workspace first, then adding the repositories.
 
 ## 4. Connect the MCP server
 
@@ -259,6 +298,13 @@ is, and holds no secret:
 { "workspace": "my-app", "url": "https://backpack.example.com" }
 ```
 
+In a repository of a workspace with several, add `"repo"`, the repository's
+name in Backpack (each repository's file differs only in this):
+
+```json
+{ "workspace": "my-app", "url": "https://backpack.example.com", "repo": "api" }
+```
+
 ## 6. Add the session hook
 
 This step is optional, but recommended. The hook prints "where are we" at the
@@ -284,8 +330,9 @@ there:
 }
 ```
 
-The hook reads the workspace and address from `.backpack.json`, and the token
-from `BACKPACK_TOKEN`. It never fails a session:
+The hook reads the workspace and address (and `repo`, if there is one, which
+narrows "Next" to that repository) from `.backpack.json`, and the token from
+`BACKPACK_TOKEN`. It never fails a session:
 - without `.backpack.json` it prints nothing;
 - without a token, or if Backpack can't be reached within 3 seconds, it prints
   "Backpack unreachable — orientation skipped".
@@ -293,7 +340,8 @@ from `BACKPACK_TOKEN`. It never fails a session:
 ## 7. Tell the project's agents how to track
 
 Add this section to the project's `CLAUDE.md` (or `AGENTS.md`), with the
-workspace slug filled in.
+workspace slug filled in. In a repository with a `repo` in `.backpack.json`,
+the section's last orientation sentence tells agents to pass it on.
 
 If the project kept a tracking document, propose retiring it. Its open work
 goes onto the board with `add_story`, and the document stops being updated.
@@ -301,36 +349,37 @@ goes onto the board with `add_story`, and the document stops being updated.
 ```markdown
 ## How this project tracks
 
-Delivery is tracked in Backpack, workspace `my-app` (see `.backpack.json`),
+Delivery is in Backpack, workspace `my-app` (see `.backpack.json`),
 through the `backpack` MCP tools. There is no tracking document, and tracking
-is never committed. `actions` lists the rarer actions; a rarer change runs
-through `batch`.
+is never committed. `actions` lists rarer actions; run rarer changes through
+`batch`.
 
-- **Orientation.** The session hook has already shown "where are we"; trust it.
-  Call `where_are_we` only if the hook didn't run. `whats_next` gives the next
-  story and `get_story` its detail.
+- **Orientation.** The session hook shows "where are we"; trust it.
+  Call `where_are_we` only if the hook didn't. `whats_next` gives the next
+  story, `get_story` its detail. Pass `.backpack.json`'s `repo`, if any,
+  to `whats_next`, `add_story` and `add_bug_fix`.
 - **Record each move as it happens** with `set_status`: `in_progress` with the
-  task branch, `in_review` with the pull request link, `merged` with the merge
+  task branch, `in_review` with the PR link, `merged` with the merge
   commit. `merge_branch` moves `dev`'s stories to `main`; `cut_release` records a
   release (you create the git tag).
 - **While in progress,** keep `update_story` activity current.
 - **Log as you go** with `log`: decisions with their reason. Entries are never
-  edited; fix one with a `correction`. Stuck or not needed: `on_hold` or
+  edited; fix one with a `correction`. Stuck or unneeded: `on_hold` or
   `closed`, with a reason.
-- **Upstream changed.** Check each marked story against the new plan; update its
+- **Upstream changed.** Check each marked story against the plan; update its
   plan, or `mark_reviewed` with a reason.
 - **Search first,** before `add_story` or `add_idea`. New work goes in with
   `add_story` and its `reasoning`, waits as proposed for a person (a bug with a
   clear fix: `add_bug_fix`), then `add_dependency`. Break an `add_idea`
-  thought into proposed stories and any phase yourself, then `refine_idea` it.
-- **Many changes at once** go in one `batch`; read every answer.
+  into proposed stories and any phase, then `refine_idea` it.
+- **Many changes** go in one `batch`; read each answer.
 ```
 
 ## 8. Finish
 
 Commit what you added: `.backpack.json`, `CLAUDE.md`, and, if you used them,
 `.mcp.json` and the hook files. Follow the project's own branch and pull
-request rules.
+request rules. For several repositories, do this in each one.
 
 Then tell the person what you set up, and ask them to **restart Claude Code**,
 so that the `backpack` tools appear. MCP servers are loaded when it starts.
