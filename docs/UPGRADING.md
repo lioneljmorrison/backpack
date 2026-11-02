@@ -129,5 +129,62 @@ required.
   [ADOPTING.md](ADOPTING.md) step 3. From then on a story, branch action,
   merge or release that names no repository is refused, so agents must pass
   `repo`.
-- **Not available yet:** joining workspaces that already exist separately into
-  one, and renaming or removing a repository.
+- **Joining workspaces** that already exist separately into one is done by the
+  person running the board (`make join`); if it was done for yours, see "Your
+  workspaces were joined" below. Renaming or removing a repository is not
+  available yet.
+
+## Upgrading to 0.6.0
+
+Workspaces that exist separately can now be joined into one, by the person
+running the board (`make join`). A project whose workspace was not joined
+needs only the step below; one whose workspace was joined also follows "Your
+workspaces were joined".
+
+### 1. The hook shows why Backpack refused
+
+The session hook used to print "Backpack unreachable — orientation skipped"
+for every refusal. Now, when Backpack refuses the request (a joined workspace,
+an unknown repository, a bad token), it prints Backpack's reason, such as
+`Backpack: <old> was joined into <new>; use workspace <new> with repo <r>`.
+Projects get this by downloading the hook again (the same command as in
+[ADOPTING.md](ADOPTING.md) step 6, which overwrites the old copy). A project
+with the old hook keeps working, but still prints "unreachable" for a refusal.
+
+## Your workspaces were joined
+
+Follow this only when the person tells you the project's workspace was joined
+into another (`make join`), or when a request answers `<old> was joined into
+<new>; use workspace <new> with repo <r>` (404). The work was copied to the new
+workspace; the old workspace refuses every request and drops out of
+`list_workspaces`, and its data is kept.
+
+1. **Point the project at the new workspace.** In the project's
+   `.backpack.json` set `"workspace"` to the new workspace's slug and add
+   `"repo"` set to the old workspace's slug. The old workspace's repository
+   keeps its name, and the refusal names it. If the refusal lists several
+   (`r1 or r2`), this project is the one that holds that repository: use its
+   name. Leave `"url"` as it is.
+2. **Several repositories now apply.** The new workspace holds the repositories
+   of every workspace that was joined, so a story, branch action, merge or
+   release that names no repository is refused. Bring in the tracking section
+   from [ADOPTING.md](ADOPTING.md) step 7 and the hook from step 6, as in
+   "Several repositories (optional)" above, so that `repo` from
+   `.backpack.json` is passed to `whats_next`, `add_story` and `add_bug_fix`.
+3. **Tokens are unchanged.** Tokens belong to people and agents, not to a
+   workspace; the existing ones work on the new workspace. Do not ask for a new
+   one.
+4. **Ids changed.** In the new workspace a story, idea, goal, release and log
+   entry may have a new id. Each keeps its old id and workspace as `old_id` and
+   `old_workspace`, and each story's log ends with a note saying where it came
+   from. Text is copied exactly, so descriptions and plans that name an id such
+   as `S-3` still name the old one. Branch names recorded on stories are
+   unchanged. Check what the project's own files (a plan, a commit message, a
+   pull request description) say about ids before relying on them.
+5. **Search is ready.** The join rebuilds the new workspace's search index and
+   drops the old workspaces' indexes, so searching the new workspace works at
+   once and finds the join notes. Only if the person tells you the join printed
+   `search: run make reindex` (Typesense was down) does search wait until they
+   run it.
+6. **Check it works.** `whats_next` with the `repo` answers from the new
+   workspace.

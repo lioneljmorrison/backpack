@@ -393,3 +393,56 @@ func TestAStoryIsFoundByItsBugKind(t *testing.T) {
 	addStory(t, b, "demo", board.NewStory{Title: "Export invoices"})
 	wantIDs(t, x, "demo", "bug", "S-1")
 }
+
+// Fixtures are invented: demo-api is joined into demo-web.
+func TestSearchingAJoinedWorkspaceGivesThePointer(t *testing.T) {
+	db, prefix := falkortest.Prefix(t)
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	url, key, cprefix := typesensetest.Prefix(t)
+	x := search.New(url, key, cprefix, b)
+	workspace(t, b, "demo-api")
+	falkortest.MarkEntry(t, db, prefix+"system", "demo-api", map[string]any{"joined_into": "demo-web", "joined_repos": []string{"api"}})
+	_, err = x.Search(ctx, "demo-api", "invoices")
+	var be *board.Error
+	if !errors.As(err, &be) || be.Kind != board.NotFound ||
+		be.Msg != "demo-api was joined into demo-web; use workspace demo-web with repo api" {
+		t.Fatalf("error = %v, want the pointer", err)
+	}
+}
+
+func TestDropRemovesOnlyTheNamedWorkspacesCollection(t *testing.T) {
+	b, x, ts := newTarget(t)
+	workspace(t, b, "demo-api")
+	workspace(t, b, "demo-web")
+	if err := x.RebuildAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := x.Drop(ctx, "demo-api"); err != nil {
+		t.Fatal(err)
+	}
+	if code := typesensetest.Do(ts.url, ts.key, http.MethodGet, "/collections/"+ts.prefix+"demo-api", ""); code != http.StatusNotFound {
+		t.Fatalf("dropped collection answers %d, want 404", code)
+	}
+	if code := typesensetest.Do(ts.url, ts.key, http.MethodGet, "/collections/"+ts.prefix+"demo-web", ""); code != http.StatusOK {
+		t.Fatalf("the other collection answers %d, want 200", code)
+	}
+}
+
+func TestDropOfAMissingCollectionIsNotAnError(t *testing.T) {
+	_, x, _ := newTarget(t)
+	if err := x.Drop(ctx, "demo-gone"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDropRefusesNamesThatAreNotWorkspaceSlugs(t *testing.T) {
+	_, x, _ := newTarget(t)
+	for _, ws := range []string{"", "_warm", "a/b", "../x", "Demo", "*"} {
+		if err := x.Drop(ctx, ws); err == nil {
+			t.Errorf("Drop(%q) succeeded, want a refusal", ws)
+		}
+	}
+}

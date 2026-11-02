@@ -221,9 +221,10 @@ releases, and each story belongs to one repository.
 A repository joining a workspace that other repositories already use needs only
 items 2, 3 and 5 above, and the hook and tracking section (steps 6 and 7).
 
-Not available yet: joining separate workspaces that already exist into one, and
-renaming or removing a repository. Start a shared board by creating the
-workspace first, then adding the repositories.
+Separate workspaces that already exist are joined into one by the person
+running the board (`make join`; after it, see "Your workspaces were joined" in
+[UPGRADING.md](UPGRADING.md)). Renaming or removing a repository is not
+available yet.
 
 ## 4. Connect the MCP server
 
@@ -334,8 +335,12 @@ The hook reads the workspace and address (and `repo`, if there is one, which
 narrows "Next" to that repository) from `.backpack.json`, and the token from
 `BACKPACK_TOKEN`. It never fails a session:
 - without `.backpack.json` it prints nothing;
-- without a token, or if Backpack can't be reached within 3 seconds, it prints
-  "Backpack unreachable — orientation skipped".
+- without a token, or if Backpack can't be reached within 3 seconds (or
+  answers with a server error), it prints "Backpack unreachable —
+  orientation skipped";
+- if Backpack refuses the request (a joined workspace, an unknown repository, a
+  bad token), it prints Backpack's own reason, for example "Backpack: demo was
+  joined into combined; use workspace combined with repo demo".
 
 ## 7. Tell the project's agents how to track
 

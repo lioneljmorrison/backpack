@@ -55,7 +55,14 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (_ Workspace, err err
 	if err := plainText(w.Name, w.RepoURL); err != nil {
 		return Workspace{}, err
 	}
-	if _, err := b.workspace(w.Slug); err == nil {
+	// The registry is read directly: a joined workspace refuses lookups, but
+	// its slug is still taken, and so is one a join is building.
+	taken, err := b.system.ROQuery("MATCH (e:WorkspaceEntry) WHERE e.slug = $slug OR e.joining = $slug RETURN e.slug LIMIT 1",
+		map[string]any{"slug": w.Slug}, nil)
+	if err != nil {
+		return Workspace{}, fmt.Errorf("look up workspace: %w", err)
+	}
+	if taken.Next() {
 		return Workspace{}, refuse(Conflict, "workspace %q already exists", w.Slug)
 	}
 
@@ -91,8 +98,8 @@ func (b *Board) CreateWorkspace(actor string, w Workspace) (_ Workspace, err err
 	}
 	w.CreatedBy, w.CreatedAt = actor, at
 	res, err := b.system.Query(`
-		OPTIONAL MATCH (taken:WorkspaceEntry {slug: $slug})
-		WITH taken
+		OPTIONAL MATCH (taken:WorkspaceEntry) WHERE taken.slug = $slug OR taken.joining = $slug
+		WITH taken LIMIT 1
 		FOREACH (_ IN CASE WHEN taken IS NULL THEN [1] ELSE [] END |
 			CREATE (:WorkspaceEntry {slug: $slug, name: $name, repo_url: $repo,
 				has_release_stage: $release, created_by: $actor, created_at: $now}))
@@ -147,10 +154,11 @@ func repos(g *falkordb.Graph) ([]Repo, error) {
 	return out, nil
 }
 
-// entries lists the registry: every workspace, without its repositories.
+// entries lists the registry: every workspace that was not joined into
+// another, without its repositories. A workspace being joined stays listed.
 func (b *Board) entries() ([]Workspace, error) {
 	res, err := b.system.ROQuery(`
-		MATCH (e:WorkspaceEntry)
+		MATCH (e:WorkspaceEntry) WHERE e.joined_into IS NULL
 		RETURN e.slug AS slug, e.name AS name, e.repo_url AS repo,
 			coalesce(e.has_release_stage, false) AS release, e.created_by AS by, e.created_at AS at
 		ORDER BY e.slug`, nil, nil)

@@ -184,3 +184,31 @@ func TestAnUnknownPageIsNotFound(t *testing.T) {
 		t.Fatalf("status %d, want 404", w.Code)
 	}
 }
+
+// Fixtures are invented: demo-api is joined into demo-web, demo is being joined.
+func TestAJoinedWorkspacesPagesSayWhereItsWorkWent(t *testing.T) {
+	db, prefix := falkortest.Prefix(t)
+	b, err := board.New(db, prefix+"system", prefix+"ws:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{"demo", "demo-api", "demo-web"} {
+		if _, err := b.CreateWorkspace("tester", board.Workspace{Slug: s, Name: s}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	falkortest.MarkEntry(t, db, prefix+"system", "demo-api", map[string]any{"joined_into": "demo-web", "joined_repos": []string{"api"}})
+	falkortest.MarkEntry(t, db, prefix+"system", "demo", map[string]any{"joining": "demo-web"})
+	h := New(known, b, nil, nil)
+
+	w := get(h, "/w/demo-api", "bp_good")
+	if w.Code != 404 || !strings.Contains(w.Body.String(), "demo-api was joined into demo-web; use workspace demo-web with repo api") {
+		t.Fatalf("joined: %d %s", w.Code, w.Body)
+	}
+	if w := get(h, "/w/demo", "bp_good"); w.Code != 409 || !strings.Contains(w.Body.String(), "try again shortly") {
+		t.Fatalf("being joined: %d %s", w.Code, w.Body)
+	}
+	if w := get(h, "/w/demo-web", "bp_good"); w.Code != 200 {
+		t.Fatalf("target: %d", w.Code)
+	}
+}

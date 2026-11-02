@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Backpack
-  version: 0.5.0
+  version: 0.6.0
   description: >-
     A Kanban board for agentic projects. Every route under /v1, and the MCP
     server at /mcp, requires a bearer token issued with `backpack token
@@ -1795,7 +1795,7 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     NotFound:
-      description: No such workspace, phase, goal, story, log entry or dependency
+      description: No such workspace, phase, goal, story, log entry or dependency. A workspace that was joined into another is a 404 too, and the error names the workspace and repository to use instead
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

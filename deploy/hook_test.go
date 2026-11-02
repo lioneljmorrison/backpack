@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,16 +114,64 @@ func TestHookWithoutATokenSaysUnreachable(t *testing.T) {
 	}
 }
 
-func TestHookSaysUnreachableWhenTheServiceRefuses(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusInternalServerError} {
+func TestHookSaysUnreachableOnAServerError(t *testing.T) {
+	for _, status := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "no", status)
+			http.Error(w, "boom", status)
 		}))
 		out, code := runHook(t, project(t, srv.URL), "bp_test")
 		srv.Close()
 		if code != 0 || out != unreachable {
 			t.Errorf("status %d: exit %d, output %q", status, code, out)
 		}
+	}
+}
+
+// refuses answers every request with status and body, as Backpack does.
+func refuses(t *testing.T, status int, contentType, body string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(status)
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	out, code := runHook(t, project(t, srv.URL), "bp_secret_token")
+	if code != 0 {
+		t.Fatalf("exit %d, output %q", code, out)
+	}
+	if strings.Contains(out, "bp_secret_token") {
+		t.Fatalf("the hook printed the token: %q", out)
+	}
+	return out
+}
+
+func TestHookShowsBackpacksReasonFromAJSONRefusal(t *testing.T) {
+	reason := "demo was joined into combined; use workspace combined with repo demo"
+	out := refuses(t, http.StatusNotFound, "application/json", `{"error":"`+reason+`"}`+"\n")
+	if out != "Backpack: "+reason+"\n" {
+		t.Fatalf("output %q", out)
+	}
+}
+
+func TestHookUnescapesAndTrimsAJSONReason(t *testing.T) {
+	out := refuses(t, http.StatusConflict, "application/json", `{"error":"say \"hi\" first\nsecond line"}`)
+	if out != "Backpack: say \"hi\" first\n" {
+		t.Fatalf("output %q", out)
+	}
+}
+
+func TestHookShowsTheFirstLineOfAPlainTextRefusal(t *testing.T) {
+	out := refuses(t, http.StatusUnauthorized, "text/plain", "unauthorized\nmore detail\n")
+	if out != "Backpack: unauthorized\n" {
+		t.Fatalf("output %q", out)
+	}
+}
+
+func TestHookNamesTheStatusWhenARefusalHasNoBody(t *testing.T) {
+	out := refuses(t, http.StatusForbidden, "text/plain", "")
+	if out != "Backpack: refused the request (HTTP 403)\n" {
+		t.Fatalf("output %q", out)
 	}
 }
 

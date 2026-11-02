@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -163,6 +164,21 @@ func (x *Index) Rebuild(ctx context.Context, ws string) error {
 	return x.c.importDocs(ctx, name, ds)
 }
 
+// slugShape is what a workspace slug looks like; Drop accepts nothing else, so
+// it can only ever reach a collection a workspace's name gives.
+var slugShape = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+// Drop removes a workspace's collection, for a workspace that no longer has
+// an index of its own (one joined into another). A collection that is not
+// there is already dropped. It takes only a workspace slug, never a bare
+// collection name, so the one collection it can reach is prefix + slug.
+func (x *Index) Drop(ctx context.Context, ws string) error {
+	if len(ws) > 64 || !slugShape.MatchString(ws) {
+		return fmt.Errorf("search: %q is not a workspace slug", ws)
+	}
+	return x.c.drop(ctx, x.collection(ws))
+}
+
 // Warm makes sure Typesense has the embedding model, by creating and
 // dropping a collection that uses it. On a new Typesense volume this
 // downloads the model, which can take longer than syncing one change is
@@ -269,14 +285,9 @@ func (x *Index) SearchNear(ctx context.Context, ws, q, story string) ([]Result, 
 }
 
 func (x *Index) workspaceExists(ws string) error {
-	all, err := x.b.Workspaces()
-	if err != nil {
-		return err
-	}
-	if !slices.ContainsFunc(all, func(w board.Workspace) bool { return w.Slug == ws }) {
-		return &board.Error{Kind: board.NotFound, Msg: fmt.Sprintf("no workspace %q", ws)}
-	}
-	return nil
+	// The board's own lookup, so a joined workspace gets its pointer.
+	_, err := x.b.Repos(ws)
+	return err
 }
 
 // search runs one query, narrowed by filter when it is not empty.

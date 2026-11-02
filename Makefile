@@ -17,7 +17,7 @@ TEST_ENV := BACKPACK_TEST_FALKORDB=falkor://localhost:16379 \
 # The lowest total test coverage, in percent, the gates accept.
 COVERAGE_MIN := 70
 
-.PHONY: up tunnel down logs forward test gates coverage token reindex
+.PHONY: up tunnel down logs forward test gates coverage token reindex join-preview join join-abort
 
 up:            ## start the whole stack, rebuilding the service
 	$(COMPOSE) up -d --build
@@ -55,3 +55,15 @@ token:         ## make token ACTOR=<name>
 
 reindex:       ## rebuild every workspace's search index from the board
 	@$(COMPOSE) exec backpack /backpack reindex
+
+join-preview:  ## make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b": what joining workspaces would do; writes nothing
+	@test -n "$(INTO)" -a -n "$(NAME)" -a -n "$(ACTOR)" -a -n "$(FROM)" || (echo "join-preview: set INTO, NAME, ACTOR and FROM" && exit 1)
+	@$(COMPOSE) exec backpack /backpack join --into "$(INTO)" --name "$(NAME)" --actor "$(ACTOR)" $(FROM)
+
+join:          ## make join INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b": join workspaces into a new one (preview first: make join-preview)
+	@test -n "$(INTO)" -a -n "$(NAME)" -a -n "$(ACTOR)" -a -n "$(FROM)" || (echo "join: set INTO, NAME, ACTOR and FROM" && exit 1)
+	@$(COMPOSE) exec backpack /backpack join --apply --into "$(INTO)" --name "$(NAME)" --actor "$(ACTOR)" $(FROM)
+
+join-abort:    ## make join-abort INTO=<slug>: undo an interrupted join
+	@test -n "$(INTO)" || (echo "join-abort: set INTO" && exit 1)
+	@$(COMPOSE) exec backpack /backpack join --abort --into "$(INTO)"

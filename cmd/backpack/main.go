@@ -4,6 +4,8 @@
 //	backpack token create --actor <name>
 //	backpack token revoke --actor <name>
 //	backpack reindex [--workspace <slug>]
+//	backpack join --into <slug> --name <name> --actor <who> [--apply] <workspace> <workspace>...
+//	backpack join --abort --into <slug>
 package main
 
 import (
@@ -16,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,6 +36,8 @@ const usage = `usage:
   backpack token create --actor <name>
   backpack token revoke --actor <name>
   backpack reindex [--workspace <slug>]
+  backpack join --into <slug> --name <name> --actor <who> [--apply] <workspace> <workspace>...
+  backpack join --abort --into <slug>
 `
 
 // rebuildTimeout bounds loading the search model and a full rebuild of the
@@ -90,6 +95,8 @@ func dispatch(cfg config, args []string, out, errOut io.Writer) int {
 		return token(cfg, args[1:], out, errOut)
 	case "reindex":
 		return reindex(cfg, args[1:], out, errOut)
+	case "join":
+		return join(cfg, args[1:], out, errOut)
 	}
 	fmt.Fprint(errOut, usage)
 	return 2
@@ -133,6 +140,89 @@ func reindex(cfg config, args []string, out, errOut io.Writer) int {
 	}
 	fmt.Fprintf(out, "reindexed %d workspace(s)\n", len(all))
 	return 0
+}
+
+// join joins workspaces into one new workspace. Without --apply it reports
+// what that would do and writes nothing; --apply does it; --abort undoes an
+// interrupted join into the named workspace.
+func join(cfg config, args []string, out, errOut io.Writer) int {
+	fs := flag.NewFlagSet("join", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	into := fs.String("into", "", "the new workspace's slug")
+	name := fs.String("name", "", "the new workspace's name")
+	actor := fs.String("actor", "", "who the join is for")
+	apply := fs.Bool("apply", false, "do the join instead of previewing it")
+	abort := fs.Bool("abort", false, "undo an interrupted join into --into")
+	if err := fs.Parse(args); err != nil || *into == "" {
+		fmt.Fprint(errOut, usage)
+		return 2
+	}
+	if *abort {
+		if *apply || *name != "" || *actor != "" || fs.NArg() != 0 {
+			fmt.Fprint(errOut, usage)
+			return 2
+		}
+	} else if *name == "" || *actor == "" || fs.NArg() < 2 {
+		fmt.Fprint(errOut, usage)
+		return 2
+	}
+	db, err := falkor.Connect(cfg.FalkorURL)
+	if err != nil {
+		return report(errOut, err)
+	}
+	defer db.Conn.Close()
+	b, err := board.New(db, cfg.SystemGraph, cfg.WorkspacePrefix)
+	if err != nil {
+		return report(errOut, err)
+	}
+	if *abort {
+		if err := b.AbortJoin(*into); err != nil {
+			return report(errOut, err)
+		}
+		fmt.Fprintf(out, "aborted the join into %s: the half-built workspace is gone and the sources accept writes again\n", *into)
+		return 0
+	}
+	req := board.JoinRequest{Into: *into, Name: *name, Actor: *actor, From: fs.Args()}
+	if !*apply {
+		plan, err := b.PreviewJoin(req)
+		if err != nil {
+			return report(errOut, err)
+		}
+		fmt.Fprint(out, plan.Report())
+		return 0
+	}
+	plan, err := b.ApplyJoin(req, board.JoinHooks{})
+	if err != nil {
+		return report(errOut, err)
+	}
+	fmt.Fprint(out, plan.AppliedReport())
+	fmt.Fprint(out, reindexJoined(cfg, b, plan, errOut))
+	return 0
+}
+
+// reindexJoined makes the new workspace searchable and drops the sources'
+// indexes, and answers the line the join prints about it. The board change
+// has stood by now, so a search failure never fails the join: it answers the
+// reindex hint instead. Only the sources' own collections are dropped, and
+// only after the new one was built.
+func reindexJoined(cfg config, b *board.Board, plan board.JoinPlan, errOut io.Writer) string {
+	const hint = "search: run make reindex\n"
+	x := search.New(cfg.TypesenseURL, cfg.TypesenseKey, cfg.CollectionPrefix, b)
+	ctx, cancel := context.WithTimeout(context.Background(), rebuildTimeout)
+	defer cancel()
+	if err := x.Rebuild(ctx, plan.Request.Into); err != nil {
+		fmt.Fprintf(errOut, "backpack: search was not rebuilt: %v\n", err)
+		return hint
+	}
+	var dropped []string
+	for _, s := range plan.Sources {
+		if err := x.Drop(ctx, s.Slug); err != nil {
+			fmt.Fprintf(errOut, "backpack: the search index of %s was not dropped: %v\n", s.Slug, err)
+			continue
+		}
+		dropped = append(dropped, s.Slug)
+	}
+	return fmt.Sprintf("search: rebuilt %s, dropped %s\n", plan.Request.Into, strings.Join(dropped, ", "))
 }
 
 func report(errOut io.Writer, err error) int {

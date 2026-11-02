@@ -863,6 +863,132 @@ Branches replace it: the status query reads `Branch` nodes, and a new
 workspace's branches are seeded from the creation setting (one branch, or
 `dev` into `main`).
 
+A registry entry can also carry the marks of a join (Phase 6). `joined_into`
+(the target workspace's slug), `joined_repos` (the repositories the work went
+to), `joined_at` and `joined_by` say the workspace was joined into another;
+`joining` (the target's slug) says a join is under way, on a source and also
+on the entry that reserves the slug of a target still being built. The
+join (S-78) sets them; tests set them directly. The one
+workspace lookup every request goes through (HTTP, MCP, web and search) reads
+them: a joined workspace is 404 with `<ws> was joined into <t>; use workspace
+<t> with repo <r>` (several repositories read `r1 or r2`), and one being joined
+is 409 with `<ws> is being joined into <t>; try again shortly`. A joined
+workspace is left out of the registry listing, so it drops out of
+`list_workspaces` and the web list, and start-up neither migrates it nor
+rebuilds its search index; its graph is kept (the join drops its collection). A workspace being joined stays
+listed and migrated. Creating a workspace checks the registry directly, so a
+slug that is registered (joined or not) or that a join is building is a 409
+before any graph is touched. Workspaces that are not joined answer exactly as
+before.
+
+**Previewing a join (Phase 6, S-77).** `backpack join --into <slug> --name
+<name> --actor <who> <ws> <ws>...` (`make join-preview INTO= NAME= ACTOR=
+FROM="a b"`) reports what joining workspaces into one new workspace would do,
+and writes nothing: sources are read with read-only queries, the target's graph
+and registry entry are not touched, and a test compares every graph and the
+registry before and after. A usage mistake (a missing flag, fewer than two
+workspaces) exits 2; a refusal exits 1 with its reason. The plan the preview
+builds (`board.JoinPlan`) is what the join applies, so it holds exact data
+and not only text. Each source is read generically (`MATCH (n) RETURN n` and
+every edge with its end points' internal ids), so a join cannot drop what it
+does not know: a label or edge type outside the known set (labels `Workspace`,
+`SchemaVersion`, `Repo`, `Branch`, `Phase`, `Goal`, `Story`, `Release`, `Idea`,
+`LogEntry`; edges `HAS_GOAL`, `CONTAINS`, `DEPENDS_ON`, `FOUND_IN`, `LOGGED`,
+`CORRECTS`, `BECAME`, `IN_RELEASE`, `HAS_BRANCH`, `HOLDS`, `HAS_RELEASE`) is
+refused by name. Source k's offsets are the sum, over the sources before it, of
+each counter less one (`next_story`, `next_log`, `next_idea`, `next_goal`,
+`next_release`) and of the highest phase number; the first source keeps its ids.
+The target's counters carry on after every source, and its `next_log` also
+reserves one id per story for the join notes. `Remap` is the rule for a node:
+`Story.id`, `Story.upstream_id`, `Idea.id`, `Goal.id`, `LogEntry.id` and
+`Release.id` (not `R-0`) move up by the offset and `Phase.number` by the phase
+offset; `Story` and `Idea` ranks get the next unused digit of the rank alphabet
+as a prefix (`1` for the first source, so at most 61 sources, each source's
+order kept and no rank ending in `0`); `Story`, `Idea`, `Goal`, `Release` and
+`Phase` gain `old_id` and `old_workspace`; every other property, text
+included, is copied as it is. The report gives, per source, its repositories,
+branches, counts and old range to new range for each kind of id, then the
+target's counters, the join notes' block, the story that would top the merged
+backlog, and warnings: stories in progress or in review that get new ids, and
+how many text fields (a story's description, goal and plan, an idea's context,
+a phase's description, a goal's text, a release's notes) name an id such as
+`S-3`, which keep naming the old one. The preview refuses: fewer than two or
+duplicate sources, or more than 61; a target slug that is not a valid slug, a
+name that is empty or not plain text, no actor; a target that is registered
+(joined or not), or whose graph exists, unless every source is already marked
+`joining` this target (an interrupted join being resumed); a source that does
+not exist, was joined, is being joined into another target, has no graph or is
+not on the current schema; another workspace being joined into the same target;
+two sources with a repository of one name; more than one `R-0`; an unknown
+label or edge.
+
+**Applying a join (Phase 6, S-78).** `backpack join ... --apply` (`make join
+INTO= NAME= ACTOR= FROM="a b"`) does what the preview reports; `backpack join
+--abort --into <slug>` (`make join-abort INTO=`) undoes an interrupted one.
+Copying between graphs cannot be one query, so the new workspace's graph is
+built where nobody can reach it (it has no registry entry, and a request for it
+is a 404) and made visible by one registry query. Every change anyone can see
+is one query that checks its own rules:
+
+1. **Freeze.** One system query sets `joining = <target>` on every source, if
+   all of them exist, none was joined or is being joined into another target,
+   the target has no entry and no other workspace is being joined into it. A
+   frozen source refuses requests (409 `being joined`, try again). Freezing again
+   to the same target is the resume path.
+2. **Snapshot** each source, as the preview does (it is run again once frozen).
+3. **Prepare.** An unregistered graph left by an interrupted run of this join is
+   deleted (only when every source was already frozen to this target before the
+   run, so a graph a person made is never touched); then `Migrate` runs on the
+   empty graph, so the schema version is recorded and start-up adds nothing.
+4. **Build in memory** (`buildJoin`): each node through `Remap`; the source
+   `Workspace` nodes collapse into one (slug is the target, counters from the
+   plan), `SchemaVersion` nodes are left to `Migrate`; edges follow their end
+   points; one join note per story (`Joined into <t> from <src>, where this was
+   S-n. Ids in earlier entries are <src>'s.`, kind `note`, by the join's actor)
+   takes its id from the block the plan reserved, in the order of the new story
+   ids, with a `LOGGED` edge.
+5. **Write** in chunks of 500 rows: nodes per label set with `UNWIND $rows AS r
+   CREATE (n:L) SET n += r.p RETURN r.k, id(n)` (each row carries its own key,
+   so new internal ids map back by key and not by row order), then edges per
+   type matched by `id()`. The FalkorDB client sends a list of maps as a
+   parameter: a test round-trips strings with quotes, newlines and non-ASCII
+   text, integers, floats, booleans and lists through exactly this shape.
+6. **Verify** by reading the new graph back generically: every node's labels
+   and properties and every edge (type, end points, properties) must equal what
+   was meant to be written, with nothing extra and one `SchemaVersion` at the
+   current version; then one read query for the rules (no dependency ranked
+   above its dependent; each story held by one repository, each branch in one,
+   each release in one) and a check that each counter is above the highest id
+   of its kind; then each source is read again and must equal its snapshot. Any
+   failure deletes the new graph and clears the freeze in one query, and the
+   join reports the failure. The sources were never written.
+7. **Switch.** One system query, if the target has no entry and every source is
+   frozen to it, creates the target's entry (`has_release_stage` from the new
+   graph), sets `joined_into`, `joined_repos` (the repositories that went to the
+   target), `joined_at` and `joined_by` on each source and clears `joining`. If
+   a rule does not hold it writes nothing and the join fails like a verify
+   failure. The sources' graphs are kept; tokens are not touched.
+
+`--abort` refuses a target that has an entry, and one that no join froze sources
+for (so it never deletes a graph it cannot show to be a join's); otherwise it
+deletes the half-built graph and then clears the freeze (in that order, so
+nobody can take the name in between). A killed run leaves the sources frozen
+and the target unregistered: running the join again resumes it, `--abort` undoes
+it. Tests use a hook (`JoinHooks.After`) to fail or interrupt a run after a
+stage.
+
+**Search after a join (Phase 6, S-79).** Once the switch has happened, the
+command rebuilds the new workspace's search index (`Index.Rebuild`) and then
+drops each source's collection (`Index.Drop`, which takes a workspace slug and
+nothing else, so it can only reach `prefix + slug`; a collection that is not
+there counts as dropped). The new workspace is searchable at once, including
+the join notes. The board change has stood by then, so a search failure never
+fails the join: it prints `search: run make reindex` and exits 0. When the
+rebuild fails nothing is dropped; a source whose collection cannot be dropped
+is reported on stderr and its stale index is harmless (a joined workspace is
+left out of every rebuild, so only `make reindex` of nothing would recreate
+it). On success the report ends `search: rebuilt <new>, dropped <sources>`.
+
 - **Rank** is a fractional string key over `0-9A-Za-z` (ASCII order, so Go
   and FalkorDB compare keys alike). Between two neighbours there is always a
   key, so a move rewrites only the moved story. `Story.rank` is deliberately
