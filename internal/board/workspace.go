@@ -124,6 +124,16 @@ func (b *Board) Workspaces() ([]Workspace, error) {
 	return out, nil
 }
 
+// Repos lists a workspace's repositories by name; an unknown workspace is
+// NotFound.
+func (b *Board) Repos(ws string) ([]Repo, error) {
+	g, err := b.workspace(ws)
+	if err != nil {
+		return nil, err
+	}
+	return repos(g)
+}
+
 // repos reads a workspace graph's repositories by name.
 func repos(g *falkordb.Graph) ([]Repo, error) {
 	res, err := g.ROQuery("MATCH (r:Repo) RETURN r.name AS name, r.url AS url ORDER BY r.name", nil, nil)

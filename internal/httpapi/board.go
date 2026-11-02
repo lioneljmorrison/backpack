@@ -140,7 +140,7 @@ func (a boardAPI) cutRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a boardAPI) listReleases(w http.ResponseWriter, r *http.Request) {
-	rs, err := a.b.ListReleases(r.PathValue("ws"))
+	rs, err := a.b.ListReleases(r.PathValue("ws"), r.URL.Query().Get("repo"))
 	respond(w, http.StatusOK, map[string]any{"releases": rs}, err)
 }
 

@@ -68,11 +68,11 @@ func (b *Board) Where(ws string) (Where, error) {
 	if err != nil {
 		return Where{}, err
 	}
-	release := ""
+	// Each repository waits on its own release branch.
+	release := map[string]string{}
 	for _, br := range bs {
-		if br.Release {
-			release = br.Name
-			break
+		if _, ok := release[br.Repo]; br.Release && !ok {
+			release[br.Repo] = br.Name
 		}
 	}
 	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, StraightIn: []Story{}, Unreleased: []Story{}, UpstreamChanged: []Story{}}
@@ -93,7 +93,7 @@ func (b *Board) Where(ws string) (Where, error) {
 		case OnHold:
 			w.OnHold = append(w.OnHold, s)
 		case Merged:
-			if release != "" && s.Into == release {
+			if rb := release[s.Repo]; rb != "" && s.Into == rb {
 				w.Unreleased = append(w.Unreleased, s)
 			}
 		case Backlog:

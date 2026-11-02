@@ -25,21 +25,27 @@ type Release struct {
 }
 
 // NewRelease is what CutRelease needs: a version and its git tag, and
-// optionally the commit the tag points at and notes.
+// optionally the repository, the commit the tag points at and notes.
 type NewRelease struct {
+	// Repo names the repository to cut in; it may be left out when the
+	// workspace has one.
+	Repo    string `json:"repo"`
 	Version string `json:"version"`
 	Tag     string `json:"tag"`
 	Commit  string `json:"commit"`
 	Notes   string `json:"notes"`
 }
 
-// CutRelease records an official release. Every story merged into the release
-// branch that is not in a release yet becomes Released, is linked to the new
-// release and gets a status entry from merged to released that names it, with
-// the release commit when one is given. Stories merged into other branches,
-// and those still in progress or in review, stay put. A version already
-// released, or nothing to release, is a refusal (Conflict). All of it is one
-// query, so the release and every story change together or not at all.
+// CutRelease records an official release of one repository. Every story that
+// repository holds, merged into its release branch and not in a release yet,
+// becomes Released, is linked to the new release and gets a status entry from
+// merged to released that names it, with the release commit when one is given.
+// Stories merged into other branches, those still in progress or in review,
+// and those of other repositories, stay put. The repository is named when the
+// workspace has several (see resolveRepo). A version the repository already
+// released, or nothing to release, is a refusal (Conflict). Release ids are one
+// series across the workspace. All of it is one query, so the release and every
+// story change together or not at all.
 func (b *Board) CutRelease(ws, actor string, n NewRelease) (_ Release, err error) {
 	if n.Version == "" {
 		return Release{}, refuse(Invalid, "a version is required to cut a release")
@@ -56,30 +62,31 @@ func (b *Board) CutRelease(ws, actor string, n NewRelease) (_ Release, err error
 	}
 	at := now()
 	res, err := g.Query(`
+		`+resolveRepo+`
 		MATCH (w:Workspace)
-		OPTIONAL MATCH (rp:Repo)
-		OPTIONAL MATCH (b:Branch) WHERE b.into IS NULL
-		WITH w, rp, collect(b.name)[0] AS branch, coalesce(w.next_log, 1) AS n, coalesce(w.next_release, 1) AS rn
-		OPTIONAL MATCH (d:Release {version: $version})
-		WITH w, rp, branch, n, rn, count(d) AS dups
-		OPTIONAL MATCH (s:Story {status: 'merged'}) WHERE s.into = branch
-		WITH w, rp, branch, n, rn, dups, s ORDER BY s.rank, s.id
-		WITH w, rp, branch, n, rn, dups, collect(s) AS ss
-		WITH w, rp, branch, n, rn, ss, 'R-' + toString(rn) AS id,
-			CASE WHEN dups > 0 THEN 'duplicate' WHEN size(ss) = 0 THEN 'nothing' END AS violation
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(b:Branch) WHERE b.into IS NULL
+		WITH w, rps, rp, collect(b.name)[0] AS branch, coalesce(w.next_log, 1) AS n, coalesce(w.next_release, 1) AS rn
+		OPTIONAL MATCH (rp)-[:HAS_RELEASE]->(d:Release {version: $version})
+		WITH w, rps, rp, branch, n, rn, count(d) AS dups
+		OPTIONAL MATCH (rp)-[:HOLDS]->(s:Story {status: 'merged'}) WHERE s.into = branch
+		WITH w, rps, rp, branch, n, rn, dups, s ORDER BY s.rank, s.id
+		WITH w, rps, rp, branch, n, rn, dups, collect(s) AS ss
+		WITH w, rps, rp, branch, n, rn, ss, 'R-' + toString(rn) AS id,
+			CASE WHEN size(rps) = 0 THEN 'no repo' WHEN size(rps) > 1 THEN 'several repos'
+				WHEN dups > 0 THEN 'duplicate' WHEN size(ss) = 0 THEN 'nothing' END AS violation
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 			SET w.next_release = rn + 1, w.next_log = n + size(ss)
 			CREATE (r:Release {id: id, version: $version, tag: $tag, commit: $commit, notes: $notes,
 				created_by: $actor, created_at: $at})
-			FOREACH (q IN CASE WHEN rp IS NULL THEN [] ELSE [rp] END | CREATE (q)-[:HAS_RELEASE]->(r))
+			CREATE (rp)-[:HAS_RELEASE]->(r)
 			FOREACH (i IN range(0, size(ss) - 1) | FOREACH (s IN [ss[i]] |
 				SET s.status = 'released', s.upstream_id = null, s.upstream_at = null
 				CREATE (s)-[:IN_RELEASE]->(r)
 				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $at, actor: $actor, kind: 'status',
 					from: 'merged', to: 'released', commit: $commit, into: branch,
 					text: 'Released in ' + id + ' (' + $version + ')'}))))
-		RETURN violation, id, rp.name AS repo, branch, [s IN ss | s.id] AS ids`,
-		map[string]any{"version": n.Version, "tag": n.Tag, "commit": orNull(n.Commit), "notes": orNull(n.Notes),
+		RETURN violation, id, rp.name AS repo, branch, [s IN ss | s.id] AS ids, `+repoNames+``,
+		map[string]any{"repo": n.Repo, "version": n.Version, "tag": n.Tag, "commit": orNull(n.Commit), "notes": orNull(n.Notes),
 			"actor": actor, "at": at}, nil)
 	if err != nil {
 		return Release{}, fmt.Errorf("cut release: %w", err)
@@ -88,10 +95,13 @@ func (b *Board) CutRelease(ws, actor string, n NewRelease) (_ Release, err error
 		return Release{}, refuse(NotFound, "no workspace %q", ws)
 	}
 	r := res.Record()
+	if err := repoRefusal(ws, n.Repo, str(r, "violation"), strs(r, "repos")); err != nil {
+		return Release{}, err
+	}
 	switch str(r, "violation") {
 	case "":
 	case "duplicate":
-		return Release{}, refuse(Conflict, "%s already has a release %s", ws, n.Version)
+		return Release{}, refuse(Conflict, "%s already has a release %s", str(r, "repo"), n.Version)
 	default: // nothing
 		return Release{}, refuse(Conflict, "nothing to release: no story is merged into %s that is not already in a release", str(r, "branch"))
 	}
@@ -112,15 +122,25 @@ type ReleaseDetail struct {
 }
 
 // ListReleases reads every release, newest first, with R-0 (released before
-// releases existed) last. Each lists the ids of its
-// stories; GetRelease reads them in full. The order is by number, so R-10
-// comes before R-9.
-func (b *Board) ListReleases(ws string) ([]Release, error) {
+// releases existed) last. Each lists the ids of its stories and its
+// repository; GetRelease reads them in full. The order is by number, so R-10
+// comes before R-9. With a repository named it lists that one's releases
+// only; an unknown one is NotFound.
+func (b *Board) ListReleases(ws, repo string) ([]Release, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
 		return nil, err
 	}
-	return releases(g, "")
+	if repo != "" {
+		rs, err := repos(g)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(rs, func(r Repo) bool { return r.Name == repo }) {
+			return nil, noRepo(ws, repo)
+		}
+	}
+	return releases(g, "", repo)
 }
 
 // GetRelease reads one release with its stories, or NotFound.
@@ -129,7 +149,7 @@ func (b *Board) GetRelease(ws, id string) (ReleaseDetail, error) {
 	if err != nil {
 		return ReleaseDetail{}, err
 	}
-	rs, err := releases(g, id)
+	rs, err := releases(g, id, "")
 	if err != nil {
 		return ReleaseDetail{}, err
 	}
@@ -149,16 +169,18 @@ func (b *Board) GetRelease(ws, id string) (ReleaseDetail, error) {
 	return d, nil
 }
 
-// releases reads every release, newest first, R-0 last, or only release id when set.
-func releases(g *falkordb.Graph, id string) ([]Release, error) {
+// releases reads every release, newest first, R-0 last, or only release id
+// when set, or only one repository's when repo is.
+func releases(g *falkordb.Graph, id, repo string) ([]Release, error) {
 	res, err := g.ROQuery(`
 		MATCH (r:Release) WHERE $id = '' OR r.id = $id
 		OPTIONAL MATCH (rp:Repo)-[:HAS_RELEASE]->(r)
+		WITH r, rp WHERE $repo = '' OR rp.name = $repo
 		OPTIONAL MATCH (s:Story)-[:IN_RELEASE]->(r)
 		WITH r, rp, s ORDER BY s.rank, s.id
 		RETURN r.id AS id, rp.name AS repo, r.version AS version, r.tag AS tag, r.commit AS commit, r.notes AS notes,
 			r.created_by AS by, r.created_at AS at, collect(s.id) AS ids`,
-		map[string]any{"id": id}, nil)
+		map[string]any{"id": id, "repo": repo}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read releases: %w", err)
 	}
