@@ -4,6 +4,7 @@
 //	backpack token create --actor <name>
 //	backpack token revoke --actor <name>
 //	backpack reindex [--workspace <slug>]
+//	backpack join --into <slug> --name <name> --actor <who> <workspace> <workspace>...
 package main
 
 import (
@@ -33,6 +34,7 @@ const usage = `usage:
   backpack token create --actor <name>
   backpack token revoke --actor <name>
   backpack reindex [--workspace <slug>]
+  backpack join --into <slug> --name <name> --actor <who> <workspace> <workspace>...
 `
 
 // rebuildTimeout bounds loading the search model and a full rebuild of the
@@ -90,6 +92,8 @@ func dispatch(cfg config, args []string, out, errOut io.Writer) int {
 		return token(cfg, args[1:], out, errOut)
 	case "reindex":
 		return reindex(cfg, args[1:], out, errOut)
+	case "join":
+		return join(cfg, args[1:], out, errOut)
 	}
 	fmt.Fprint(errOut, usage)
 	return 2
@@ -132,6 +136,35 @@ func reindex(cfg config, args []string, out, errOut io.Writer) int {
 		return report(errOut, err)
 	}
 	fmt.Fprintf(out, "reindexed %d workspace(s)\n", len(all))
+	return 0
+}
+
+// join reports what joining workspaces into one new workspace would do. It
+// writes nothing.
+func join(cfg config, args []string, out, errOut io.Writer) int {
+	fs := flag.NewFlagSet("join", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	into := fs.String("into", "", "the new workspace's slug")
+	name := fs.String("name", "", "the new workspace's name")
+	actor := fs.String("actor", "", "who the join is for")
+	if err := fs.Parse(args); err != nil || *into == "" || *name == "" || *actor == "" || fs.NArg() < 2 {
+		fmt.Fprint(errOut, usage)
+		return 2
+	}
+	db, err := falkor.Connect(cfg.FalkorURL)
+	if err != nil {
+		return report(errOut, err)
+	}
+	defer db.Conn.Close()
+	b, err := board.New(db, cfg.SystemGraph, cfg.WorkspacePrefix)
+	if err != nil {
+		return report(errOut, err)
+	}
+	plan, err := b.PreviewJoin(board.JoinRequest{Into: *into, Name: *name, Actor: *actor, From: fs.Args()})
+	if err != nil {
+		return report(errOut, err)
+	}
+	fmt.Fprint(out, plan.Report())
 	return 0
 }
 

@@ -73,6 +73,7 @@ make forward             # bring a remote stack's ports here over SSH
 make gates               # gofmt, vet, tests against the stack's ports here, build
 make token ACTOR=<name>  # issue a bearer token (shown once)
 make reindex             # rebuild the search index from the board
+make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"  # what joining workspaces would do; writes nothing
 ```
 
 Ports, all bound to the stack host's 127.0.0.1: backpack 8780, FalkorDB 16379,
