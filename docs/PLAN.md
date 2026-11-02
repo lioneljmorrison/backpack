@@ -721,7 +721,25 @@ not part of the board.
   since there is one backlog. Over MCP a story read (`get_story`,
   `whats_next`, a release's stories) shows `repo` only when the workspace has
   several repositories; over HTTP it is always there. (The web new-story form
-  choosing a repository is S-73.)
+  choosing a repository is in "The web pages show the repositories", below.)
+- **The web pages show the repositories** (2026-11-02, S-73). The board is one
+  view of all the work. With several repositories it gains a filter
+  (`/w/{ws}?repo=api`, 404 for an unknown one; the links sit beside "New
+  story" and mark the chosen one) and each repository's cards get their own
+  colour, by repository order (six colours that repeat, with light and dark
+  values among the page's colour tokens), plus a label with the repository's
+  name so colour is never the only signal. The shared columns (Proposed to In
+  review, On hold, Closed) stay shared; each repository's Merged columns sit
+  together, headed "api · Merged (dev)" and keyed by `data-repo` beside
+  `data-into`. A card is dropped only on its own repository's columns: the
+  page lights up only those, and a status change that names another
+  repository (a `repo` field beside `into`) is refused with "S-1 is in api,
+  not web" even when both have a branch of that name. Branch aliases are per
+  repository and branch. The story page names the repository, and the
+  new-story form offers a required repository choice. With one repository
+  nothing changes: no filter, colours, labels or `data-repo`. The board JSON's
+  Merged columns carry `repo` beside `branch` (additive; repositories in name
+  order, each one's branches in merge order).
 - **Setup.** When an agent first connects a repository it works out the
   branching (default, integration and protected branches, how pull requests
   flow), proposes it in conversation, and a person approves or adjusts it.

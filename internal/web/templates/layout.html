@@ -38,9 +38,10 @@
 
 {{/* card is one story on a board or in a list: a card value from cardOf. */}}
 {{define "card"}}
-<article class="card{{if .S.Blocked}} blocked{{end}}" data-id="{{.S.ID}}" data-status="{{.S.Status}}"{{if or .Movable .Moves}} draggable="true" data-status-url="/w/{{.WS}}/stories/{{.S.ID}}/status"{{if .S.Blocked}} data-blocked{{end}} data-moves="{{range $i, $m := .Moves}}{{if $i}} {{end}}{{$m}}{{end}}"{{end}}{{if .Movable}} data-move="/w/{{.WS}}/stories/{{.S.ID}}/move"{{end}}>
+<article class="card{{if .S.Blocked}} blocked{{end}}{{with .Tone}} tone {{.}}{{end}}" data-id="{{.S.ID}}" data-status="{{.S.Status}}"{{with .Repo}} data-repo="{{.}}"{{end}}{{if or .Movable .Moves}} draggable="true" data-status-url="/w/{{.WS}}/stories/{{.S.ID}}/status"{{if .S.Blocked}} data-blocked{{end}} data-moves="{{range $i, $m := .Moves}}{{if $i}} {{end}}{{$m}}{{end}}"{{end}}{{if .Movable}} data-move="/w/{{.WS}}/stories/{{.S.ID}}/move"{{end}}>
   <a class="card-title" href="/w/{{.WS}}/stories/{{.S.ID}}"><span class="id">{{.S.ID}}</span> {{.S.Title}}</a>
   <div class="tags">
+    {{with .Repo}}<span class="tag repo {{$.Tone}}">{{.}}</span>{{end}}
     {{if eq .S.Kind "bug"}}<span class="tag bug">Bug</span>{{end}}
     {{if .S.StraightIn}}<span class="tag warn" title="Skipped approval">Straight in</span>{{end}}
     {{if .S.Phase}}<span class="tag">Phase {{.S.Phase}}</span>{{end}}

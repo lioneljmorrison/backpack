@@ -14,6 +14,13 @@
   --bad-bg: #fde8e6;
   --good: #1f7a3d;
   --good-bg: #e2f4e7;
+  /* One colour per repository, in repository order; they repeat past six. */
+  --repo-0: #2f5bd3;
+  --repo-1: #b3541e;
+  --repo-2: #1f7a3d;
+  --repo-3: #8a3fb5;
+  --repo-4: #0f7f8f;
+  --repo-5: #a8326b;
   --radius: 8px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -35,6 +42,12 @@
     --bad-bg: #3d1a17;
     --good: #7fd69a;
     --good-bg: #173322;
+    --repo-0: #8aa8ff;
+    --repo-1: #f0a06a;
+    --repo-2: #7fd69a;
+    --repo-3: #c9a0ee;
+    --repo-4: #6fd0de;
+    --repo-5: #f08fba;
   }
 }
 
@@ -184,6 +197,19 @@ h2 .tag, h1 .tag { vertical-align: middle; }
   padding: 0.6rem 0.7rem;
   margin-bottom: 0.5rem;
 }
+/* A repository's colour: .tone sets --tone from the repository's own class. */
+.repo-0 { --tone: var(--repo-0); }
+.repo-1 { --tone: var(--repo-1); }
+.repo-2 { --tone: var(--repo-2); }
+.repo-3 { --tone: var(--repo-3); }
+.repo-4 { --tone: var(--repo-4); }
+.repo-5 { --tone: var(--repo-5); }
+.card.tone { border-left: 4px solid var(--tone); }
+.tag.repo { color: var(--tone); border-color: var(--tone); }
+.repos { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-right: auto; }
+.repos a { color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.7rem; font-size: 0.9rem; }
+.repos a.tone { border-left: 4px solid var(--tone); }
+.repos a[aria-current] { color: var(--text); background: var(--surface); font-weight: 600; border-color: var(--text); }
 .card.blocked { border-left: 3px solid var(--bad); }
 .card-title { color: var(--text); display: block; }
 .card-title:hover { color: var(--accent); }

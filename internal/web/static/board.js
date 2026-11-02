@@ -44,9 +44,12 @@
     return column.dataset.status + (into ? ":" + into : "");
   }
 
-  // canDrop says whether the dragged card may be dropped on the column.
+  // canDrop says whether the dragged card may be dropped on the column. With
+  // several repositories a Merged column is one repository's (data-repo), and
+  // only that repository's cards go on it.
   function canDrop(column) {
     if (!dragged || !column) return false;
+    if (column.dataset.repo && column.dataset.repo !== dragged.dataset.repo) return false;
     const from = dragged.dataset.status;
     const to = column.dataset.status;
     if (from === "backlog" && to === "backlog") return dragged.dataset.move !== undefined;
@@ -154,6 +157,7 @@
     const fields = {};
     // A drop on a merged column records a merge into that branch.
     if (column.dataset.into) fields.into = column.dataset.into;
+    if (column.dataset.repo) fields.repo = column.dataset.repo;
     if (to === "backlog") {
       const at = aim(column, e);
       if (at.card) fields[at.above ? "before" : "after"] = at.card.dataset.id;
