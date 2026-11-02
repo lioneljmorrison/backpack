@@ -12,17 +12,28 @@ import (
 const upcoming = 3
 
 // Next is the highest-ranked backlog story that is not blocked, or nil when
-// there is none.
-func (b *Board) Next(ws string) (*Story, error) {
+// there is none. With a repository it is that repository's: a story is still
+// blocked by unfinished work in any repository. An unknown repository is
+// NotFound.
+func (b *Board) Next(ws, repo string) (*Story, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
 		return nil, err
+	}
+	if repo != "" {
+		rs, err := repos(g)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(rs, func(r Repo) bool { return r.Name == repo }) {
+			return nil, noRepo(ws, repo)
+		}
 	}
 	ss, err := stories(g, "")
 	if err != nil {
 		return nil, err
 	}
-	i := slices.IndexFunc(ss, func(s Story) bool { return s.Status == Backlog && !s.Blocked })
+	i := slices.IndexFunc(ss, func(s Story) bool { return s.Status == Backlog && !s.Blocked && (repo == "" || s.Repo == repo) })
 	if i < 0 {
 		return nil, nil
 	}

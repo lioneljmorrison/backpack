@@ -65,7 +65,7 @@ func (s *site) boardPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if d.Where, err = s.board.Where(ws.Slug); err == nil {
-		if d.Next, err = s.board.Next(ws.Slug); err == nil {
+		if d.Next, err = s.board.Next(ws.Slug, ""); err == nil {
 			if cols, err = s.board.Board(ws.Slug); err == nil {
 				d.Ideas, err = s.board.Ideas(ws.Slug)
 			}
