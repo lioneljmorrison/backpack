@@ -76,10 +76,12 @@ func startingBranches(bs []Branch) []string {
 	return out
 }
 
-// Moves lists the changes s can make, in board order, for a workspace with
-// the given branches. A merge names its branch: from review there is one per
-// starting branch. SetStatus still checks the rest.
+// Moves lists the changes s can make, in board order. bs are the branches to
+// offer a merge from; only those of s's own repository count, so a workspace's
+// whole list may be passed. A merge names its branch: from review there is one
+// per starting branch. SetStatus still checks the rest.
 func Moves(s Story, bs []Branch) []Move {
+	bs = slices.DeleteFunc(slices.Clone(bs), func(b Branch) bool { return b.Repo != s.Repo })
 	var to []Move
 	for _, st := range statuses {
 		ok := slices.Contains(moves, s.Status+">"+st) || (s.Status == OnHold && st == s.HeldFrom)
@@ -174,15 +176,16 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 		WITH w, s, collect(t.id) AS waiting
 		OPTIONAL MATCH (d:Story)-[:DEPENDS_ON]->(s) WHERE d.status <> 'closed'
 		WITH w, s, waiting, collect(d.id) AS dependents, s.status AS from, coalesce(w.next_log, 1) AS n
-		OPTIONAL MATCH (br:Branch)
-		WITH w, s, waiting, dependents, from, n, collect(br.name) AS names, collect(br.into) AS intos,
+		OPTIONAL MATCH (rp:Repo)-[:HOLDS]->(s)
+		OPTIONAL MATCH (rp)-[:HAS_BRANCH]->(br:Branch)
+		WITH w, s, waiting, dependents, from, n, rp.name AS rname, collect(br.name) AS names, collect(br.into) AS intos,
 			collect(CASE WHEN br.name = s.into THEN br.into END) AS afters
-		WITH w, s, waiting, dependents, from, n, names, intos, afters[0] AS after,
+		WITH w, s, waiting, dependents, from, n, rname, names, intos, afters[0] AS after,
 			[x IN names WHERE NOT x IN intos] AS starts
-		WITH w, s, waiting, dependents, from, n, names, after, starts,
+		WITH w, s, waiting, dependents, from, n, rname, names, after, starts,
 			CASE WHEN from = 'merged' THEN $into
 				ELSE coalesce($into, CASE WHEN size(starts) = 1 THEN starts[0] END) END AS target
-		WITH w, s, waiting, dependents, from, n, target, starts, after, CASE
+		WITH w, s, waiting, dependents, from, n, rname, target, starts, after, CASE
 			WHEN NOT ((from + '>' + $to) IN $moves OR (from = 'on_hold' AND $to = s.held_from)) THEN 'move'
 			WHEN $to = 'merged' AND $into IS NOT NULL AND NOT $into IN names THEN 'no branch'
 			WHEN from = 'in_review' AND $to = 'merged' AND $into IS NULL AND size(starts) > 1 THEN 'name'
@@ -216,7 +219,7 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + 1), at: $now, actor: $actor,
 					kind: 'decision', reason: $workaround, text: 'Started while blocked by ' +
 					reduce(t = '', x IN waiting | t + CASE WHEN t = '' THEN '' ELSE ', ' END + x)})))
-		RETURN violation, from, s.held_from AS held_from, waiting, dependents, starts, after, s.into AS into`,
+		RETURN violation, from, rname, s.held_from AS held_from, waiting, dependents, starts, after, s.into AS into`,
 		map[string]any{
 			"id": id, "to": c.To, "moves": moves, "complete": complete, "actor": actor, "now": now(),
 			"reason": orNull(c.Reason), "branch": orNull(c.Branch), "pr": orNull(c.PRURL), "commit": orNull(c.Commit), "into": orNull(c.Into),
@@ -239,7 +242,7 @@ func (b *Board) SetStatus(ws, actor, id string, c StatusChange) (_ Story, err er
 		}
 		return Story{}, refuse(Conflict, "%s cannot go from %s to %s", id, label(from), label(c.To))
 	case "no branch":
-		return Story{}, refuse(Conflict, "%s has no branch %q", ws, c.Into)
+		return Story{}, refuse(Conflict, "%s has no branch %q", str(r, "rname"), c.Into)
 	case "name":
 		return Story{}, refuse(Conflict, "%s is in review and several branches start the line; name the branch: %s", id, orList(strs(r, "starts")))
 	case "skip":

@@ -662,9 +662,17 @@ not part of the board.
   `?repo=` query on `GET /branches`, `PATCH` and `DELETE /branches/{name}` and
   `POST /branches/{name}/merged`, and a field in the `POST /branches` body; the
   MCP tools `add_branch`, `update_branch`, `remove_branch`, `merge_branch` and
-  `list_branches` take it too. (Stories, status moves and releases still read
-  branches workspace-wide; making them per repository is later work, S-69 and
-  S-70.)
+  `list_branches` take it too.
+- **A story's merges follow its own repository** (2026-11-01, S-68). A status
+  change reads only the branches of the repository that holds the story: the
+  starting branch a merge from review defaults to, the "name the branch"
+  refusal, the one-step-at-a-time rule and the `into` checks. An `into` naming
+  another repository's branch is refused like any unknown one, with the
+  repository named ("api has no branch \"staging\""). There is no new input:
+  the story knows its repository. The merges offered on board cards and story
+  pages come from the same branches. (The board's column layout and releases
+  still read branches workspace-wide; making them per repository is later
+  work, S-73 and S-69.)
 - **Setup.** When an agent first connects a repository it works out the
   branching (default, integration and protected branches, how pull requests
   flow), proposes it in conversation, and a person approves or adjusts it.
