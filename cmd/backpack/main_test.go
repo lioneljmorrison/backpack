@@ -28,6 +28,12 @@ func TestUsageErrorsExitWithTwo(t *testing.T) {
 		{"token", "rotate", "--actor", "x"},
 		{"reindex", "--bogus"},
 		{"reindex", "extra"},
+		{"join"},
+		{"join", "--into", "demo", "--name", "Demo", "demo-api", "demo-web"},
+		{"join", "--into", "demo", "--actor", "tester", "demo-api", "demo-web"},
+		{"join", "--name", "Demo", "--actor", "tester", "demo-api", "demo-web"},
+		{"join", "--into", "demo", "--name", "Demo", "--actor", "tester", "demo-api"},
+		{"join", "--bogus"},
 	} {
 		var out, errOut bytes.Buffer
 		if code := run(args, env(nil), &out, &errOut); code != 2 {
@@ -140,5 +146,55 @@ func TestReindexOfAnUnknownWorkspaceFails(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "nope") {
 		t.Fatalf("reindex printed %q", errOut.String())
+	}
+}
+
+// joinable returns a config on throwaway graphs with workspaces demo-api and
+// demo-web, each holding one story. The names are invented.
+func joinable(t *testing.T) config {
+	t.Helper()
+	cfg, b := reindexed(t)
+	for _, s := range []string{"demo-api", "demo-web"} {
+		if _, err := b.CreateWorkspace("tester", board.Workspace{Slug: s, Name: s}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := b.AddStory(s, "tester", board.NewStory{Title: "Story of " + s}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return cfg
+}
+
+func TestJoinPrintsAPreviewAndWritesNothing(t *testing.T) {
+	cfg := joinable(t)
+	var out, errOut bytes.Buffer
+	args := []string{"join", "--into", "demo-both", "--name", "Demo Both", "--actor", "tester", "demo-api", "demo-web"}
+	if code := dispatch(cfg, args, &out, &errOut); code != 0 {
+		t.Fatalf("join exit %d: %s", code, errOut.String())
+	}
+	for _, want := range []string{"join demo-api, demo-web into demo-both", "preview only", "stories S-1 -> S-2", "top of the merged backlog: S-1"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	db, _ := falkor.Connect(cfg.FalkorURL)
+	defer db.Conn.Close()
+	names, _ := db.ListGraphs()
+	for _, n := range names {
+		if n == cfg.WorkspacePrefix+"demo-both" {
+			t.Fatal("the preview created the target graph")
+		}
+	}
+}
+
+func TestAJoinTheBoardRefusesExitsWithOne(t *testing.T) {
+	cfg := joinable(t)
+	var out, errOut bytes.Buffer
+	args := []string{"join", "--into", "demo-both", "--name", "Demo", "--actor", "tester", "demo-api", "nowhere"}
+	if code := dispatch(cfg, args, &out, &errOut); code != 1 {
+		t.Fatalf("join exit %d, want 1", code)
+	}
+	if !strings.Contains(errOut.String(), `no workspace "nowhere"`) || out.Len() != 0 {
+		t.Fatalf("stdout %q stderr %q", out.String(), errOut.String())
 	}
 }

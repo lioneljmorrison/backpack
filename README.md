@@ -46,6 +46,7 @@ make down                # stop (data volumes are kept)
 make forward             # bring a remote stack's ports here over SSH
 make token ACTOR=<name>  # issue a token for a person or agent (shown once)
 make reindex             # rebuild the search index from the board
+make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"  # what joining workspaces would do; writes nothing
 make gates               # gofmt, vet, tests, build
 ```
 

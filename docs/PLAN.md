@@ -881,6 +881,47 @@ slug that is registered (joined or not) or that a join is building is a 409
 before any graph is touched. Workspaces that are not joined answer exactly as
 before.
 
+**Previewing a join (Phase 6, S-77).** `backpack join --into <slug> --name
+<name> --actor <who> <ws> <ws>...` (`make join-preview INTO= NAME= ACTOR=
+FROM="a b"`) reports what joining workspaces into one new workspace would do,
+and writes nothing: sources are read with read-only queries, the target's graph
+and registry entry are not touched, and a test compares every graph and the
+registry before and after. A usage mistake (a missing flag, fewer than two
+workspaces) exits 2; a refusal exits 1 with its reason. The plan the preview
+builds (`board.JoinPlan`) is what the join applies, so it holds exact data
+and not only text. Each source is read generically (`MATCH (n) RETURN n` and
+every edge with its end points' internal ids), so a join cannot drop what it
+does not know: a label or edge type outside the known set (labels `Workspace`,
+`SchemaVersion`, `Repo`, `Branch`, `Phase`, `Goal`, `Story`, `Release`, `Idea`,
+`LogEntry`; edges `HAS_GOAL`, `CONTAINS`, `DEPENDS_ON`, `FOUND_IN`, `LOGGED`,
+`CORRECTS`, `BECAME`, `IN_RELEASE`, `HAS_BRANCH`, `HOLDS`, `HAS_RELEASE`) is
+refused by name. Source k's offsets are the sum, over the sources before it, of
+each counter less one (`next_story`, `next_log`, `next_idea`, `next_goal`,
+`next_release`) and of the highest phase number; the first source keeps its ids.
+The target's counters carry on after every source, and its `next_log` also
+reserves one id per story for the join notes. `Remap` is the rule for a node:
+`Story.id`, `Story.upstream_id`, `Idea.id`, `Goal.id`, `LogEntry.id` and
+`Release.id` (not `R-0`) move up by the offset and `Phase.number` by the phase
+offset; `Story` and `Idea` ranks get the next unused digit of the rank alphabet
+as a prefix (`1` for the first source, so at most 61 sources, each source's
+order kept and no rank ending in `0`); `Story`, `Idea`, `Goal`, `Release` and
+`Phase` gain `old_id` and `old_workspace`; every other property, text
+included, is copied as it is. The report gives, per source, its repositories,
+branches, counts and old range to new range for each kind of id, then the
+target's counters, the join notes' block, the story that would top the merged
+backlog, and warnings: stories in progress or in review that get new ids, and
+how many text fields (a story's description, goal and plan, an idea's context,
+a phase's description, a goal's text, a release's notes) name an id such as
+`S-3`, which keep naming the old one. The preview refuses: fewer than two or
+duplicate sources, or more than 61; a target slug that is not a valid slug, a
+name that is empty or not plain text, no actor; a target that is registered
+(joined or not), or whose graph exists, unless every source is already marked
+`joining` this target (an interrupted join being resumed); a source that does
+not exist, was joined, is being joined into another target, has no graph or is
+not on the current schema; another workspace being joined into the same target;
+two sources with a repository of one name; more than one `R-0`; an unknown
+label or edge.
+
 - **Rank** is a fractional string key over `0-9A-Za-z` (ASCII order, so Go
   and FalkorDB compare keys alike). Between two neighbours there is always a
   key, so a move rewrites only the moved story. `Story.rank` is deliberately
