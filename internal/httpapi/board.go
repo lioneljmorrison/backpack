@@ -20,6 +20,8 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	a := boardAPI{b}
 	mux.HandleFunc("GET /v1/workspaces", a.listWorkspaces)
 	mux.HandleFunc("POST /v1/workspaces", a.createWorkspace)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/repos", a.listRepos)
+	mux.HandleFunc("POST /v1/workspaces/{ws}/repos", a.addRepo)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/branches", a.listBranches)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/branches", a.addBranch)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/branches/{name}", a.updateBranch)
@@ -81,6 +83,20 @@ func (a boardAPI) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	ws, err := a.b.CreateWorkspace(actor(r), board.Workspace{Slug: in.Slug, Name: in.Name, RepoName: in.Repo, RepoURL: in.RepoURL,
 		HasReleaseStage: in.HasReleaseStage})
 	respond(w, http.StatusCreated, ws, err)
+}
+
+func (a boardAPI) listRepos(w http.ResponseWriter, r *http.Request) {
+	rs, err := a.b.Repos(r.PathValue("ws"))
+	respond(w, http.StatusOK, map[string]any{"repos": rs}, err)
+}
+
+func (a boardAPI) addRepo(w http.ResponseWriter, r *http.Request) {
+	var in board.Repo
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	repo, err := a.b.AddRepo(r.PathValue("ws"), actor(r), in)
+	respond(w, http.StatusCreated, repo, err)
 }
 
 func (a boardAPI) listBranches(w http.ResponseWriter, r *http.Request) {

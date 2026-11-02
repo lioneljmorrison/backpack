@@ -28,11 +28,9 @@ func twoRepoSite(t *testing.T) (http.Handler, *board.Board, func()) {
 	must[board.Workspace](t)(b.CreateWorkspace("tester", board.Workspace{Slug: "demo", Name: "Demo", RepoName: "api", HasReleaseStage: true}))
 	addWeb := func() {
 		t.Helper()
-		if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
-			(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
-			(r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: 'test', created_at: 'x'}),
-			(r)-[:HAS_BRANCH]->(:Branch {name: 'staging', into: 'main', created_by: 'test', created_at: 'x'})`, nil, nil); err != nil {
-			t.Fatal(err)
+		must[board.Repo](t)(b.AddRepo("demo", "tester", board.Repo{Name: "web"}))
+		for _, name := range []string{"dev", "staging"} {
+			must[board.Branch](t)(b.AddBranch("demo", "tester", board.Branch{Repo: "web", Name: name, Into: "main"}))
 		}
 	}
 	return h, b, addWeb

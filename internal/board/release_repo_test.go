@@ -16,7 +16,7 @@ func releasing(t *testing.T) *board.Board {
 	b, g := twoRepos(t)
 	mergedIntoMain(t, b, "Api one")
 	mergedIntoMain(t, b, "Api two")
-	addWeb(t, g)
+	addWeb(t, b)
 	webStory(t, g, "W-1", "merged", "main")
 	webStory(t, g, "W-2", "merged", "main")
 	webStory(t, g, "W-3", "merged", "dev")
@@ -126,7 +126,7 @@ func TestAOneRepositoryWorkspaceCutsWithoutNamingItsRepository(t *testing.T) {
 func TestWhereAreWeGathersWhatWaitsForEachRepositorysOwnReleaseBranch(t *testing.T) {
 	b, g := twoRepos(t)
 	mergedIntoMain(t, b, "Api in main")
-	addWeb(t, g)
+	addWeb(t, b)
 	// web's release branch is trunk, not main.
 	run(t, g, `MATCH (r:Repo {name: 'web'})-[:HAS_BRANCH]->(m:Branch {name: 'main'}) SET m.name = 'trunk'
 		WITH r MATCH (r)-[:HAS_BRANCH]->(d:Branch {name: 'dev'}) SET d.into = 'trunk'`)
@@ -157,15 +157,15 @@ func TestTheReleaseStageIsOnWhenAnyRepositoryHasAMergeStep(t *testing.T) {
 	if on, err := b.ReleaseStage("demo"); err != nil || on {
 		t.Fatalf("no repository merges: %v, %v", on, err)
 	}
-	addWeb(t, g)
+	addWeb(t, b)
 	if on, err := b.ReleaseStage("demo"); err != nil || !on {
 		t.Fatalf("web merges dev into main: %v, %v", on, err)
 	}
 }
 
 func TestReposListsTheWorkspacesRepositories(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	rs, err := b.Repos("demo")
 	if err != nil || len(rs) != 2 || rs[0].Name != "api" || rs[1].Name != "web" {
 		t.Fatalf("repos %+v, %v", rs, err)

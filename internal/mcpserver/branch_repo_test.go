@@ -11,8 +11,9 @@ import (
 )
 
 // twoRepos serves workspace "demo" with repositories api and web, each with
-// dev merging into main, and a story merged into web's dev. web is written
-// straight into the graph, as no tool adds a repository yet.
+// dev merging into main, and a story merged into web's dev. The invented
+// story W-1 is written straight into the graph, because no tool puts a story
+// in a status and branch in one step.
 func twoRepos(t *testing.T) *mcp.ClientSession {
 	t.Helper()
 	db, prefix := falkortest.Prefix(t)
@@ -23,10 +24,14 @@ func twoRepos(t *testing.T) *mcp.ClientSession {
 	if _, err := b.CreateWorkspace("tester", board.Workspace{Slug: "demo", Name: "Demo", RepoName: "api", HasReleaseStage: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'dev', rank: 'n'})`, nil, nil); err != nil {
+	if _, err := b.AddRepo("demo", "tester", board.Repo{Name: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AddBranch("demo", "tester", board.Branch{Repo: "web", Name: "dev", Into: "main"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`MATCH (r:Repo {name: 'web'})
+		CREATE (r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'dev', rank: 'n'})`, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	return session(t, serve(t, b, nil))

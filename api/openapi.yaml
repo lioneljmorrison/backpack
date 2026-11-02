@@ -213,6 +213,56 @@ paths:
                           items: { $ref: "#/components/schemas/Story" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/repos:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+    get:
+      summary: The workspace's repositories
+      description: Every repository, by name.
+      responses:
+        "200":
+          description: The repositories
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repos]
+                properties:
+                  repos:
+                    type: array
+                    items: { $ref: "#/components/schemas/Repo" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Add a repository
+      description: >-
+        Adds a repository with `main` alone, its release branch. Shape it with
+        the branch routes and their `repo`. Adding the second makes the
+        workspace one with several repositories, so a story or branch action
+        must then name its repository. A name that is not 1-64 lowercase
+        letters, digits and single hyphens is refused (400), as is one already
+        in use in the workspace (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 64, description: The repository's name, a slug }
+                url: { type: string, description: Where it lives, plain text }
+      responses:
+        "201":
+          description: The new repository
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repo" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /v1/workspaces/{ws}/branches:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -1381,6 +1431,12 @@ components:
         has_release_stage: { type: boolean }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
+    Repo:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        url: { type: string }
     Branch:
       type: object
       required: [name, release, created_by, created_at]

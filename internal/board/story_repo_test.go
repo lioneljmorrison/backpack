@@ -10,7 +10,7 @@ const severalRepos = "demo has several repos; name the repo: api or web"
 
 func TestAStoryIsAddedIntoTheRepositoryItNames(t *testing.T) {
 	b, g := twoRepos(t)
-	addWeb(t, g)
+	addWeb(t, b)
 	w := addStory(t, b, board.NewStory{Title: "Web story", Repo: "web"})
 	a := addStory(t, b, board.NewStory{Title: "Api story", Repo: "api"})
 	if w.Repo != "web" || a.Repo != "api" {
@@ -27,7 +27,7 @@ func TestAStoryIsAddedIntoTheRepositoryItNames(t *testing.T) {
 
 func TestAStoryWithNoRepositoryNamedIsRefusedWhenThereAreTwo(t *testing.T) {
 	b, g := twoRepos(t)
-	addWeb(t, g)
+	addWeb(t, b)
 	_, err := b.AddStory("demo", actor, board.NewStory{Title: "Which?"})
 	wantMessage(t, err, board.Invalid, severalRepos)
 	// The refusal comes before the others, and nothing is written.
@@ -42,8 +42,8 @@ func TestAStoryWithNoRepositoryNamedIsRefusedWhenThereAreTwo(t *testing.T) {
 }
 
 func TestAStoryInAnUnknownRepositoryIsNotFound(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	_, err := b.AddStory("demo", actor, board.NewStory{Title: "Nowhere", Repo: "ios"})
 	wantMessage(t, err, board.NotFound, `demo has no repo "ios"`)
 	// With one repository too.
@@ -67,8 +67,8 @@ func TestWithOneRepositoryTheNameCanBeLeftOutOrGiven(t *testing.T) {
 }
 
 func TestADependencyAcrossRepositoriesWorksAndTheRankRuleHolds(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	w := addStory(t, b, board.NewStory{Title: "Web", Repo: "web"})
 	a := addStory(t, b, board.NewStory{Title: "Api", Repo: "api"})
 	// w ranks above a, and w now depends on a: refused until a is moved up.
@@ -89,8 +89,8 @@ func TestADependencyAcrossRepositoriesWorksAndTheRankRuleHolds(t *testing.T) {
 }
 
 func TestAStorysRepositoryDoesNotChangeWhenItIsUpdatedOrMoved(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	w := addStory(t, b, board.NewStory{Title: "Web", Repo: "web"})
 	title := "Renamed"
 	if _, err := b.UpdateStory("demo", actor, w.ID, board.StoryPatch{Title: &title}); err != nil {
@@ -105,8 +105,8 @@ func TestAStorysRepositoryDoesNotChangeWhenItIsUpdatedOrMoved(t *testing.T) {
 }
 
 func TestABugFixStraightInNamesItsRepositoryLikeAnyOtherAdd(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	found := addStory(t, b, board.NewStory{Title: "Found here", Repo: "web"})
 	fix := func(repo string) board.NewStory {
 		return board.NewStory{Title: "Crash", Kind: "bug", FoundIn: found.ID, Repo: repo,

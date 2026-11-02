@@ -12,8 +12,7 @@ import (
 )
 
 // twoRepos is workspace "demo" with a release stage in repository "api". The
-// second repository is added with addWeb, directly in the graph, because no
-// action adds a repository yet.
+// second repository is added with addWeb.
 func twoRepos(t *testing.T) (*board.Board, *falkordb.Graph) {
 	t.Helper()
 	db, prefix := falkortest.Prefix(t)
@@ -29,14 +28,18 @@ func twoRepos(t *testing.T) (*board.Board, *falkordb.Graph) {
 
 // addWeb gives the workspace a second repository, web, with its own dev
 // merging into its own main.
-func addWeb(t *testing.T, g *falkordb.Graph) {
+func addWeb(t *testing.T, b *board.Board) {
 	t.Helper()
-	run(t, g, `CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: 'test', created_at: 'x'})`)
+	if _, err := b.AddRepo("demo", "test", board.Repo{Name: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AddBranch("demo", "test", board.Branch{Repo: "web", Name: "dev", Into: "main"}); err != nil {
+		t.Fatal(err)
+	}
 }
 
-// webStory puts a story in web, as if it had been added there.
+// webStory puts a story in web directly in the graph, because a test needs one
+// in a status, branch and id that no action reaches in one step.
 func webStory(t *testing.T, g *falkordb.Graph, id, status, into string) {
 	t.Helper()
 	run(t, g, fmt.Sprintf(`MATCH (r:Repo {name: 'web'})
@@ -84,8 +87,8 @@ func wantMessage(t *testing.T, err error, kind board.Kind, msg string) {
 }
 
 func TestTwoRepositoriesCanEachHaveTheSameBranchNames(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	for _, repo := range []string{"api", "web"} {
 		br, err := b.AddBranch("demo", actor, board.Branch{Name: "hotfix", Into: "main", Repo: repo})
 		if err != nil || br.Repo != repo || br.Name != "hotfix" {
@@ -115,7 +118,7 @@ func TestTwoRepositoriesCanEachHaveTheSameBranchNames(t *testing.T) {
 
 func TestAddingABranchMergesIntoThatRepositorysBranchesOnly(t *testing.T) {
 	b, g := twoRepos(t)
-	addWeb(t, g)
+	addWeb(t, b)
 	run(t, g, `MATCH (r:Repo {name: 'web'}) CREATE (r)-[:HAS_BRANCH]->(:Branch {name: 'staging', into: 'main'})`)
 	// api has no staging to merge into, whatever web has.
 	_, err := b.AddBranch("demo", actor, board.Branch{Name: "x", Into: "staging", Repo: "api"})
@@ -130,7 +133,7 @@ func TestRenamingOneRepositorysBranchLeavesTheOthersAlone(t *testing.T) {
 	s := addStory(t, b, board.NewStory{Title: "Api story"})
 	walk(t, b, s.ID, board.InProgress, board.InReview)
 	setStatus(t, b, s.ID, board.StatusChange{To: board.Merged, Commit: "c1"})
-	addWeb(t, g)
+	addWeb(t, b)
 	webStory(t, g, "W-1", "merged", "dev")
 	run(t, g, `MATCH (r:Repo {name: 'web'}) CREATE (r)-[:HAS_BRANCH]->(:Branch {name: 'hotfix', into: 'dev'})`)
 	run(t, g, `MATCH (r:Repo {name: 'api'}) CREATE (r)-[:HAS_BRANCH]->(:Branch {name: 'hotfix', into: 'dev'})`)
@@ -162,7 +165,7 @@ func TestRenamingOneRepositorysBranchLeavesTheOthersAlone(t *testing.T) {
 
 func TestRePointingCannotWalkIntoTheOtherRepository(t *testing.T) {
 	b, g := twoRepos(t)
-	addWeb(t, g)
+	addWeb(t, b)
 	// api: x merges into main. web: x merges into dev. In api, dev merging into
 	// x is no cycle; web's x leading back to dev must not count.
 	for _, br := range []board.Branch{{Name: "x", Into: "main", Repo: "api"}, {Name: "x", Into: "dev", Repo: "web"}} {
@@ -187,7 +190,7 @@ func TestRePointingCannotWalkIntoTheOtherRepository(t *testing.T) {
 
 func TestRemovingABranchChecksOnlyItsOwnRepository(t *testing.T) {
 	b, g := twoRepos(t)
-	addWeb(t, g)
+	addWeb(t, b)
 	for _, repo := range []string{"api", "web"} {
 		if _, err := b.AddBranch("demo", actor, board.Branch{Name: "stage", Into: "main", Repo: repo}); err != nil {
 			t.Fatal(err)
@@ -218,7 +221,7 @@ func TestMergingABranchMovesOnlyThatRepositorysStories(t *testing.T) {
 	s := addStory(t, b, board.NewStory{Title: "Api story"})
 	walk(t, b, s.ID, board.InProgress, board.InReview)
 	setStatus(t, b, s.ID, board.StatusChange{To: board.Merged, Commit: "c1"})
-	addWeb(t, g)
+	addWeb(t, b)
 	webStory(t, g, "W-1", "merged", "dev")
 
 	moved, err := b.MergeBranch("demo", actor, "api", "dev", "x9")
@@ -240,8 +243,8 @@ func TestMergingABranchMovesOnlyThatRepositorysStories(t *testing.T) {
 }
 
 func TestWithSeveralRepositoriesOneMustBeNamed(t *testing.T) {
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	const msg = "demo has several repos; name the repo: api or web"
 	before, _ := b.Branches("demo", "")
 	name := "other"
@@ -259,12 +262,12 @@ func TestWithSeveralRepositoriesOneMustBeNamed(t *testing.T) {
 }
 
 func TestAnUnknownRepositoryIsNotFound(t *testing.T) {
-	b, g := twoRepos(t)
+	b, _ := twoRepos(t)
 	check := func(err error) {
 		t.Helper()
 		wantMessage(t, err, board.NotFound, `demo has no repo "x"`)
 	}
-	for range 2 { // with one repository, then with two
+	for i := range 2 { // with one repository, then with two
 		name := "other"
 		_, err := b.AddBranch("demo", actor, board.Branch{Name: "n", Into: "main", Repo: "x"})
 		check(err)
@@ -275,7 +278,9 @@ func TestAnUnknownRepositoryIsNotFound(t *testing.T) {
 		check(err)
 		_, err = b.Branches("demo", "x")
 		check(err)
-		addWeb(t, g)
+		if i == 0 {
+			addWeb(t, b)
+		}
 	}
 }
 

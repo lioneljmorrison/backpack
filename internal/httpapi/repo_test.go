@@ -37,8 +37,9 @@ func TestAWorkspaceIsCreatedWithAnOptionalRepoAndListsItsRepositories(t *testing
 }
 
 // twoRepoAPI serves workspace "demo" with repositories api (dev into main)
-// and web (dev into main, a story merged into dev). The second repository is
-// written straight into the graph, as no route adds one yet.
+// and web (dev into main, a story merged into dev). The invented story W-1 is
+// written straight into the graph, because no route puts a story in a status
+// and branch in one step.
 func twoRepoAPI(t *testing.T) http.Handler {
 	t.Helper()
 	db, prefix := falkortest.Prefix(t)
@@ -49,10 +50,10 @@ func twoRepoAPI(t *testing.T) http.Handler {
 	tester := func(string) (string, bool, error) { return "tester", true, nil }
 	h := New(map[string]health.Check{}, tester, b, nil, nil)
 	want(t, call(t, h, "POST", "/v1/workspaces", `{"slug": "demo", "name": "Demo", "repo": "api", "has_release_stage": true}`), http.StatusCreated)
-	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`CREATE (r:Repo {name: 'web', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HAS_BRANCH]->(:Branch {name: 'dev', into: 'main', created_by: 'test', created_at: 'x'}),
-		(r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'dev', rank: 'n'})`, nil, nil); err != nil {
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/repos", `{"name": "web"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/branches", `{"repo": "web", "name": "dev", "into": "main"}`), http.StatusCreated)
+	if _, err := db.SelectGraph(prefix+"ws:demo").Query(`MATCH (r:Repo {name: 'web'})
+		CREATE (r)-[:HOLDS]->(:Story {id: 'W-1', title: 'Web', status: 'merged', into: 'dev', rank: 'n'})`, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	return h

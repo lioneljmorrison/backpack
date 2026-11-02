@@ -26,7 +26,7 @@ func mergedColumns(cols []board.Column) string {
 
 func TestEachMergedColumnNamesItsRepositoryAndBranch(t *testing.T) {
 	b, g := twoRepos(t)
-	addWeb(t, g)
+	addWeb(t, b)
 	webStory(t, g, "W-1", "merged", "dev")
 	cols, err := b.Board("demo")
 	if err != nil {

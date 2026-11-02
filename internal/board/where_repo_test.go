@@ -12,8 +12,8 @@ import (
 // ready in api and web.
 func severalBoard(t *testing.T) *board.Board {
 	t.Helper()
-	b, g := twoRepos(t)
-	addWeb(t, g)
+	b, _ := twoRepos(t)
+	addWeb(t, b)
 	for _, repo := range []string{"api", "web"} {
 		id := readyIn(t, b, repo, strings.ToUpper(repo[:1])+repo[1:]+" done")
 		walk(t, b, id, board.InProgress, board.InReview)
@@ -91,14 +91,14 @@ func TestWhereAreWeNamingTheOnlyRepositoryChangesNothing(t *testing.T) {
 }
 
 func TestEventsMergeLinesNameTheRepositoryOnlyWithSeveralRepositories(t *testing.T) {
-	b, g := twoRepos(t)
+	b, _ := twoRepos(t)
 	id := readyIn(t, b, "", "Only api")
 	walk(t, b, id, board.InProgress, board.InReview)
 	setStatus(t, b, id, board.StatusChange{To: board.Merged, Commit: "abc1234"})
 	if lines := eventLines(latest(t, b, board.EventsQuery{})); !strings.Contains(lines, "merged into dev (abc1234)") {
 		t.Fatalf("one repository:\n%s", lines)
 	}
-	addWeb(t, g)
+	addWeb(t, b)
 	setStatus(t, b, id, board.StatusChange{To: board.Merged, Into: "main", Commit: "ffff000"})
 	web := readyIn(t, b, "web", "In web")
 	walk(t, b, web, board.InProgress, board.InReview)
