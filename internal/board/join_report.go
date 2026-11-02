@@ -56,10 +56,24 @@ func span(prefix string, first, last int) string {
 // Report is the plan in words for a person: what each source brings, where
 // its ids and ranks land, and what to look at before agreeing.
 func (p JoinPlan) Report() string {
+	return p.report(false)
+}
+
+// AppliedReport is the same, for a join that was done: what moved where, and
+// what is left to do.
+func (p JoinPlan) AppliedReport() string {
+	return p.report(true)
+}
+
+func (p JoinPlan) report(applied bool) string {
 	var b strings.Builder
 	r := p.Request
-	fmt.Fprintf(&b, "join %s into %s (%s) as %s\n", strings.Join(r.From, ", "), r.Into, r.Name, r.Actor)
-	b.WriteString("preview only: nothing was written\n")
+	if applied {
+		fmt.Fprintf(&b, "joined %s into %s (%s) as %s\n", strings.Join(r.From, ", "), r.Into, r.Name, r.Actor)
+	} else {
+		fmt.Fprintf(&b, "join %s into %s (%s) as %s\n", strings.Join(r.From, ", "), r.Into, r.Name, r.Actor)
+		b.WriteString("preview only: nothing was written\n")
+	}
 	for _, s := range p.Sources {
 		note := "its ids move up"
 		if s.Offsets == (JoinOffsets{}) {
@@ -94,10 +108,18 @@ func (p JoinPlan) Report() string {
 		b.WriteString("top of the merged backlog: none, no source has a backlog story\n")
 	}
 	if len(p.Warnings) > 0 {
-		b.WriteString("\nlook at before joining:\n")
+		if applied {
+			b.WriteString("\nlook at after joining:\n")
+		} else {
+			b.WriteString("\nlook at before joining:\n")
+		}
 		for _, w := range p.Warnings {
 			fmt.Fprintf(&b, "  %s\n", w)
 		}
+	}
+	if applied {
+		fmt.Fprintf(&b, "\nthe sources are marked joined into %s and keep their graphs\n", r.Into)
+		b.WriteString("search: run make reindex\n")
 	}
 	return b.String()
 }

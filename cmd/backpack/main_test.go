@@ -34,6 +34,9 @@ func TestUsageErrorsExitWithTwo(t *testing.T) {
 		{"join", "--name", "Demo", "--actor", "tester", "demo-api", "demo-web"},
 		{"join", "--into", "demo", "--name", "Demo", "--actor", "tester", "demo-api"},
 		{"join", "--bogus"},
+		{"join", "--abort"},
+		{"join", "--abort", "--apply", "--into", "demo"},
+		{"join", "--abort", "--into", "demo", "demo-api"},
 	} {
 		var out, errOut bytes.Buffer
 		if code := run(args, env(nil), &out, &errOut); code != 2 {
@@ -196,5 +199,58 @@ func TestAJoinTheBoardRefusesExitsWithOne(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), `no workspace "nowhere"`) || out.Len() != 0 {
 		t.Fatalf("stdout %q stderr %q", out.String(), errOut.String())
+	}
+}
+
+func TestJoinApplyJoinsAndAbortRefusesAFinishedJoin(t *testing.T) {
+	cfg := joinable(t)
+	var out, errOut bytes.Buffer
+	args := []string{"join", "--apply", "--into", "demo-both", "--name", "Demo Both", "--actor", "tester", "demo-api", "demo-web"}
+	if code := dispatch(cfg, args, &out, &errOut); code != 0 {
+		t.Fatalf("join exit %d: %s", code, errOut.String())
+	}
+	for _, want := range []string{"joined demo-api, demo-web into demo-both", "stories S-1 -> S-2", "search: run make reindex"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "preview only") {
+		t.Errorf("an applied join says it is a preview:\n%s", out.String())
+	}
+	db, _ := falkor.Connect(cfg.FalkorURL)
+	defer db.Conn.Close()
+	b, err := board.New(db, cfg.SystemGraph, cfg.WorkspacePrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, err := b.Stories("demo-both"); err != nil || len(st) != 2 {
+		t.Fatalf("stories %d %v", len(st), err)
+	}
+	out.Reset()
+	errOut.Reset()
+	if code := dispatch(cfg, []string{"join", "--abort", "--into", "demo-both"}, &out, &errOut); code != 1 || !strings.Contains(errOut.String(), "nothing to abort") {
+		t.Fatalf("abort of a finished join: exit %d %q", code, errOut.String())
+	}
+}
+
+func TestJoinAbortUndoesAFrozenJoin(t *testing.T) {
+	cfg := joinable(t)
+	db, _ := falkor.Connect(cfg.FalkorURL)
+	defer db.Conn.Close()
+	falkortest.MarkEntry(t, db, cfg.SystemGraph, "demo-api", map[string]any{"joining": "demo-both"})
+	falkortest.MarkEntry(t, db, cfg.SystemGraph, "demo-web", map[string]any{"joining": "demo-both"})
+	var out, errOut bytes.Buffer
+	if code := dispatch(cfg, []string{"join", "--abort", "--into", "demo-both"}, &out, &errOut); code != 0 {
+		t.Fatalf("abort exit %d: %s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "aborted the join into demo-both") {
+		t.Fatalf("output %q", out.String())
+	}
+	b, err := board.New(db, cfg.SystemGraph, cfg.WorkspacePrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AddStory("demo-api", "tester", board.NewStory{Title: "Writable again"}); err != nil {
+		t.Fatalf("the source is still frozen: %v", err)
 	}
 }
