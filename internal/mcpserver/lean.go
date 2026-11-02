@@ -16,7 +16,9 @@ type leanStory struct {
 	FoundIn     string `json:"found_in,omitempty"`
 	StraightIn  bool   `json:"straight_in,omitempty"`
 	Phase       int    `json:"phase,omitempty"`
-	Status      string `json:"status"`
+	// Repo is sent only when the workspace has several repositories.
+	Repo   string `json:"repo,omitempty"`
+	Status string `json:"status"`
 	// Blocked is sent only when true.
 	Blocked         bool               `json:"blocked,omitempty"`
 	BlockedBy       []string           `json:"blocked_by,omitempty"`
@@ -45,12 +47,12 @@ func lean(s board.Story) leanStory {
 	}
 }
 
-// leanResult is a handler's story result in its lean form, keeping its error.
-func leanResult(s board.Story, err error) (any, error) {
-	if err != nil {
-		return nil, err
+// inRepo labels the story with its repository, when the workspace has several.
+func (l leanStory) inRepo(s board.Story, several bool) leanStory {
+	if several {
+		l.Repo = s.Repo
 	}
-	return lean(s), nil
+	return l
 }
 
 // Lists answer summaries: an id, a name, the state and one useful detail.
@@ -142,7 +144,7 @@ type leanRelease struct {
 func leanReleaseOf(d board.ReleaseDetail, several bool) leanRelease {
 	ss := make([]leanStory, 0, len(d.Entries))
 	for _, s := range d.Entries {
-		ss = append(ss, lean(s))
+		ss = append(ss, lean(s).inRepo(s, several))
 	}
 	l := leanRelease{ID: d.ID, Version: d.Version, Tag: d.Tag, Commit: d.Commit, Notes: d.Notes, Stories: ss}
 	if several {

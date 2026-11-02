@@ -690,6 +690,20 @@ not part of the board.
   unchanged for one repository (its layout for several is S-72). The release
   stage (the second Merged column) is on when any repository has a merge
   step.
+- **A story is added to a repository** (2026-11-02, S-70). `add_story`,
+  `add_bug_fix` (direct or through `batch`) and `POST /stories` take an
+  optional `repo`, resolved in the add's single query by the same resolver as
+  the branch actions, which replaces the interim "join the repository" step.
+  A workspace with one repository needs none; with several, none named is
+  refused (400, "demo has several repos; name the repo: api or web", before
+  any other check, a straight-in bug fix included) and an unknown one is 404.
+  The repository is fixed at creation, like the phase: no update changes it,
+  and a `repo` on `PATCH` or `update_story` is refused as an unknown field.
+  Dependencies cross repositories freely and the rank rule is unchanged,
+  since there is one backlog. Over MCP a story read (`get_story`,
+  `whats_next`, a release's stories) shows `repo` only when the workspace has
+  several repositories; over HTTP it is always there. (The web new-story form
+  choosing a repository is S-73.)
 - **Setup.** When an agent first connects a repository it works out the
   branching (default, integration and protected branches, how pull requests
   flow), proposes it in conversation, and a person approves or adjusts it.

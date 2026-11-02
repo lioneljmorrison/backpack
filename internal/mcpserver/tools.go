@@ -54,6 +54,7 @@ type addStoryIn struct {
 	Kind        string `json:"kind,omitempty" jsonschema:"bug"`
 	FoundIn     string `json:"found_in,omitempty" jsonschema:"story it was found in"`
 	Phase       int    `json:"phase,omitempty" jsonschema:"fixed once set"`
+	Repo        string `json:"repo,omitempty" jsonschema:"repository, fixed; needed when there are several"`
 	Reasoning   string `json:"reasoning" jsonschema:"why this spot"`
 	position
 }
@@ -338,7 +339,11 @@ func (t tools) whatsNext(_ context.Context, a in) (any, error) {
 	if err != nil || s == nil {
 		return map[string]any{"story": nil}, err
 	}
-	return map[string]any{"story": lean(*s)}, nil
+	several, err := t.severalRepos(a.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"story": lean(*s).inRepo(*s, several)}, nil
 }
 
 func (t tools) whereAreWe(_ context.Context, a in) (any, error) {
@@ -374,7 +379,15 @@ func (t tools) listEvents(_ context.Context, a eventsIn) (any, error) {
 }
 
 func (t tools) getStory(_ context.Context, a storyIn) (any, error) {
-	return leanResult(t.b.Story(a.Workspace, a.ID))
+	s, err := t.b.Story(a.Workspace, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	several, err := t.severalRepos(a.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	return lean(s).inRepo(s, several), nil
 }
 
 func (t tools) getContext(_ context.Context, a storyIn) (any, error) {
@@ -398,7 +411,7 @@ func (t tools) addBugFix(ctx context.Context, a addBugFixIn) (any, error) {
 
 func (t tools) add(ctx context.Context, a addStoryIn, straight *board.StraightIn) (any, error) {
 	s, err := t.b.AddStory(a.Workspace, actor(ctx), board.NewStory{Title: a.Title, Description: a.Description,
-		Goal: a.Goal, Plan: a.Plan, Kind: a.Kind, FoundIn: a.FoundIn, Phase: a.Phase, Proposed: straight == nil,
+		Goal: a.Goal, Plan: a.Plan, Kind: a.Kind, FoundIn: a.FoundIn, Repo: a.Repo, Phase: a.Phase, Proposed: straight == nil,
 		Reasoning: a.Reasoning, Position: board.Position(a.position), StraightIn: straight})
 	if err != nil {
 		return nil, err
