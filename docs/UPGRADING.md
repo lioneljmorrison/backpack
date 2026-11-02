@@ -107,7 +107,7 @@ After the person restarts Claude Code (MCP servers load at startup):
 
 If `actions` is not there, the server is older than 0.5.0: tell the person.
 
-## After 0.5.0: the hook can name a repository
+### 5. Several repositories (optional)
 
 A workspace can hold several repositories. A project that stays with one
 repository needs nothing: the board answers as before, and `repo` is never
