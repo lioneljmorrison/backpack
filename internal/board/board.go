@@ -147,15 +147,29 @@ func (b *Board) graph(slug string) *falkordb.Graph {
 	return b.db.SelectGraph(b.prefix + slug)
 }
 
-// workspace returns the graph of a registered workspace.
+// workspace returns the graph of a registered workspace. A workspace that
+// was joined into another refuses with a pointer to where its work went,
+// and one being joined asks the caller to try again.
 func (b *Board) workspace(slug string) (*falkordb.Graph, error) {
-	res, err := b.system.ROQuery("MATCH (e:WorkspaceEntry {slug: $slug}) RETURN e.slug",
+	res, err := b.system.ROQuery(`MATCH (e:WorkspaceEntry {slug: $slug})
+		RETURN e.joined_into AS into, e.joined_repos AS repos, e.joining AS joining`,
 		map[string]any{"slug": slug}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("look up workspace: %w", err)
 	}
 	if !res.Next() {
 		return nil, refuse(NotFound, "no workspace %q", slug)
+	}
+	r := res.Record()
+	if into := str(r, "into"); into != "" {
+		msg := fmt.Sprintf("%s was joined into %s; use workspace %s", slug, into, into)
+		if rs := strs(r, "repos"); len(rs) > 0 {
+			msg += " with repo " + strings.Join(rs, " or ")
+		}
+		return nil, &Error{Kind: NotFound, Msg: msg}
+	}
+	if into := str(r, "joining"); into != "" {
+		return nil, refuse(Conflict, "%s is being joined into %s; try again shortly", slug, into)
 	}
 	return b.graph(slug), nil
 }

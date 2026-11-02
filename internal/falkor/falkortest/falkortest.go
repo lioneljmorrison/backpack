@@ -53,3 +53,14 @@ func Prefix(t *testing.T) (*falkordb.FalkorDB, string) {
 	})
 	return db, prefix
 }
+
+// MarkEntry sets properties on a workspace's registry entry in the system
+// graph, as a join would: tests use it to mark a workspace joined or being
+// joined without running one.
+func MarkEntry(t *testing.T, db *falkordb.FalkorDB, systemGraph, slug string, props map[string]any) {
+	t.Helper()
+	if _, err := db.SelectGraph(systemGraph).Query("MATCH (e:WorkspaceEntry {slug: $slug}) SET e += $props",
+		map[string]any{"slug": slug, "props": props}, nil); err != nil {
+		t.Fatalf("mark %s: %v", slug, err)
+	}
+}
