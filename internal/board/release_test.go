@@ -14,7 +14,14 @@ import (
 // mergedIntoMain adds a story and merges it into dev, then into main.
 func mergedIntoMain(t *testing.T, b *board.Board, title string) board.Story {
 	t.Helper()
-	s := addStory(t, b, board.NewStory{Title: title})
+	// With several repositories the story goes to api, which the release tests name first.
+	n := board.NewStory{Title: title}
+	if rs, err := b.Repos("demo"); err != nil {
+		t.Fatal(err)
+	} else if len(rs) > 1 {
+		n.Repo = "api"
+	}
+	s := addStory(t, b, n)
 	walk(t, b, s.ID, board.InProgress, board.InReview)
 	setStatus(t, b, s.ID, board.StatusChange{To: board.Merged, Commit: "d-" + s.ID})
 	return setStatus(t, b, s.ID, board.StatusChange{To: board.Merged, Into: "main", Commit: "m-" + s.ID})

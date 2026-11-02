@@ -119,3 +119,22 @@ func TestBranchRoutesTakeARepositoryAndNeedOneWhenThereAreSeveral(t *testing.T) 
 		t.Fatalf("after: %s", got)
 	}
 }
+
+func TestAddingAStoryTakesARepositoryAndNeedsOneWhenThereAreSeveral(t *testing.T) {
+	h := twoRepoAPI(t)
+	const p = "/v1/workspaces/demo/stories"
+	r := want(t, call(t, h, "POST", p, `{"title": "Which"}`), http.StatusBadRequest)
+	if r["error"] != "demo has several repos; name the repo: api or web" {
+		t.Fatalf("refusal %v", r)
+	}
+	want(t, call(t, h, "POST", p, `{"title": "Nowhere", "repo": "ios"}`), http.StatusNotFound)
+	s := want(t, call(t, h, "POST", p, `{"title": "Web one", "repo": "web"}`), http.StatusCreated)
+	if s["repo"] != "web" {
+		t.Fatalf("story %v", s)
+	}
+	// The repository is fixed at creation: an update cannot carry one.
+	want(t, call(t, h, "PATCH", p+"/"+s["id"].(string), `{"repo": "api"}`), http.StatusBadRequest)
+	if got := want(t, call(t, h, "GET", p+"/"+s["id"].(string), ""), http.StatusOK); got["repo"] != "web" {
+		t.Fatalf("read back %v", got)
+	}
+}

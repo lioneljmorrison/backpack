@@ -716,8 +716,8 @@ paths:
       summary: Add a story
       description: >-
         Placed directly before or after a named story, or at the bottom of the
-        backlog when neither is given. A story's phase is set here and cannot
-        be changed later. A story added here goes straight into the backlog;
+        backlog when neither is given. A story's phase and repository are set
+        here and cannot be changed later. A story added here goes straight into the backlog;
         an agent's story, added through the MCP, is proposed instead.
       requestBody:
         required: true
@@ -735,6 +735,7 @@ paths:
                 kind: { type: string, enum: [bug], description: "Mark the story as a bug; omit for any other story" }
                 found_in: { type: string, example: S-3, description: "The story this one was found while building; 404 if unknown, 409 if closed" }
                 phase: { type: integer, minimum: 1, description: "Omit for a story with no phase" }
+                repo: { type: string, description: "The repository that holds the story, fixed from then on. Left out when the workspace has one repository; with several, none is refused (400, naming the choices) and an unknown one is 404" }
                 before: { type: string, example: S-3 }
                 after: { type: string, example: S-2 }
       responses:
@@ -1433,7 +1434,7 @@ components:
       required: [id, title, description, goal, plan, status, blocked, blocked_by, blocks, created_by, created_at]
       properties:
         id: { type: string, example: S-2 }
-        repo: { type: string, description: The repository that holds the story. }
+        repo: { type: string, description: The repository that holds the story; fixed when the story is added. }
         title: { type: string }
         description: { type: string }
         goal: { type: string }

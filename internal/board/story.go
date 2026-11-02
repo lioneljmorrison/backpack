@@ -94,7 +94,10 @@ type NewStory struct {
 	Plan        string `json:"plan"`
 	Kind        string `json:"kind"`
 	// FoundIn names the story this one was found while building.
-	FoundIn   string `json:"found_in"`
+	FoundIn string `json:"found_in"`
+	// Repo names the repository that holds the story, fixed from then on. It
+	// can be left out when the workspace has one.
+	Repo      string `json:"repo"`
 	Phase     int    `json:"phase"`
 	Proposed  bool   `json:"-"`
 	Reasoning string `json:"-"`
@@ -246,18 +249,20 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			return Story{}, err
 		}
 		res, err := g.Query(`
+			`+resolveRepo+`
 			MATCH (w:Workspace)
-			OPTIONAL MATCH (rp:Repo)
 			OPTIONAL MATCH (p:Phase {number: $phase})
 			OPTIONAL MATCH (anchor:Story {id: $anchor})
 			OPTIONAL MATCH (f:Story {id: $found})
 			OPTIONAL MATCH (fp:Phase)-[:CONTAINS]->(f)
 			OPTIONAL MATCH (o:Story) WHERE ($lo = '' OR o.rank > $lo) AND ($hi = '' OR o.rank < $hi)
-			WITH w, rp, p, anchor, f, fp, count(o) AS between
+			WITH w, rps, rp, p, anchor, f, fp, count(o) AS between
 			OPTIONAL MATCH (p)-[:CONTAINS]->(x:Story) WHERE x.status <> 'closed'
-			WITH w, rp, p, anchor, f, fp, between, count(x) AS total,
+			WITH w, rps, rp, p, anchor, f, fp, between, count(x) AS total,
 				toInteger(sum(CASE WHEN x.status IN $complete THEN 1 ELSE 0 END)) AS done
-			WITH w, rp, p, f, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
+			WITH w, rps, rp, p, f, 'S-' + toString(w.next_story) AS id, coalesce(w.next_log, 1) AS n, CASE
+				WHEN size(rps) = 0 THEN 'no repo'
+				WHEN size(rps) > 1 THEN 'several repos'
 				WHEN $phase <> 0 AND p IS NULL THEN 'phase'
 				WHEN $found <> '' AND f IS NULL THEN 'found_in'
 				WHEN f.status = 'closed' THEN 'found_closed'
@@ -269,16 +274,16 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 				SET w.next_story = w.next_story + 1
 				CREATE (s:Story {id: id, title: $title, description: $description, goal: $goal,
 					plan: $plan, kind: $kind, straight_in: $straightIn, rank: $rank, status: $status, created_by: $actor, created_at: $now})
-				FOREACH (q IN CASE WHEN rp IS NULL THEN [] ELSE [rp] END | CREATE (q)-[:HOLDS]->(s))
+				CREATE (rp)-[:HOLDS]->(s)
 				FOREACH (q IN CASE WHEN p IS NULL THEN [] ELSE [p] END | CREATE (q)-[:CONTAINS]->(s))
 				FOREACH (q IN CASE WHEN f IS NULL THEN [] ELSE [f] END | CREATE (s)-[:FOUND_IN]->(q))
 				FOREACH (__ IN CASE WHEN $reasoning IS NULL THEN [] ELSE [1] END |
 					SET w.next_log = n + 1
 					CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n), at: $now, actor: $actor,
 						kind: 'decision', text: $placed, reason: $reasoning})))
-			RETURN violation, id`,
+			RETURN violation, id, `+repoNames+``,
 			map[string]any{
-				"phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
+				"repo": s.Repo, "phase": s.Phase, "anchor": at.anchor, "anchorRank": at.anchorRank, "lo": at.lo, "hi": at.hi,
 				"rank": Between(at.lo, at.hi), "title": s.Title, "description": s.Description,
 				"goal": s.Goal, "plan": s.Plan, "kind": orNull(s.Kind), "found": s.FoundIn, "status": status, "placed": placed, "reasoning": orNull(s.Reasoning),
 				"actor": actor, "now": now(), "straight": s.StraightIn != nil, "straightIn": straight, "complete": complete,
@@ -288,6 +293,9 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 		}
 		res.Next()
 		r := res.Record()
+		if err := repoRefusal(ws, s.Repo, str(r, "violation"), strs(r, "repos")); err != nil {
+			return Story{}, err
+		}
 		switch str(r, "violation") {
 		case "":
 			return story(g, str(r, "id"))
