@@ -47,7 +47,7 @@ make forward             # bring a remote stack's ports here over SSH
 make token ACTOR=<name>  # issue a token for a person or agent (shown once)
 make reindex             # rebuild the search index from the board
 make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"  # what joining workspaces would do; writes nothing
-make join INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"          # join workspaces into a new one (preview first)
+make join INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"          # join workspaces into a new one, search included (preview first)
 make join-abort INTO=<slug>                                         # undo an interrupted join
 make gates               # gofmt, vet, tests, build
 ```
@@ -57,7 +57,8 @@ a new Typesense volume also downloads the small embedding model search uses
 for matching by meaning. It runs inside the stack, so nothing tracked is sent
 anywhere. If Typesense is down when the board changes, the change still saves
 and the log says a reindex is needed; `make reindex`, or the next start,
-catches search up.
+catches search up. A join rebuilds the new workspace's
+index itself and drops the old ones.
 
 Locally, Backpack answers on `http://127.0.0.1:8780`.
 

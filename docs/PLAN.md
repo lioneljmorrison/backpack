@@ -875,7 +875,7 @@ them: a joined workspace is 404 with `<ws> was joined into <t>; use workspace
 is 409 with `<ws> is being joined into <t>; try again shortly`. A joined
 workspace is left out of the registry listing, so it drops out of
 `list_workspaces` and the web list, and start-up neither migrates it nor
-rebuilds its search index; its graph is kept. A workspace being joined stays
+rebuilds its search index; its graph is kept (the join drops its collection). A workspace being joined stays
 listed and migrated. Creating a workspace checks the registry directly, so a
 slug that is registered (joined or not) or that a join is building is a 409
 before any graph is touched. Workspaces that are not joined answer exactly as
@@ -974,9 +974,20 @@ for (so it never deletes a graph it cannot show to be a join's); otherwise it
 deletes the half-built graph and then clears the freeze (in that order, so
 nobody can take the name in between). A killed run leaves the sources frozen
 and the target unregistered: running the join again resumes it, `--abort` undoes
-it. The join does not rebuild the search index yet: it prints `search: run make
-reindex` (a later story, S-79, does it). Tests use a hook (`JoinHooks.After`)
-to fail or interrupt a run after a stage.
+it. Tests use a hook (`JoinHooks.After`) to fail or interrupt a run after a
+stage.
+
+**Search after a join (Phase 6, S-79).** Once the switch has happened, the
+command rebuilds the new workspace's search index (`Index.Rebuild`) and then
+drops each source's collection (`Index.Drop`, which takes a workspace slug and
+nothing else, so it can only reach `prefix + slug`; a collection that is not
+there counts as dropped). The new workspace is searchable at once, including
+the join notes. The board change has stood by then, so a search failure never
+fails the join: it prints `search: run make reindex` and exits 0. When the
+rebuild fails nothing is dropped; a source whose collection cannot be dropped
+is reported on stderr and its stale index is harmless (a joined workspace is
+left out of every rebuild, so only `make reindex` of nothing would recreate
+it). On success the report ends `search: rebuilt <new>, dropped <sources>`.
 
 - **Rank** is a fractional string key over `0-9A-Za-z` (ASCII order, so Go
   and FalkorDB compare keys alike). Between two neighbours there is always a

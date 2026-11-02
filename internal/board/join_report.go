@@ -119,7 +119,6 @@ func (p JoinPlan) report(applied bool) string {
 	}
 	if applied {
 		fmt.Fprintf(&b, "\nthe sources are marked joined into %s and keep their graphs\n", r.Into)
-		b.WriteString("search: run make reindex\n")
 	}
 	return b.String()
 }
