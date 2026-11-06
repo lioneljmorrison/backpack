@@ -80,8 +80,11 @@ make join-abort INTO=<slug>                                         # undo an in
 
 Ports, all bound to the stack host's 127.0.0.1: backpack 8780, FalkorDB 16379,
 Typesense 18108. The commands drive the local Docker unless
-`BACKPACK_DOCKER_CONTEXT` names another Docker host (a `docker context`, set
-in the shell profile, never in a tracked file). With a remote stack, run
+`BACKPACK_DOCKER_CONTEXT` names another Docker host (a `docker context`; set
+`BACKPACK_DOCKER_CONTEXT ?= <context>` in the gitignored `local.mk`, never in
+a tracked file; an environment variable overrides it). Commands that run
+inside the container first check Backpack is running on that Docker and say
+how to fix it if not. With a remote stack, run
 `make forward` before `make gates`. `make tunnel` refuses to start when the
 public address is already served from another host. Configuration is environment variables: `BACKPACK_ADDR`,
 `BACKPACK_FALKORDB_URL`, `BACKPACK_TYPESENSE_URL`,
