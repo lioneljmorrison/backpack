@@ -64,8 +64,9 @@ Locally, Backpack answers on `http://127.0.0.1:8780`.
 
 The stack can also run on another machine. Make it a Docker context, for
 example `docker context create box --docker "host=ssh://box"`, and set
-`BACKPACK_DOCKER_CONTEXT=box` in your shell profile: every `make` command
-then builds and runs the stack there. Its ports stay bound to that machine's
+`BACKPACK_DOCKER_CONTEXT ?= box` in `local.mk` (gitignored, kept for this
+checkout; an environment variable of the same name overrides it): every
+`make` command then builds and runs the stack there. Its ports stay bound to that machine's
 `127.0.0.1`; `make forward` brings them to this machine over SSH, which the
 tests (`make gates`) and a local browser need.
 

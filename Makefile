@@ -2,9 +2,12 @@
 #   backpack 8780, FalkorDB 16379, Typesense 18108.
 # The stack runs on the local Docker unless BACKPACK_DOCKER_CONTEXT names
 # another Docker host (a `docker context`); every command below then drives
-# that host, and `make forward` brings its ports here for the tests.
+# that host, and `make forward` brings its ports here for the tests. Remember
+# it for this checkout with `BACKPACK_DOCKER_CONTEXT ?= <context>` in local.mk
+# (gitignored); an environment variable overrides it.
 COMPOSE := docker compose -f deploy/docker-compose.yml
 PORTS   := 8780 16379 18108
+-include local.mk
 ifdef BACKPACK_DOCKER_CONTEXT
 export DOCKER_CONTEXT := $(BACKPACK_DOCKER_CONTEXT)
 endif
@@ -31,6 +34,7 @@ down:          ## stop the stack (data volumes are kept)
 	$(COMPOSE) --profile tunnel down
 
 logs:
+	@deploy/running.sh
 	$(COMPOSE) logs -f backpack
 
 forward:       ## bring a remote stack's ports to this machine over SSH
@@ -51,19 +55,24 @@ coverage:      ## fail if total coverage in coverage.out is below COVERAGE_MIN
 		'/^total:/ { sub("%", "", $$3); print "coverage: " $$3 "% (minimum " min "%)"; if ($$3 + 0 < min) exit 1 }'
 
 token:         ## make token ACTOR=<name>
+	@deploy/running.sh
 	@$(COMPOSE) exec backpack /backpack token create --actor $(ACTOR)
 
 reindex:       ## rebuild every workspace's search index from the board
+	@deploy/running.sh
 	@$(COMPOSE) exec backpack /backpack reindex
 
 join-preview:  ## make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b": what joining workspaces would do; writes nothing
 	@test -n "$(INTO)" -a -n "$(NAME)" -a -n "$(ACTOR)" -a -n "$(FROM)" || (echo "join-preview: set INTO, NAME, ACTOR and FROM" && exit 1)
+	@deploy/running.sh
 	@$(COMPOSE) exec backpack /backpack join --into "$(INTO)" --name "$(NAME)" --actor "$(ACTOR)" $(FROM)
 
 join:          ## make join INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b": join workspaces into a new one (preview first: make join-preview)
 	@test -n "$(INTO)" -a -n "$(NAME)" -a -n "$(ACTOR)" -a -n "$(FROM)" || (echo "join: set INTO, NAME, ACTOR and FROM" && exit 1)
+	@deploy/running.sh
 	@$(COMPOSE) exec backpack /backpack join --apply --into "$(INTO)" --name "$(NAME)" --actor "$(ACTOR)" $(FROM)
 
 join-abort:    ## make join-abort INTO=<slug>: undo an interrupted join
 	@test -n "$(INTO)" || (echo "join-abort: set INTO" && exit 1)
+	@deploy/running.sh
 	@$(COMPOSE) exec backpack /backpack join --abort --into "$(INTO)"

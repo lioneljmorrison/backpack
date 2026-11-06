@@ -13,3 +13,5 @@ cloudflared/
 coverage.out
 
 ENVs.txt
+# Per-checkout make settings (BACKPACK_DOCKER_CONTEXT)
+local.mk

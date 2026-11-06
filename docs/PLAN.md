@@ -1149,7 +1149,10 @@ project's CLAUDE.md.
   tunnel would split requests between two boards.
 
 The commands drive whichever Docker host `BACKPACK_DOCKER_CONTEXT` names (the
-local one when unset). For a remote host reached over SSH, `make forward`
+local one when unset; `local.mk`, gitignored, remembers it per checkout, and an
+environment variable overrides it). Commands that exec into the container run
+`deploy/running.sh` first, which names the Docker it checked when Backpack
+isn't running there. For a remote host reached over SSH, `make forward`
 (`deploy/forward.sh`) forwards its ports to this machine's `127.0.0.1`.
 
 Only the tunnel reaches `backpack` from outside. FalkorDB and Typesense are on the internal
