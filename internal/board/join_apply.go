@@ -323,6 +323,7 @@ func buildJoin(plan JoinPlan, at string) joinBuild {
 	ws["slug"] = into
 	ws["next_story"], ws["next_log"], ws["next_idea"] = int64(t.Story), int64(t.Log), int64(t.Idea)
 	ws["next_goal"], ws["next_release"] = int64(t.Goal), int64(t.Release)
+	ws["next_attachment"] = int64(t.Attachment)
 	bld.Nodes = append(bld.Nodes, SnapNode{ID: 0, Labels: []string{"Workspace"}, Props: ws})
 
 	type story struct {
@@ -559,7 +560,7 @@ func checkCounters(nodes []SnapNode) error {
 		}
 	}
 	for label, counter := range map[string]string{"Story": "next_story", "LogEntry": "next_log", "Idea": "next_idea",
-		"Goal": "next_goal", "Release": "next_release"} {
+		"Goal": "next_goal", "Release": "next_release", "Attachment": "next_attachment"} {
 		if c := counterOf(ws, counter); c <= high[label] {
 			return fmt.Errorf("verification failed: %s is %d but a %s has id %d", counter, c, label, high[label])
 		}

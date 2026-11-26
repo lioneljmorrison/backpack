@@ -242,6 +242,37 @@ the page sends the move in the background and swaps in the board the server
 returns, so the page does not reload. If something is typed on the page, or
 the reply is not the board (signed out), it falls back to a plain form post.
 
+**Attachments.** A story, an idea or a phase can carry files: images (PNG,
+JPEG, GIF, WebP) and markdown (`.md`) files, such as a screenshot of a bug or
+a design note too long for a description. Each is at most 10 MiB, and any
+other type, SVG included, is refused (SVG can run script when a browser
+opens it). The type is read from the file's bytes, never from its name or from
+what the sender claims; a markdown file must be valid text with none of the
+control characters other text refuses. A file's name is plain text of at most
+255 bytes with no `/` or `\`.
+
+Adding a file to a story or a phase writes a log line saying who attached
+what, and removing one writes a line saying who removed which file name (never
+the content). An idea has no log, so it gets none. Reads of the story, idea
+or phase list its attachments (`id`, `name`, `type`, `size`), and leave the
+list out when there are none, like every other empty field in an agent's
+answer. Removing an attachment deletes its bytes for good: only the log keeps
+a trace. Joining workspaces carries the attachments and renumbers their
+`A-n` ids like any other id; the files themselves are shared, so none moves.
+
+Files are served only to a signed-in caller, with headers that keep a
+browser from running them (`X-Content-Type-Options: nosniff`, and
+`Content-Security-Policy: default-src 'none'; sandbox`) and every cache from
+keeping them (`Cache-Control: private, no-store`). No address ends in a file
+extension, because the service sits behind Cloudflare, which caches by
+extension. A markdown file is also sent as a download
+(`Content-Disposition: attachment`).
+
+Known limits: 10 MiB a file; only the four image types and `.md`; no
+renaming or replacing (remove and attach again); removing deletes the bytes
+and cannot be undone; an upload or download has five minutes, longer than the
+server's usual 30 seconds; the files volume is not in the search index.
+
 ## How it will be built
 
 - **A Go service with three ways in:** an **MCP server** for AI agents, an
@@ -256,6 +287,10 @@ the reply is not the board (signed out), it falls back to a plain form post.
   built-in model running on our own machine, so no project's content is sent to
   an outside service. It is only an index built from FalkorDB, and can be
   rebuilt from it at any time.
+- **Files:** attachment bytes live on disk in their own Docker volume
+  (`backpack-files`), one file per attachment under a random key; the graph
+  holds the names and links. A backup of the board is FalkorDB's data **and**
+  that volume.
 - **Access:** every request carries a token. Each token belongs to an actor, a
   person or an agent, and every change records its actor. There is one person
   today. Logins for more people can be added later without changing the
@@ -859,6 +894,7 @@ the data volume. Backup copies the RDB file off the host.
 | `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `kind` (`bug`, absent for any other story), `straight_in` (`true` on a bug that skipped approval, absent otherwise), `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) `upstream_id`, `upstream_at` (the upstream-changed mark, absent when none) |
 | `Release` | `id` (`R-n`), `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` |
 | `Idea` | `id` (`I-n`), `title`, `context`, `rank`, `state` (`open`/`closed`), `drop_reason`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` |
+| `Attachment` | `id` (`A-n`, from `Workspace.next_attachment`), `key` (the file's random 128-bit hex name in the files volume; never sent to a caller), `name`, `type` (`image/png`, `image/jpeg`, `image/gif`, `image/webp` or `text/markdown; charset=utf-8`), `size`, `at`, `actor` |
 | `LogEntry` | `id` (`L-n`), `at`, `actor`, `kind`, `text`, `reason`, `commit`, `pr_url`, `branch`, `into` (the branch a merge entry reached), `field` (an edit entry: the field changed), `from`, `to` (a status entry's statuses, or an edit entry's old and new value) |
 
 | Edge | Meaning |
@@ -869,6 +905,7 @@ the data volume. Backup copies the RDB file off the host.
 | `(Story)-[:FOUND_IN]->(Story)` | the story this one was found while building; read in reverse as what was found while building it |
 | `(Story\|Phase\|Goal)-[:LOGGED]->(LogEntry)` | phases and goals log edits only (see "Editing phases and goals") |
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
+| `(Story\|Idea\|Phase)-[:HAS_ATTACHMENT]->(Attachment)` | adding one is a single query (node, edge and, on a story or phase, a log line); so is removing one. The bytes are saved before the query and deleted after it, so a failure leaves at worst a file nothing names |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
 | `(Story)-[:IN_RELEASE]->(Release)` | |
 | `(Repo)-[:HAS_BRANCH]->(Branch)` | every branch has exactly one repository; the branch's `repo` field is that repository's name |
@@ -1092,6 +1129,8 @@ POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
 GET  /v1/workspaces/{ws}/stories/{id}/log            POST
 GET  /v1/workspaces/{ws}/ideas                       POST
 GET  /v1/workspaces/{ws}/ideas/{id}                  PATCH; POST /move, /refine, /drop
+POST /v1/workspaces/{ws}/{stories|ideas|phases}/{id}/attachments   multipart, part `file`; 413 over 10 MiB, 415 for a type not accepted
+GET  /v1/workspaces/{ws}/attachments/{aid}           the bytes, locked down (see Attachments); DELETE removes it
 GET  /v1/workspaces/{ws}/search?q=[&story=]          stories, ideas and phases by keyword and meaning; story looks near it first
 POST /v1/workspaces/{ws}/batch                       1–100 POST/PATCH/DELETE requests, each sent to its own route
 ```
@@ -1176,6 +1215,11 @@ project's CLAUDE.md.
 - `backpack`;
 - `falkordb`, with its data volume;
 - `typesense`, with its data volume and the API key from the environment;
+- `backpack` also has a files volume, `backpack-files`, at `/data/files`
+  (`BACKPACK_FILES_DIR`). The image is distroless and runs as uid 65532, and a
+  new named volume is seeded from the image, owner included; the Dockerfile
+  therefore creates `/data/files` owned by 65532. Backups cover this volume as
+  well as FalkorDB's;
 - `cloudflared` (`cloudflare/cloudflared:2026.9.3`), under the `tunnel`
   profile: `make up` leaves it off, `make tunnel` starts it with
   `CLOUDFLARE_TOKEN`. The tunnel is token-managed; its public hostname routes

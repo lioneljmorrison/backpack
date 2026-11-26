@@ -25,6 +25,7 @@ import (
 	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
 	"github.com/lioneljmorrison/backpack/internal/falkor"
+	"github.com/lioneljmorrison/backpack/internal/files"
 	"github.com/lioneljmorrison/backpack/internal/health"
 	"github.com/lioneljmorrison/backpack/internal/httpapi"
 	"github.com/lioneljmorrison/backpack/internal/live"
@@ -50,6 +51,8 @@ type config struct {
 	TypesenseURL string
 	TypesenseKey string
 	SystemGraph  string
+	// FilesDir holds the bytes of attachments.
+	FilesDir string
 	// WorkspacePrefix names each workspace's graph, ws:<slug>, and
 	// CollectionPrefix its search collection, ws_<slug>. They are fixed;
 	// only tests change them.
@@ -70,6 +73,7 @@ func loadConfig(getenv func(string) string) config {
 		TypesenseURL:     or("BACKPACK_TYPESENSE_URL", "http://localhost:8108"),
 		TypesenseKey:     getenv("BACKPACK_TYPESENSE_API_KEY"),
 		SystemGraph:      or("BACKPACK_SYSTEM_GRAPH", "backpack"),
+		FilesDir:         or("BACKPACK_FILES_DIR", "/data/files"),
 		WorkspacePrefix:  "ws:",
 		CollectionPrefix: "ws_",
 	}
@@ -295,6 +299,11 @@ func serve(cfg config) error {
 	if err != nil {
 		return err
 	}
+	fs, err := files.New(cfg.FilesDir)
+	if err != nil {
+		return err
+	}
+	b.SetFiles(fs)
 	x := search.New(cfg.TypesenseURL, cfg.TypesenseKey, cfg.CollectionPrefix, b)
 	// Pages hear of a change first; updating search can take a while.
 	hub := live.New()

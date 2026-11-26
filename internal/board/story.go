@@ -24,6 +24,8 @@ type Story struct {
 	// while building this one.
 	FoundIn string   `json:"found_in,omitempty"`
 	Found   []string `json:"found"`
+	// Attachments are the files kept on the story; none, none listed.
+	Attachments []AttachmentRef `json:"attachments,omitempty"`
 	// StraightIn is set on a bug that skipped approval: it was filed with a
 	// clear fix and went straight into the backlog.
 	StraightIn bool   `json:"straight_in,omitempty"`
@@ -638,8 +640,10 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 		WITH s, rp, p, rel, blocked_by, blocks, linked, fi
 		OPTIONAL MATCH (fd:Story)-[:FOUND_IN]->(s)
 		WITH s, rp, p, rel, blocked_by, blocks, linked, fi, collect(fd.id) AS found
+		OPTIONAL MATCH (s)-[:HAS_ATTACHMENT]->(at:Attachment)
+		WITH s, rp, p, rel, blocked_by, blocks, linked, fi, found, collect(CASE WHEN at IS NULL THEN null ELSE {id: at.id, name: at.name, type: at.type, size: at.size} END) AS attachments
 		RETURN s.id AS id, rp.name AS repo, s.title AS title, s.description AS description, s.goal AS goal,
-			s.plan AS plan, s.kind AS kind, s.straight_in AS straight_in, fi.id AS found_in, found, s.status AS status, p.number AS phase, blocked_by, blocks, linked,
+			s.plan AS plan, s.kind AS kind, s.straight_in AS straight_in, fi.id AS found_in, found, attachments, s.status AS status, p.number AS phase, blocked_by, blocks, linked,
 			rel.id AS release_id, rel.version AS release_version,
 			s.held_from AS held_from, s.hold_reason AS hold_reason, s.activity AS activity,
 			s.waiting_on AS waiting_on, s.branch AS branch, s.into AS into, s.pr_url AS pr_url, s.workaround AS workaround,
@@ -675,6 +679,7 @@ func stories(g *falkordb.Graph, id string) ([]Story, error) {
 			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), UpstreamChanged: up,
+			Attachments: attachmentRefs(maps(r, "attachments")),
 		})
 	}
 	return out, nil

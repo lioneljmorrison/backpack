@@ -18,6 +18,7 @@ const maxBody = 1 << 20
 
 func routeBoard(mux *http.ServeMux, b *board.Board) {
 	a := boardAPI{b}
+	routeAttachments(mux, a)
 	mux.HandleFunc("GET /v1/workspaces", a.listWorkspaces)
 	mux.HandleFunc("POST /v1/workspaces", a.createWorkspace)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/repos", a.listRepos)
@@ -483,9 +484,11 @@ func fail(w http.ResponseWriter, err error) {
 		return
 	}
 	status := map[board.Kind]int{
-		board.Invalid:  http.StatusBadRequest,
-		board.NotFound: http.StatusNotFound,
-		board.Conflict: http.StatusConflict,
+		board.Invalid:     http.StatusBadRequest,
+		board.NotFound:    http.StatusNotFound,
+		board.Conflict:    http.StatusConflict,
+		board.TooLarge:    http.StatusRequestEntityTooLarge,
+		board.Unsupported: http.StatusUnsupportedMediaType,
 	}[be.Kind]
 	writeJSON(w, status, map[string]string{"error": be.Msg})
 }

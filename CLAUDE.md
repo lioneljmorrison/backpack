@@ -88,7 +88,9 @@ how to fix it if not. With a remote stack, run
 `make forward` before `make gates`. `make tunnel` refuses to start when the
 public address is already served from another host. Configuration is environment variables: `BACKPACK_ADDR`,
 `BACKPACK_FALKORDB_URL`, `BACKPACK_TYPESENSE_URL`,
-`BACKPACK_TYPESENSE_API_KEY`, `BACKPACK_SYSTEM_GRAPH`.
+`BACKPACK_TYPESENSE_API_KEY`, `BACKPACK_SYSTEM_GRAPH`, `BACKPACK_FILES_DIR`
+(where attachments are kept, default `/data/files`; the stack gives it its own
+volume).
 `ENVs.txt` (gitignored, never read into context unless needed) holds deploy
 secrets.
 

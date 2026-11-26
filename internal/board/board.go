@@ -9,6 +9,7 @@ import (
 
 	"github.com/FalkorDB/falkordb-go/v2"
 	"github.com/lioneljmorrison/backpack/internal/falkor"
+	"github.com/lioneljmorrison/backpack/internal/files"
 )
 
 // migrations for every workspace graph. Append only. Story.rank is not
@@ -97,9 +98,11 @@ var migrations = []string{
 type Kind int
 
 const (
-	Invalid  Kind = iota + 1 // the request itself is malformed
-	NotFound                 // a workspace, phase or story does not exist
-	Conflict                 // the change would break a board rule
+	Invalid     Kind = iota + 1 // the request itself is malformed
+	NotFound                    // a workspace, phase or story does not exist
+	Conflict                    // the change would break a board rule
+	TooLarge                    // a file is over the size limit
+	Unsupported                 // a file is of a type that is not accepted
 )
 
 // Error is a refusal, with a reason fit to show the caller.
@@ -121,6 +124,7 @@ type Board struct {
 	system   *falkordb.Graph
 	prefix   string
 	onChange func(Change)
+	files    *files.Store
 }
 
 // New opens the board and brings every registered workspace's graph up to

@@ -166,7 +166,7 @@ func TestThePreviewGivesEachSourceItsOffsets(t *testing.T) {
 	// reserves one id per story for the join notes.
 	webLogs := counter(t, e.ws("demo-web"), "next_log") - 1
 	stories := 6 + 2
-	wantTarget := board.JoinCounters{Story: 9, Log: 1 + logs + webLogs + stories, Idea: 1 + 2 + 1, Goal: 1 + 1 + 1, Release: 2}
+	wantTarget := board.JoinCounters{Story: 9, Log: 1 + logs + webLogs + stories, Idea: 1 + 2 + 1, Goal: 1 + 1 + 1, Release: 2, Attachment: 1}
 	if plan.Target != wantTarget {
 		t.Fatalf("target counters %+v, want %+v", plan.Target, wantTarget)
 	}

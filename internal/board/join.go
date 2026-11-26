@@ -21,8 +21,8 @@ import (
 
 // joinLabels and joinEdges are everything a workspace graph holds. A source
 // with anything else is refused, so a join never silently drops data.
-var joinLabels = []string{"Workspace", "SchemaVersion", "Repo", "Branch", "Phase", "Goal", "Story", "Release", "Idea", "LogEntry"}
-var joinEdges = []string{"HAS_GOAL", "CONTAINS", "DEPENDS_ON", "FOUND_IN", "LOGGED", "CORRECTS", "BECAME", "IN_RELEASE", "HAS_BRANCH", "HOLDS", "HAS_RELEASE"}
+var joinLabels = []string{"Workspace", "SchemaVersion", "Repo", "Branch", "Phase", "Goal", "Story", "Release", "Idea", "LogEntry", "Attachment"}
+var joinEdges = []string{"HAS_GOAL", "CONTAINS", "DEPENDS_ON", "FOUND_IN", "LOGGED", "CORRECTS", "BECAME", "IN_RELEASE", "HAS_BRANCH", "HOLDS", "HAS_RELEASE", "HAS_ATTACHMENT"}
 
 // maxJoinSources is how many workspaces one join takes: each source's ranks
 // get one digit of rank.go's alphabet as a prefix, and the first is kept
@@ -40,13 +40,13 @@ type JoinRequest struct {
 // JoinOffsets is what a source's ids move up by: the number of ids the
 // sources before it used. The first source's are all zero.
 type JoinOffsets struct {
-	Story, Log, Idea, Goal, Release, Phase int
+	Story, Log, Idea, Goal, Release, Phase, Attachment int
 }
 
 // JoinCounters are the next ids of a workspace: its Workspace node's next_*
 // fields, a missing one reading as 1.
 type JoinCounters struct {
-	Story, Log, Idea, Goal, Release int
+	Story, Log, Idea, Goal, Release, Attachment int
 }
 
 // JoinNotes is the block of log ids the target reserves, one per story, for
@@ -164,11 +164,12 @@ func (b *Board) PreviewJoin(req JoinRequest) (JoinPlan, error) {
 		off.Goal += src.Counters.Goal - 1
 		off.Release += src.Counters.Release - 1
 		off.Phase += src.Phases
+		off.Attachment += src.Counters.Attachment - 1
 		stories += src.Counts["Story"]
 		plan.Sources = append(plan.Sources, src)
 	}
 	plan.Target = JoinCounters{Story: 1 + off.Story, Log: 1 + off.Log + stories, Idea: 1 + off.Idea,
-		Goal: 1 + off.Goal, Release: 1 + off.Release}
+		Goal: 1 + off.Goal, Release: 1 + off.Release, Attachment: 1 + off.Attachment}
 	plan.Notes = JoinNotes{First: 1 + off.Log, Count: stories}
 	plan.Top, plan.Warnings = plan.review()
 	return plan, nil
@@ -297,7 +298,8 @@ func (b *Board) readJoinSource(slug string, k int) (JoinSource, error) {
 		switch label {
 		case "Workspace":
 			src.Counters = JoinCounters{Story: counterOf(n, "next_story"), Log: counterOf(n, "next_log"),
-				Idea: counterOf(n, "next_idea"), Goal: counterOf(n, "next_goal"), Release: counterOf(n, "next_release")}
+				Idea: counterOf(n, "next_idea"), Goal: counterOf(n, "next_goal"), Release: counterOf(n, "next_release"),
+				Attachment: counterOf(n, "next_attachment")}
 		case "Repo":
 			name, _ := n.Props["name"].(string)
 			url, _ := n.Props["url"].(string)
@@ -310,7 +312,7 @@ func (b *Board) readJoinSource(slug string, k int) (JoinSource, error) {
 		src.Mentions += mentions(n)
 	}
 	if src.Counts["Workspace"] == 0 {
-		src.Counters = JoinCounters{1, 1, 1, 1, 1}
+		src.Counters = JoinCounters{Story: 1, Log: 1, Idea: 1, Goal: 1, Release: 1, Attachment: 1}
 	}
 	slices.SortFunc(src.Repos, func(a, c Repo) int { return strings.Compare(a.Name, c.Name) })
 	for _, e := range edges {
@@ -406,7 +408,7 @@ func readSnapshot(g *falkordb.Graph) ([]SnapNode, []SnapEdge, error) {
 }
 
 // Remap returns the node the target gets for a node of this source. Ids
-// that count up (stories, ideas, goals, log entries, releases but R-0) and
+// that count up (stories, ideas, goals, attachments, log entries, releases but R-0) and
 // phase numbers move up by the source's offsets; Story.upstream_id follows
 // its story; Story and Idea ranks get the source's prefix; every item that
 // is renumbered keeps its old id and workspace as old_id and old_workspace.
@@ -437,6 +439,8 @@ func (s JoinSource) Remap(n SnapNode) SnapNode {
 		renumber("G-", s.Offsets.Goal)
 	case "Release":
 		renumber("R-", s.Offsets.Release)
+	case "Attachment":
+		renumber("A-", s.Offsets.Attachment)
 	case "LogEntry":
 		old, _ := p["id"].(string)
 		p["id"] = shiftID(old, "L-", s.Offsets.Log)

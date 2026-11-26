@@ -19,15 +19,17 @@ type Idea struct {
 	State         string   `json:"state"`
 	BecameStories []string `json:"became_stories"`
 	BecamePhase   int      `json:"became_phase,omitempty"`
-	DropReason    string   `json:"drop_reason,omitempty"`
-	CreatedBy     string   `json:"created_by"`
-	CreatedAt     string   `json:"created_at"`
-	MovedBy       string   `json:"moved_by,omitempty"`
-	MovedAt       string   `json:"moved_at,omitempty"`
-	UpdatedBy     string   `json:"updated_by,omitempty"`
-	UpdatedAt     string   `json:"updated_at,omitempty"`
-	ClosedBy      string   `json:"closed_by,omitempty"`
-	ClosedAt      string   `json:"closed_at,omitempty"`
+	// Attachments are the files kept on the idea; none, none listed.
+	Attachments []AttachmentRef `json:"attachments,omitempty"`
+	DropReason  string          `json:"drop_reason,omitempty"`
+	CreatedBy   string          `json:"created_by"`
+	CreatedAt   string          `json:"created_at"`
+	MovedBy     string          `json:"moved_by,omitempty"`
+	MovedAt     string          `json:"moved_at,omitempty"`
+	UpdatedBy   string          `json:"updated_by,omitempty"`
+	UpdatedAt   string          `json:"updated_at,omitempty"`
+	ClosedBy    string          `json:"closed_by,omitempty"`
+	ClosedAt    string          `json:"closed_at,omitempty"`
 }
 
 // NewIdea is what AddIdea needs. An idea is open from the start: only
@@ -292,8 +294,11 @@ func ideas(g *falkordb.Graph, id string) ([]Idea, error) {
 		OPTIONAL MATCH (i)-[:BECAME]->(s:Story)
 		WITH i, collect(s.id) AS stories
 		OPTIONAL MATCH (i)-[:BECAME]->(p:Phase)
+		WITH i, stories, p
+		OPTIONAL MATCH (i)-[:HAS_ATTACHMENT]->(at:Attachment)
+		WITH i, stories, p, collect(CASE WHEN at IS NULL THEN null ELSE {id: at.id, name: at.name, type: at.type, size: at.size} END) AS attachments
 		RETURN i.id AS id, i.title AS title, i.context AS context, i.state AS state,
-			stories, p.number AS phase, i.drop_reason AS drop_reason,
+			stories, attachments, p.number AS phase, i.drop_reason AS drop_reason,
 			i.created_by AS created_by, i.created_at AS created_at,
 			i.moved_by AS moved_by, i.moved_at AS moved_at,
 			i.updated_by AS updated_by, i.updated_at AS updated_at,
@@ -309,7 +314,7 @@ func ideas(g *falkordb.Graph, id string) ([]Idea, error) {
 		out = append(out, Idea{
 			ID: str(r, "id"), Title: str(r, "title"), Context: str(r, "context"), State: str(r, "state"),
 			BecameStories: byNumber(strs(r, "stories")),
-			BecamePhase:   num(r, "phase"), DropReason: str(r, "drop_reason"),
+			BecamePhase:   num(r, "phase"), Attachments: attachmentRefs(maps(r, "attachments")), DropReason: str(r, "drop_reason"),
 			CreatedBy: str(r, "created_by"), CreatedAt: str(r, "created_at"),
 			MovedBy: str(r, "moved_by"), MovedAt: str(r, "moved_at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"),
