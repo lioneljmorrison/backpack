@@ -282,6 +282,18 @@ file part and sends the headers is shared with the API (`internal/transfer`).
 The Ideas page does not update live on its own (it never has); the story and
 phase pages do.
 
+Over MCP (S-88), `get_attachment {workspace, id}` is a menu tool: it answers
+with the file itself, markdown as text and an image as MCP image content the
+agent can look at (it builds its own result, since the other tools answer with
+one text block of JSON). `attach_markdown {item, name, text}` and
+`remove_attachment {id}` are on-request changes, run through `batch`. `item` is
+`S-n`, `I-n` or a bare phase number, and both call the same board functions as
+the API, so the type rules and the one-query write are the same. An agent
+cannot send an image over MCP (bytes as JSON text would be clumsy), so an image
+is uploaded to the HTTP route with a token (`docs/ADOPTING.md`). A note is JSON
+in the request, and JSON can double its size, so the MCP handler's body limit
+is raised from the library's 4 MiB to twice the largest attachment plus 1 MiB.
+
 Known limits: 10 MiB a file; only the four image types and `.md`; no
 renaming or replacing (remove and attach again); removing deletes the bytes
 and cannot be undone; an upload or download has five minutes, longer than the

@@ -380,6 +380,20 @@ is never committed. `actions` lists rarer actions; run rarer changes through
 - **Many changes** go in one `batch`; read each answer.
 ```
 
+Agents can also keep files on a story, idea or phase. Over MCP,
+`attach_markdown` (`item` is `S-n`, `I-n` or a phase number; `name` ends in
+`.md`) attaches a note, run through `batch`, and `get_attachment` reads any
+attachment back, an image as an image. An agent cannot send an image over MCP,
+so a person or a script uploads one with a token:
+
+```bash
+curl -fsS -H "Authorization: Bearer $BACKPACK_TOKEN" -F file=@shot.png \
+  https://backpack.example.com/v1/workspaces/my-app/stories/S-1/attachments
+```
+
+Use `ideas/I-1` or `phases/1` in place of `stories/S-1` for the others.
+`remove_attachment` (through `batch`) removes a file.
+
 ## 8. Finish
 
 Commit what you added: `.backpack.json`, `CLAUDE.md`, and, if you used them,

@@ -22,7 +22,7 @@ func New(b *board.Board, x *search.Index) http.Handler {
 	s := mcp.NewServer(&mcp.Implementation{Name: "backpack", Version: "0.6.0"}, nil)
 	addTools(s, tools{b, x})
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s },
-		&mcp.StreamableHTTPOptions{Stateless: true})
+		&mcp.StreamableHTTPOptions{Stateless: true, MaxRequestBodyBytes: maxRequestBytes})
 }
 
 // plain is a result a handler wants sent as it is, not as JSON: the one text
