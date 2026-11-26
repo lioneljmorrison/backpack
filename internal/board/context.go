@@ -29,6 +29,8 @@ type StoryContext struct {
 	// Bugs are the open bugs found in the story or in one of its direct
 	// dependencies, in delivery order, at most maxContextBugs.
 	Bugs []ContextBug `json:"bugs"`
+	// Attachments are the files kept on the story; none, none listed.
+	Attachments []AttachmentRef `json:"attachments,omitempty"`
 }
 
 // ContextPhase is a phase with its goals and whether each is met.
@@ -166,6 +168,18 @@ func (b *Board) Context(ws, id string) (StoryContext, error) {
 	for _, m := range maps(r, "bugs") {
 		c.Bugs = append(c.Bugs, ContextBug{ID: field(m, "id"), Title: field(m, "title"), Status: field(m, "status"), FoundIn: field(m, "found_in")})
 	}
+	// Read apart from the neighbourhood: the query above is long enough.
+	ar, err := g.ROQuery(`MATCH (:Story {id: $id})-[:HAS_ATTACHMENT]->(at:Attachment)
+		RETURN at.id AS id, at.name AS name, at.type AS type, at.size AS size`, map[string]any{"id": id}, nil)
+	if err != nil {
+		return StoryContext{}, fmt.Errorf("read context attachments: %w", err)
+	}
+	var ams []map[string]any
+	for ar.Next() {
+		rec := ar.Record()
+		ams = append(ams, map[string]any{"id": str(rec, "id"), "name": str(rec, "name"), "type": str(rec, "type"), "size": int64(num(rec, "size"))})
+	}
+	c.Attachments = attachmentRefs(ams)
 	return c, nil
 }
 

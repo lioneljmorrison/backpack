@@ -95,12 +95,13 @@ func (p JoinPlan) report(applied bool) string {
 		row("ideas", "I-", c.Idea-1, o.Idea)
 		row("goals", "G-", c.Goal-1, o.Goal)
 		row("releases", "R-", c.Release-1, o.Release)
+		row("attachments", "A-", c.Attachment-1, o.Attachment)
 		row("log entries", "L-", c.Log-1, o.Log)
 		row("phases", "", s.Phases, o.Phase)
 	}
 	t := p.Target
-	fmt.Fprintf(&b, "\nthe new workspace %s starts at next_story %d, next_log %d, next_idea %d, next_goal %d, next_release %d\n",
-		r.Into, t.Story, t.Log, t.Idea, t.Goal, t.Release)
+	fmt.Fprintf(&b, "\nthe new workspace %s starts at next_story %d, next_log %d, next_idea %d, next_goal %d, next_release %d, next_attachment %d\n",
+		r.Into, t.Story, t.Log, t.Idea, t.Goal, t.Release, t.Attachment)
 	fmt.Fprintf(&b, "join notes, one per story, take %s\n", span("L-", p.Notes.First, p.Notes.First+p.Notes.Count-1))
 	if p.Top != nil {
 		fmt.Fprintf(&b, "top of the merged backlog: %s (was %s %s) %s\n", p.Top.NewID, p.Top.Source, p.Top.OldID, p.Top.Title)

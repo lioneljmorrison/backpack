@@ -20,20 +20,21 @@ type leanStory struct {
 	Repo   string `json:"repo,omitempty"`
 	Status string `json:"status"`
 	// Blocked is sent only when true.
-	Blocked         bool               `json:"blocked,omitempty"`
-	BlockedBy       []string           `json:"blocked_by,omitempty"`
-	Blocks          []string           `json:"blocks,omitempty"`
-	Found           []string           `json:"found,omitempty"`
-	HeldFrom        string             `json:"held_from,omitempty"`
-	HoldReason      string             `json:"hold_reason,omitempty"`
-	Activity        string             `json:"activity,omitempty"`
-	WaitingOn       string             `json:"waiting_on,omitempty"`
-	Branch          string             `json:"branch,omitempty"`
-	Into            string             `json:"into,omitempty"`
-	PRURL           string             `json:"pr_url,omitempty"`
-	Workaround      string             `json:"workaround,omitempty"`
-	Release         *board.ReleaseRef  `json:"release,omitempty"`
-	UpstreamChanged *board.UpstreamRef `json:"upstream_changed,omitempty"`
+	Blocked         bool                  `json:"blocked,omitempty"`
+	BlockedBy       []string              `json:"blocked_by,omitempty"`
+	Blocks          []string              `json:"blocks,omitempty"`
+	Found           []string              `json:"found,omitempty"`
+	HeldFrom        string                `json:"held_from,omitempty"`
+	HoldReason      string                `json:"hold_reason,omitempty"`
+	Activity        string                `json:"activity,omitempty"`
+	WaitingOn       string                `json:"waiting_on,omitempty"`
+	Branch          string                `json:"branch,omitempty"`
+	Into            string                `json:"into,omitempty"`
+	PRURL           string                `json:"pr_url,omitempty"`
+	Workaround      string                `json:"workaround,omitempty"`
+	Release         *board.ReleaseRef     `json:"release,omitempty"`
+	UpstreamChanged *board.UpstreamRef    `json:"upstream_changed,omitempty"`
+	Attachments     []board.AttachmentRef `json:"attachments,omitempty"`
 }
 
 // lean is the agent's view of s.
@@ -43,7 +44,7 @@ func lean(s board.Story) leanStory {
 		Phase: s.Phase, Status: s.Status, Blocked: s.Blocked, BlockedBy: s.BlockedBy, Blocks: s.Blocks,
 		HeldFrom: s.HeldFrom, HoldReason: s.HoldReason, Activity: s.Activity, WaitingOn: s.WaitingOn,
 		Branch: s.Branch, Into: s.Into, PRURL: s.PRURL, Workaround: s.Workaround,
-		Release: s.Release, UpstreamChanged: s.UpstreamChanged,
+		Release: s.Release, UpstreamChanged: s.UpstreamChanged, Attachments: s.Attachments,
 	}
 }
 
@@ -92,7 +93,8 @@ type phaseSummary struct {
 	// GoalsMetEarly is sent only when true.
 	GoalsMetEarly bool `json:"goals_met_early,omitempty"`
 	// Closed is sent only when true.
-	Closed bool `json:"closed,omitempty"`
+	Closed      bool                  `json:"closed,omitempty"`
+	Attachments []board.AttachmentRef `json:"attachments,omitempty"`
 }
 
 func phaseSummaries(ps []board.Phase) []phaseSummary {
@@ -103,7 +105,7 @@ func phaseSummaries(ps []board.Phase) []phaseSummary {
 			gs = append(gs, goalSummary{ID: g.ID, Text: g.Text, Met: g.Met})
 		}
 		out = append(out, phaseSummary{Number: p.Number, Title: p.Title, Description: p.Description, Complete: p.Complete,
-			StoriesComplete: p.StoriesComplete, StoriesTotal: p.StoriesTotal, Goals: gs, GoalsMetEarly: p.GoalsMetEarly, Closed: p.Closed})
+			StoriesComplete: p.StoriesComplete, StoriesTotal: p.StoriesTotal, Goals: gs, GoalsMetEarly: p.GoalsMetEarly, Closed: p.Closed, Attachments: p.Attachments})
 	}
 	return out
 }
@@ -198,16 +200,17 @@ func branchSummaries(bs []board.Branch) []branchSummary {
 // leanContext is a story's neighbourhood as an agent reads it: the board's
 // summaries with every empty section left out.
 type leanContext struct {
-	ID           string               `json:"id"`
-	Title        string               `json:"title"`
-	Status       string               `json:"status"`
-	Phase        *board.ContextPhase  `json:"phase,omitempty"`
-	Idea         *board.ContextIdea   `json:"idea,omitempty"`
-	DependsOn    []leanLink           `json:"depends_on,omitempty"`
-	DependedOnBy []leanLink           `json:"depended_on_by,omitempty"`
-	FoundIn      *board.ContextStory  `json:"found_in,omitempty"`
-	Found        []board.ContextStory `json:"found,omitempty"`
-	Bugs         []board.ContextBug   `json:"bugs,omitempty"`
+	ID           string                `json:"id"`
+	Title        string                `json:"title"`
+	Status       string                `json:"status"`
+	Phase        *board.ContextPhase   `json:"phase,omitempty"`
+	Idea         *board.ContextIdea    `json:"idea,omitempty"`
+	DependsOn    []leanLink            `json:"depends_on,omitempty"`
+	DependedOnBy []leanLink            `json:"depended_on_by,omitempty"`
+	FoundIn      *board.ContextStory   `json:"found_in,omitempty"`
+	Found        []board.ContextStory  `json:"found,omitempty"`
+	Bugs         []board.ContextBug    `json:"bugs,omitempty"`
+	Attachments  []board.AttachmentRef `json:"attachments,omitempty"`
 }
 
 type leanLink struct {
@@ -220,7 +223,7 @@ type leanLink struct {
 func leanContextOf(c board.StoryContext) leanContext {
 	return leanContext{ID: c.ID, Title: c.Title, Status: c.Status, Phase: c.Phase, Idea: c.Idea,
 		DependsOn: leanLinks(c.DependsOn), DependedOnBy: leanLinks(c.DependedOnBy),
-		FoundIn: c.FoundIn, Found: c.Found, Bugs: c.Bugs}
+		FoundIn: c.FoundIn, Found: c.Found, Bugs: c.Bugs, Attachments: c.Attachments}
 }
 
 func leanLinks(ls []board.ContextLink) []leanLink {

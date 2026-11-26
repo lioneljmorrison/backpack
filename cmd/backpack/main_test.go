@@ -332,3 +332,12 @@ func TestJoinApplySucceedsWhenSearchIsUnreachable(t *testing.T) {
 		t.Fatalf("stories %d %v", len(st), err)
 	}
 }
+
+func TestFilesDirectoryDefaultsToTheVolumeAndTakesTheEnvironment(t *testing.T) {
+	if c := loadConfig(env(nil)); c.FilesDir != "/data/files" {
+		t.Fatalf("default files dir %q", c.FilesDir)
+	}
+	if c := loadConfig(env(map[string]string{"BACKPACK_FILES_DIR": "/elsewhere"})); c.FilesDir != "/elsewhere" {
+		t.Fatalf("files dir %q", c.FilesDir)
+	}
+}

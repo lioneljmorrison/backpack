@@ -61,6 +61,12 @@ and the log says a reindex is needed; `make reindex`, or the next start,
 catches search up. A join rebuilds the new workspace's
 index itself and drops the old ones.
 
+Backpack keeps attachments (images and markdown files on a story, idea or
+phase) in its own Docker volume, `backpack-files`, mounted at `/data/files`
+(`BACKPACK_FILES_DIR`). The image creates that directory owned by the
+service's user, so a fresh volume is writable. Back the volume up together
+with FalkorDB's: the board names each file, and the volume holds its bytes.
+
 Locally, Backpack answers on `http://127.0.0.1:8780`.
 
 The stack can also run on another machine. Make it a Docker context, for

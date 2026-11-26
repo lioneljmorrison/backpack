@@ -15,6 +15,8 @@ type Phase struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Goals       []Goal `json:"goals"`
+	// Attachments are the files kept on the phase; none, none listed.
+	Attachments []AttachmentRef `json:"attachments,omitempty"`
 	// StoriesTotal leaves out closed stories.
 	StoriesTotal    int `json:"stories_total"`
 	StoriesComplete int `json:"stories_complete"`
@@ -279,10 +281,12 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 		OPTIONAL MATCH (p)-[:HAS_GOAL]->(goal:Goal)
 		WITH p, total, done, collect({id: goal.id, text: goal.text, by: goal.created_by, at: goal.created_at,
 			met_by: goal.met_by, met_at: goal.met_at}) AS goals
+		OPTIONAL MATCH (p)-[:HAS_ATTACHMENT]->(at:Attachment)
+		WITH p, total, done, goals, collect(CASE WHEN at IS NULL THEN null ELSE {id: at.id, name: at.name, type: at.type, size: at.size} END) AS attachments
 		RETURN p.number AS number, p.title AS title, p.description AS description,
 			p.created_by AS by, p.created_at AS at,
 			p.updated_by AS updated_by, p.updated_at AS updated_at,
-			p.closed_by AS closed_by, p.closed_at AS closed_at, goals, total, done
+			p.closed_by AS closed_by, p.closed_at AS closed_at, goals, attachments, total, done
 		ORDER BY p.number`,
 		map[string]any{"n": n, "complete": complete}, nil)
 	if err != nil {
@@ -295,7 +299,8 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 			CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), Goals: []Goal{},
 			StoriesTotal: num(r, "total"), StoriesComplete: num(r, "done"),
-			Closed: str(r, "closed_at") != "", ClosedBy: str(r, "closed_by"), ClosedAt: str(r, "closed_at")}
+			Closed: str(r, "closed_at") != "", ClosedBy: str(r, "closed_by"), ClosedAt: str(r, "closed_at"),
+			Attachments: attachmentRefs(maps(r, "attachments"))}
 		raw, _ := r.Get("goals")
 		list, _ := raw.([]any)
 		for _, x := range list {

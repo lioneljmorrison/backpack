@@ -682,6 +682,120 @@ paths:
         "400": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/workspaces/{ws}/stories/{id}/attachments:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/StoryID"
+    post:
+      summary: Attach a file to a story
+      description: &attach >-
+        Multipart form with the file in a part named `file`. Images (PNG, JPEG,
+        GIF, WebP, by their bytes) and markdown (a `.md` name, valid text) are
+        accepted, up to 10 MiB; anything else, SVG included, is 415, and a
+        larger file is 413. The name is plain text, at most 255 bytes, with no
+        `/` or `\`. Writes a log line on a story or phase.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/AttachmentUpload" }
+      responses:
+        "201":
+          description: Attached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Attachment" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedType" }
+  /v1/workspaces/{ws}/ideas/{id}/attachments:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/IdeaID"
+    post:
+      summary: Attach a file to an idea
+      description: *attach
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/AttachmentUpload" }
+      responses:
+        "201":
+          description: Attached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Attachment" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedType" }
+  /v1/workspaces/{ws}/phases/{n}/attachments:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - $ref: "#/components/parameters/PhaseNumber"
+    post:
+      summary: Attach a file to a phase
+      description: *attach
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/AttachmentUpload" }
+      responses:
+        "201":
+          description: Attached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Attachment" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedType" }
+  /v1/workspaces/{ws}/attachments/{aid}:
+    parameters:
+      - $ref: "#/components/parameters/Workspace"
+      - name: aid
+        in: path
+        required: true
+        schema: { type: string, example: A-3 }
+    get:
+      summary: The bytes of an attachment
+      description: >-
+        Needs a token like every route. The address has no file extension, on
+        purpose: the service sits behind Cloudflare, which caches by extension.
+        A markdown file is also sent as a download.
+      responses:
+        "200":
+          description: The file, as the type it was stored with
+          headers:
+            X-Content-Type-Options: { schema: { type: string, const: nosniff } }
+            Content-Security-Policy: { schema: { type: string, const: "default-src 'none'; sandbox" } }
+            Cache-Control: { schema: { type: string, const: "private, no-store" } }
+            Content-Disposition:
+              description: "Markdown only: attachment; filename=<name>"
+              schema: { type: string }
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            text/markdown: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Remove an attachment and delete its bytes
+      description: >-
+        Logs who removed which file name on a story or phase (never the
+        content). The bytes are deleted for good.
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /v1/workspaces/{ws}/phases/{n}/goals:
     parameters:
       - $ref: "#/components/parameters/Workspace"
@@ -1505,6 +1619,30 @@ components:
           type: array
           description: The stories it released, in full, in delivery order
           items: { $ref: "#/components/schemas/Story" }
+    AttachmentUpload:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary }
+    AttachmentRef:
+      type: object
+      description: An attachment as a read of its story, idea or phase lists it
+      required: [id, name, type, size]
+      properties:
+        id: { type: string, example: A-3 }
+        name: { type: string }
+        type: { type: string, example: image/png }
+        size: { type: integer, description: Bytes }
+    Attachment:
+      type: object
+      required: [id, name, type, size, at, actor]
+      properties:
+        id: { type: string, example: A-3 }
+        name: { type: string }
+        type: { type: string, enum: [image/png, image/jpeg, image/gif, image/webp, "text/markdown; charset=utf-8"] }
+        size: { type: integer, description: Bytes }
+        at: { type: string, format: date-time }
+        actor: { type: string }
     Phase:
       type: object
       required: [number, title, description, goals, stories_total, stories_complete, complete, goals_met_early, closed, created_by, created_at]
@@ -1522,6 +1660,10 @@ components:
         closed_by: { type: string, description: "Who closed it; absent while open" }
         closed_at: { type: string, format: date-time, description: "When it was closed; absent while open" }
         goals_met_early: { type: boolean, description: "Every goal is met but some stories are still open" }
+        attachments:
+          type: array
+          description: Files kept on it, in id order; absent when there are none
+          items: { $ref: "#/components/schemas/AttachmentRef" }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
         updated_by: { type: string, description: "Who last edited it" }
@@ -1564,6 +1706,10 @@ components:
           type: array
           description: Stories found while building this one
           items: { type: string }
+        attachments:
+          type: array
+          description: Files kept on it, in id order; absent when there are none
+          items: { $ref: "#/components/schemas/AttachmentRef" }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
         moved_by: { type: string }
@@ -1674,6 +1820,10 @@ components:
               title: { type: string }
               status: { type: string }
               found_in: { type: string, description: The story the bug was found in }
+        attachments:
+          type: array
+          description: Files kept on the story, in id order; absent when there are none
+          items: { $ref: "#/components/schemas/AttachmentRef" }
     ContextStory:
       type: object
       required: [id, title, status]
@@ -1776,6 +1926,10 @@ components:
           description: The stories a refined idea became
           items: { type: string }
         became_phase: { type: integer, description: "The phase a refined idea became" }
+        attachments:
+          type: array
+          description: Files kept on it, in id order; absent when there are none
+          items: { $ref: "#/components/schemas/AttachmentRef" }
         drop_reason: { type: string }
         created_by: { type: string }
         created_at: { type: string, format: date-time }
@@ -1829,6 +1983,16 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     Conflict:
       description: The change would break a board rule; the error says which
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: The file is over 10 MiB
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnsupportedType:
+      description: The file is not a PNG, JPEG, GIF or WebP image or a .md file
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
