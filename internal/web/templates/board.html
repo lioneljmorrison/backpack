@@ -6,7 +6,7 @@
   {{with .Where.Phase}}
   <div>
     <div class="muted">Current phase</div>
-    <a href="/w/{{$ws}}/phases#phase-{{.Number}}"><strong>{{.Number}}. {{.Title}}</strong></a>
+    <a href="/w/{{$ws}}/phases/{{.Number}}"><strong>{{.Number}}. {{.Title}}</strong></a>
     <div class="progress" aria-hidden="true"><span style="width: {{percent .StoriesComplete .StoriesTotal}}%"></span></div>
     <div class="muted">{{.StoriesComplete}} of {{.StoriesTotal}} complete</div>
   </div>

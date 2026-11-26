@@ -132,10 +132,11 @@ func TestEditingAGoalChangesItsTextKeepsItsMetStateAndLogsTheChange(t *testing.T
 		t.Fatalf("read back %+v", ps[0].Goals)
 	}
 	l := goalLog(t, b, "G-1")
-	if len(l) != 1 {
-		t.Fatalf("log %+v, want one entry", l)
+	// marking the goal met is logged too (S-84), then the text edit
+	if len(l) != 2 || l[0].Field != "met" {
+		t.Fatalf("log %+v, want the met entry then the text edit", l)
 	}
-	if e := l[0]; e.Kind != "edit" || e.Field != "text" || e.From != "old wording" || e.To != "new wording" || e.Actor != "editor" {
+	if e := l[1]; e.Kind != "edit" || e.Field != "text" || e.From != "old wording" || e.To != "new wording" || e.Actor != "editor" {
 		t.Fatalf("entry %+v", e)
 	}
 	// Another goal's log and the phase's own log are untouched.

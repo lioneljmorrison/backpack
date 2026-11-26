@@ -36,6 +36,7 @@ func routeBoard(mux *http.ServeMux, b *board.Board) {
 	mux.HandleFunc("GET /v1/workspaces/{ws}/board", a.board)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/phases", a.listPhases)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases", a.addPhase)
+	mux.HandleFunc("GET /v1/workspaces/{ws}/phases/{n}", a.getPhase)
 	mux.HandleFunc("PATCH /v1/workspaces/{ws}/phases/{n}", a.updatePhase)
 	mux.HandleFunc("GET /v1/workspaces/{ws}/phases/{n}/log", a.readPhaseLog)
 	mux.HandleFunc("POST /v1/workspaces/{ws}/phases/{n}/goals", a.addGoal)
@@ -203,6 +204,15 @@ func (a boardAPI) addPhase(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := a.b.AddPhase(r.PathValue("ws"), actor(r), in.Title, in.Description)
 	respond(w, http.StatusCreated, p, err)
+}
+
+func (a boardAPI) getPhase(w http.ResponseWriter, r *http.Request) {
+	n, ok := phaseNumber(w, r)
+	if !ok {
+		return
+	}
+	p, err := a.b.Phase(r.PathValue("ws"), n)
+	respond(w, http.StatusOK, p, err)
 }
 
 func (a boardAPI) updatePhase(w http.ResponseWriter, r *http.Request) {

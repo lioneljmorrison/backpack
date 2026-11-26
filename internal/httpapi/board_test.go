@@ -732,3 +732,14 @@ func TestAPhaseIsClosedAndReopenedOverHTTP(t *testing.T) {
 	}
 	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A", "phase": 1}`), http.StatusCreated)
 }
+
+func TestOnePhaseIsReadOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "One"}`), http.StatusCreated)
+	p := want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/1", ""), http.StatusOK)
+	if p["number"] != float64(1) || p["title"] != "One" {
+		t.Fatalf("phase %v", p)
+	}
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/9", ""), http.StatusNotFound)
+	want(t, call(t, h, "GET", "/v1/workspaces/demo/phases/one", ""), http.StatusBadRequest)
+}

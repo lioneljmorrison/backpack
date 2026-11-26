@@ -10,7 +10,7 @@
   {{with $.Data.Tone}}<span class="tag repo {{.}}">{{$.Data.Story.Repo}}</span>{{end}}
   {{if eq .Kind "bug"}}<span class="tag bug">Bug</span>{{end}}
   {{if .StraightIn}}<span class="tag warn" title="Skipped approval">Straight in</span>{{end}}
-  {{if .Phase}}<a class="tag" href="/w/{{$ws}}/phases#phase-{{.Phase}}">Phase {{.Phase}}</a>{{end}}
+  {{if .Phase}}<a class="tag" href="/w/{{$ws}}/phases/{{.Phase}}">Phase {{.Phase}}</a>{{end}}
   {{if .Activity}}<span class="tag activity">{{label .Activity}}{{with .WaitingOn}}: {{.}}{{end}}</span>{{end}}
   {{if .Blocked}}<span class="tag bad">Blocked</span>{{end}}
   {{with .HoldReason}}<span class="tag warn">On hold: {{.}}</span>{{end}}

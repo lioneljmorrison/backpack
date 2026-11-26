@@ -227,3 +227,38 @@ func TestAPhaseWithNoStoriesIsNotFlagged(t *testing.T) {
 		t.Fatalf("flagged with no open stories %+v", p)
 	}
 }
+
+func TestOnePhaseIsReadByNumber(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addPhase(t, b, "Two")
+	p, err := b.Phase("demo", 2)
+	if err != nil || p.Number != 2 || p.Title != "Two" {
+		t.Fatalf("phase %+v, %v", p, err)
+	}
+	_, err = b.Phase("demo", 9)
+	wantKind(t, err, board.NotFound)
+}
+
+func TestMarkingAGoalMetIsLoggedOnTheGoalAndReported(t *testing.T) {
+	b := newWorkspace(t)
+	addPhase(t, b, "One")
+	addGoal(t, b, 1, "it works")
+	got := recorder(b)
+	for _, met := range []bool{true, true, false} { // the repeat changes nothing
+		if _, err := b.SetGoalMet("demo", actor, "G-1", met); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log, err := b.GoalLog("demo", "G-1")
+	if err != nil || len(log) != 2 {
+		t.Fatalf("log %+v, %v", log, err)
+	}
+	if log[0].Field != "met" || log[0].From != "not met" || log[0].To != "met" || log[1].From != "met" || log[1].To != "not met" {
+		t.Fatalf("log %+v", log)
+	}
+	want := board.Change{Workspace: "demo", Kind: board.KindPhase, ID: "1"}
+	if len(*got) != 3 || (*got)[0] != want {
+		t.Fatalf("changes %+v", *got)
+	}
+}

@@ -1,0 +1,79 @@
+{{define "content"}}
+{{$ws := .WS.Slug}}
+{{with .Data}}
+{{$n := .Phase.Number}}
+{{$d := .}}
+<p class="muted"><a href="/w/{{$ws}}/phases">All phases</a></p>
+{{with .Phase}}
+<h1>{{.Number}}. {{.Title}} {{if .Complete}}<span class="tag good">Complete</span>{{end}}{{if .GoalsMetEarly}}<span class="tag good">Goals met</span>{{end}}{{if .Closed}}<span class="tag">Closed</span>{{end}}</h1>
+{{with .Description}}<p class="text">{{.}}</p>{{end}}
+<div class="progress" aria-hidden="true"><span style="width: {{percent .StoriesComplete .StoriesTotal}}%"></span></div>
+<p class="muted">{{.StoriesComplete}} of {{.StoriesTotal}} complete</p>
+
+<form class="panel" method="post" action="/w/{{$ws}}/phases/{{$n}}/closed">
+  <input type="hidden" name="closed" value="{{if .Closed}}false{{else}}true{{end}}">
+  {{if .Closed}}<p class="muted">Closed: skipped when choosing the current phase, and takes no new stories.</p>
+  <button type="submit">Reopen this phase</button>
+  {{else}}<p class="muted">Closing skips this phase when choosing the current one, and stops new stories joining it.</p>
+  <button type="submit" class="secondary">Close this phase</button>{{end}}
+</form>
+
+<form class="panel" method="post" action="/w/{{$ws}}/phases/{{$n}}/edit">
+  <h2>Title and description</h2>
+  <label>Title <input name="title" value="{{.Title}}" required></label>
+  <label>Description <textarea name="description" rows="3">{{.Description}}</textarea></label>
+  <button type="submit">Save</button>
+</form>
+
+<h2>Goals</h2>
+{{range .Goals}}
+<div class="panel goal{{if .Met}} met{{end}}">
+  <form method="post" action="/w/{{$ws}}/phases/{{$n}}/goals/{{.ID}}/text">
+    <label><span>{{if .Met}}✓ Met{{else}}○ Not met{{end}}</span> <input name="text" value="{{.Text}}" required></label>
+    <button type="submit" class="secondary">Save text</button>
+  </form>
+  <form method="post" action="/w/{{$ws}}/phases/{{$n}}/goals/{{.ID}}/met">
+    <input type="hidden" name="met" value="{{if .Met}}false{{else}}true{{end}}">
+    <button type="submit">{{if .Met}}Mark not met{{else}}Mark met{{end}}</button>
+  </form>
+</div>
+{{else}}
+<p class="muted">No goals yet.</p>
+{{end}}
+<form class="panel" method="post" action="/w/{{$ws}}/phases/{{$n}}/goals">
+  <label>New goal <input name="text" required></label>
+  <button type="submit">Add goal</button>
+</form>
+{{end}}
+
+<h2>What is left</h2>
+<div class="list" data-next="{{.Next}}">
+  {{range .Left}}
+  <a class="row" href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}} <span class="tag status">{{storyLabel .}}</span>
+    {{if eq .ID $d.Next}}<span class="tag good">Next</span>{{end}}
+    {{with .BlockedBy}}<span class="tag warn">Blocked by {{range $i, $b := .}}{{if $i}}, {{end}}{{$b}} {{index $d.Titles $b}}{{end}}</span>{{end}}</a>
+  {{else}}
+  <p class="muted">Nothing left in this phase.</p>
+  {{end}}
+</div>
+
+<h2>Done ({{len .Done}})</h2>
+<div class="list">
+  {{range .Done}}<a class="row" href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}} <span class="tag status">{{storyLabel .}}</span></a>{{end}}
+</div>
+
+{{if .Phase.Closed}}
+<p class="muted">This phase is closed, so stories cannot be added to it.</p>
+{{else}}
+<form class="approve" method="post" action="/w/{{$ws}}/phases/{{$n}}/stories">
+  <h2>Add stories</h2>
+  {{range .Unphased}}
+  <label class="row"><input type="checkbox" name="id" value="{{.ID}}"> <span class="id">{{.ID}}</span> {{.Title}} <span class="tag status">{{storyLabel .}}</span></label>
+  {{else}}
+  <p class="muted">Every open story is already in a phase.</p>
+  {{end}}
+  {{if .Unphased}}<div class="actions"><button type="submit">Add selected</button></div>{{end}}
+</form>
+{{end}}
+{{end}}
+{{end}}

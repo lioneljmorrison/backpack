@@ -92,6 +92,22 @@ func (b *Board) Phases(ws string) ([]Phase, error) {
 	return phases(g, 0)
 }
 
+// Phase reads one phase by number.
+func (b *Board) Phase(ws string, number int) (Phase, error) {
+	g, err := b.workspace(ws)
+	if err != nil {
+		return Phase{}, err
+	}
+	ps, err := phases(g, number)
+	if err != nil {
+		return Phase{}, err
+	}
+	if len(ps) == 0 {
+		return Phase{}, refuse(NotFound, "no phase %d", number)
+	}
+	return ps[0], nil
+}
+
 // UpdatePhase edits a phase's title or description, or closes or reopens it.
 // Each field that changes
 // is logged on the phase with its old and new value.
@@ -217,16 +233,28 @@ func (b *Board) UpdateGoal(ws, actor, id, text string) (_ Goal, err error) {
 		Met: str(r, "met_at") != "", MetBy: str(r, "met_by"), MetAt: str(r, "met_at")}, nil
 }
 
-// SetGoalMet marks a goal met, recording who marked it, or unmarks it.
-func (b *Board) SetGoalMet(ws, actor, id string, met bool) (Goal, error) {
+// SetGoalMet marks a goal met, recording who marked it, or unmarks it. A
+// change is logged on the goal; setting what it already is changes and logs
+// nothing.
+func (b *Board) SetGoalMet(ws, actor, id string, met bool) (_ Goal, err error) {
+	var phase int
+	defer func() { b.changed(err, Change{ws, KindPhase, phaseID(phase)}) }()
 	g, err := b.workspace(ws)
 	if err != nil {
 		return Goal{}, err
 	}
 	res, err := g.Query(`
-		MATCH (goal:Goal {id: $id})
-		SET goal.met_by = CASE WHEN $met THEN $actor END, goal.met_at = CASE WHEN $met THEN $now END
-		RETURN goal.id AS id, goal.text AS text, goal.created_by AS by, goal.created_at AS at,
+		MATCH (w:Workspace), (p:Phase)-[:HAS_GOAL]->(goal:Goal {id: $id})
+		WITH w, p, goal, coalesce(w.next_log, 1) AS first, goal.met_at IS NOT NULL AS was,
+			CASE WHEN (goal.met_at IS NOT NULL) <> $met THEN [1] ELSE [] END AS edits
+		SET w.next_log = first + size(edits),
+			goal.met_by = CASE WHEN size(edits) = 0 THEN goal.met_by WHEN $met THEN $actor END,
+			goal.met_at = CASE WHEN size(edits) = 0 THEN goal.met_at WHEN $met THEN $now END
+		FOREACH (_ IN edits |
+			CREATE (goal)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(first), at: $now, actor: $actor, kind: 'edit',
+				field: 'met', from: CASE WHEN was THEN 'met' ELSE 'not met' END,
+				to: CASE WHEN $met THEN 'met' ELSE 'not met' END}))
+		RETURN p.number AS phase, goal.id AS id, goal.text AS text, goal.created_by AS by, goal.created_at AS at,
 			goal.met_by AS met_by, goal.met_at AS met_at`,
 		map[string]any{"id": id, "met": met, "actor": actor, "now": now()}, nil)
 	if err != nil {
@@ -236,6 +264,7 @@ func (b *Board) SetGoalMet(ws, actor, id string, met bool) (Goal, error) {
 		return Goal{}, refuse(NotFound, "no goal %q", id)
 	}
 	r := res.Record()
+	phase = num(r, "phase")
 	return Goal{ID: str(r, "id"), Text: str(r, "text"), CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
 		Met: met, MetBy: str(r, "met_by"), MetAt: str(r, "met_at")}, nil
 }

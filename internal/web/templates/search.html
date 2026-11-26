@@ -11,7 +11,7 @@
   {{range .Results}}
   {{if eq .Kind "story"}}<a class="row" href="/w/{{$ws}}/stories/{{.ID}}">
   {{else if eq .Kind "idea"}}<a class="row" href="/w/{{$ws}}/ideas#{{.ID}}">
-  {{else}}<a class="row" href="/w/{{$ws}}/phases#phase-{{.ID}}">{{end}}
+  {{else}}<a class="row" href="/w/{{$ws}}/phases/{{.ID}}">{{end}}
     <span class="kind">{{.Kind}}</span> <span class="id">{{.ID}}</span> {{.Title}}
     {{with .State}}<span class="tag status">{{label .}}</span>{{end}}
   </a>
