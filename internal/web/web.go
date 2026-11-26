@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/lioneljmorrison/backpack/internal/auth"
 	"github.com/lioneljmorrison/backpack/internal/board"
@@ -63,6 +64,7 @@ func New(lookup auth.LookupFunc, b *board.Board, x *search.Index, hub *live.Hub)
 	signedIn.HandleFunc("POST /sign-out", s.signOut)
 	s.routePages(signedIn)
 	s.routeActions(signedIn)
+	s.routeAttachments(signedIn)
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", assets.handler())
@@ -76,12 +78,22 @@ func parse(a *assets) map[string]*template.Template {
 	names := []string{"signin", "workspaces", "board", "story", "phases", "phase", "releases", "release", "ideas", "search", "newstory"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, name := range names {
-		pages[name] = template.Must(template.New("").Funcs(funcs).Funcs(template.FuncMap{"static": a.url}).ParseFS(files, "templates/layout.html", "templates/"+name+".html"))
+		pages[name] = template.Must(template.New("").Funcs(funcs).Funcs(template.FuncMap{"static": a.url}).ParseFS(files, "templates/layout.html", "templates/attachments.html", "templates/"+name+".html"))
 	}
 	return pages
 }
 
-var funcs = template.FuncMap{"label": label, "storyLabel": storyLabel, "when": when, "percent": percent,
+// attachView is what the attachments template is given: the files on one item
+// and the address its forms post to.
+type attachView struct {
+	WS, Base string
+	Items    []board.AttachmentRef
+}
+
+var funcs = template.FuncMap{"hasPrefix": strings.HasPrefix,
+	"attachments": func(ws, path string, items []board.AttachmentRef) attachView {
+		return attachView{WS: ws, Base: "/w/" + ws + "/" + path + "/attachments", Items: items}
+	}, "label": label, "storyLabel": storyLabel, "when": when, "percent": percent,
 	"list": func(v ...string) []string { return v }}
 
 // card is what the card template is given: a story and its workspace, and

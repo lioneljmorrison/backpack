@@ -87,6 +87,8 @@
   {{end}}
 </section>
 
+{{template "attachments" (attachments $ws (print "stories/" $id) .Story.Attachments)}}
+
 <h2>Log</h2>
 <ol class="log">
   {{range .Log}}

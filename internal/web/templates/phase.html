@@ -62,6 +62,8 @@
   {{range .Done}}<a class="row" href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}} <span class="tag status">{{storyLabel .}}</span></a>{{end}}
 </div>
 
+{{template "attachments" (attachments $ws (print "phases/" $n) .Phase.Attachments)}}
+
 {{if .Phase.Closed}}
 <p class="muted">This phase is closed, so stories cannot be added to it.</p>
 {{else}}
