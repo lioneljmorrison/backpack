@@ -211,6 +211,7 @@ type updatePhaseIn struct {
 	Number      int     `json:"number"`
 	Title       *string `json:"title,omitempty" jsonschema:"new title; not empty"`
 	Description *string `json:"description,omitempty" jsonschema:"new description; empty clears"`
+	Closed      *bool   `json:"closed,omitempty" jsonschema:"true closes, false reopens"`
 }
 
 type updateGoalIn struct {
@@ -315,7 +316,7 @@ func addTools(s *mcp.Server, t tools) {
 	laterRead(r, "list_phases", "Every phase in order: title, description, completion and its goals.", t.listPhases)
 	later(r, "add_phase", "Add a phase after the last. Answers with its number.", t.addPhase)
 	later(r, "add_goal", "Add a goal to a phase. Answers with id and whether met.", t.addGoal)
-	later(r, "update_phase", "Change a phase's title or description; others stay. Answers with its number.", t.updatePhase)
+	later(r, "update_phase", "Edit a phase's title, description or closed; others stay. Answers with its number.", t.updatePhase)
 	later(r, "update_goal", "Change a goal's text. Answers with id.", t.updateGoal)
 	later(r, "mark_goal_met", "Mark a goal met, or not met. Answers with id and whether met.", t.markGoalMet)
 	write(r, "add_idea", "Add an idea: a rough thought, not yet work, outside the backlog. Give it context. Then break it into proposed stories yourself and refine it. Answers with id and state.", t.addIdea)
@@ -633,7 +634,7 @@ func (t tools) addGoal(ctx context.Context, a addGoalIn) (any, error) {
 }
 
 func (t tools) updatePhase(ctx context.Context, a updatePhaseIn) (any, error) {
-	p, err := t.b.UpdatePhase(a.Workspace, actor(ctx), a.Number, board.PhasePatch{Title: a.Title, Description: a.Description})
+	p, err := t.b.UpdatePhase(a.Workspace, actor(ctx), a.Number, board.PhasePatch{Title: a.Title, Description: a.Description, Closed: a.Closed})
 	return map[string]any{"number": p.Number}, err
 }
 

@@ -267,6 +267,7 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 				WHEN size(rps) = 0 THEN 'no repo'
 				WHEN size(rps) > 1 THEN 'several repos'
 				WHEN $phase <> 0 AND p IS NULL THEN 'phase'
+				WHEN $phase <> 0 AND p.closed_at IS NOT NULL THEN 'phase_closed'
 				WHEN $found <> '' AND f IS NULL THEN 'found_in'
 				WHEN f.status = 'closed' THEN 'found_closed'
 				WHEN $straight AND $phase <> 0 AND coalesce(fp.number, 0) <> $phase THEN 'straight_phase'
@@ -304,6 +305,8 @@ func (b *Board) AddStory(ws, actor string, s NewStory) (out Story, err error) {
 			return story(g, str(r, "id"))
 		case "phase":
 			return Story{}, refuse(NotFound, "no phase %d", s.Phase)
+		case "phase_closed":
+			return Story{}, refuse(Conflict, "phase %d is closed; a story cannot be added to it", s.Phase)
 		case "found_in":
 			return Story{}, refuse(NotFound, "no story %q to have been found in", s.FoundIn)
 		case "found_closed":
@@ -506,6 +509,7 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 			WHEN $activity IS NOT NULL AND s.status <> 'in_progress' THEN 'not started'
 			WHEN $waiting IS NOT NULL AND coalesce(activity, '') <> 'waiting' THEN 'not waiting'
 			WHEN moves AND $phase > 0 AND tp IS NULL THEN 'no phase'
+			WHEN moves AND $phase > 0 AND tp.closed_at IS NOT NULL THEN 'phase closed'
 			WHEN lateOn IS NOT NULL THEN 'depends later'
 			WHEN earlyDep IS NOT NULL THEN 'depended on earlier'
 		END AS violation,
@@ -565,6 +569,8 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 		return StoryUpdate{}, refuse(Invalid, "waiting_on is set only while a story's activity is waiting")
 	case "no phase":
 		return StoryUpdate{}, refuse(NotFound, "no phase %d", *patch.Phase)
+	case "phase closed":
+		return StoryUpdate{}, refuse(Conflict, "phase %d is closed; %s cannot move into it", *patch.Phase, id)
 	case "depends later":
 		return StoryUpdate{}, refuse(Conflict, "%s cannot move to phase %d: it depends on %s in the later phase %d",
 			id, *patch.Phase, str(r, "lateOn"), num(r, "lateOnPhase"))

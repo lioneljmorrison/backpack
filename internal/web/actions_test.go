@@ -467,3 +467,28 @@ func TestAStoryPageOffersOnlyPhasesThatAreNotCompleteToMoveInto(t *testing.T) {
 		t.Fatal("the picker offers the wrong phases")
 	}
 }
+
+func TestClosedPhasesAreNotOfferedExceptTheStorysOwn(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Phase](t)(b.AddPhase("demo", "tester", "Shut one", ""))
+	must[board.Phase](t)(b.AddPhase("demo", "tester", "Shut two", ""))
+	must[board.Phase](t)(b.AddPhase("demo", "tester", "Open three", ""))
+	own := story(t, b, board.NewStory{Title: "Own", Phase: 2})
+	loose := story(t, b, board.NewStory{Title: "Loose"})
+	for _, n := range []int{1, 2} {
+		closed := true
+		must[board.Phase](t)(b.UpdatePhase("demo", "tester", n, board.PhasePatch{Closed: &closed}))
+	}
+	page := get(h, "/w/demo/stories/"+loose.ID, "bp_good").Body.String()
+	if strings.Contains(page, "1. Shut one") || strings.Contains(page, "2. Shut two") || !strings.Contains(page, "3. Open three") {
+		t.Fatal("the picker offers the wrong phases to a story with none")
+	}
+	page = get(h, "/w/demo/stories/"+own.ID, "bp_good").Body.String()
+	if strings.Contains(page, "1. Shut one") || !strings.Contains(page, "2. Shut two") {
+		t.Fatal("the picker should keep the story's own closed phase, and no other")
+	}
+	if page := get(h, "/w/demo/stories/new", "bp_good").Body.String(); strings.Contains(page, "Shut") || !strings.Contains(page, "3. Open three") {
+		t.Fatal("the new-story form offers a closed phase")
+	}
+	wantPage(t, get(h, "/w/demo/phases", "bp_good"), "Closed")
+}

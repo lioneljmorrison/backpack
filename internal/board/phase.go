@@ -23,11 +23,16 @@ type Phase struct {
 	Complete bool `json:"complete"`
 	// GoalsMetEarly flags a phase whose goals are all met while some of its
 	// stories are still open: something may have gone sideways.
-	GoalsMetEarly bool   `json:"goals_met_early"`
-	CreatedBy     string `json:"created_by"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedBy     string `json:"updated_by,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
+	GoalsMetEarly bool `json:"goals_met_early"`
+	// Closed phases are skipped when choosing the current phase and take no
+	// new stories. Closing does not make a phase complete.
+	Closed    bool   `json:"closed"`
+	ClosedBy  string `json:"closed_by,omitempty"`
+	ClosedAt  string `json:"closed_at,omitempty"`
+	CreatedBy string `json:"created_by"`
+	CreatedAt string `json:"created_at"`
+	UpdatedBy string `json:"updated_by,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // Goal is one outcome a phase commits to.
@@ -45,6 +50,8 @@ type Goal struct {
 type PhasePatch struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
+	// Closed true closes the phase and false reopens it.
+	Closed *bool `json:"closed"`
 }
 
 // AddPhase appends a phase, numbered after the last one.
@@ -85,7 +92,8 @@ func (b *Board) Phases(ws string) ([]Phase, error) {
 	return phases(g, 0)
 }
 
-// UpdatePhase edits a phase's title or description. Each field that changes
+// UpdatePhase edits a phase's title or description, or closes or reopens it.
+// Each field that changes
 // is logged on the phase with its old and new value.
 func (b *Board) UpdatePhase(ws, actor string, number int, patch PhasePatch) (_ Phase, err error) {
 	defer func() { b.changed(err, Change{ws, KindPhase, phaseID(number)}) }()
@@ -102,22 +110,31 @@ func (b *Board) UpdatePhase(ws, actor string, number int, patch PhasePatch) (_ P
 	// One query: the edits are what differs from the stored values, the log
 	// entries take a block of ids from next_log, and the phase changes with
 	// them. A phase that does not exist matches nothing.
+	var closed any
+	if patch.Closed != nil {
+		closed = *patch.Closed
+	}
 	res, err := g.Query(`
 		MATCH (w:Workspace), (p:Phase {number: $n})
 		WITH w, p, coalesce(w.next_log, 1) AS first,
 			[x IN [{field: 'title', before: p.title, after: $title},
-				{field: 'description', before: coalesce(p.description, ''), after: $description}]
+				{field: 'description', before: coalesce(p.description, ''), after: $description},
+				{field: 'closed', before: CASE WHEN p.closed_at IS NULL THEN 'open' ELSE 'closed' END,
+					after: CASE WHEN $closed IS NULL THEN null WHEN $closed THEN 'closed' ELSE 'open' END}]
 				WHERE x.after IS NOT NULL AND x.after <> x.before] AS edits
+		WITH w, p, first, edits, size([x IN edits WHERE x.field = 'closed']) > 0 AS flips
 		SET w.next_log = first + size(edits),
 			p.title = coalesce($title, p.title),
 			p.description = coalesce($description, p.description),
+			p.closed_by = CASE WHEN NOT flips THEN p.closed_by WHEN $closed THEN $actor END,
+			p.closed_at = CASE WHEN NOT flips THEN p.closed_at WHEN $closed THEN $now END,
 			p.updated_by = $actor, p.updated_at = $now
 		FOREACH (i IN range(0, size(edits) - 1) |
 			CREATE (p)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(first + i), at: $now, actor: $actor, kind: 'edit',
 				field: edits[i].field, from: edits[i].before, to: edits[i].after}))
 		RETURN p.number`,
 		map[string]any{"n": number, "title": opt(patch.Title), "description": opt(patch.Description),
-			"actor": actor, "now": now()}, nil)
+			"closed": closed, "actor": actor, "now": now()}, nil)
 	if err != nil {
 		return Phase{}, fmt.Errorf("update phase: %w", err)
 	}
@@ -235,7 +252,8 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 			met_by: goal.met_by, met_at: goal.met_at}) AS goals
 		RETURN p.number AS number, p.title AS title, p.description AS description,
 			p.created_by AS by, p.created_at AS at,
-			p.updated_by AS updated_by, p.updated_at AS updated_at, goals, total, done
+			p.updated_by AS updated_by, p.updated_at AS updated_at,
+			p.closed_by AS closed_by, p.closed_at AS closed_at, goals, total, done
 		ORDER BY p.number`,
 		map[string]any{"n": n, "complete": complete}, nil)
 	if err != nil {
@@ -247,7 +265,8 @@ func phases(g *falkordb.Graph, n int) ([]Phase, error) {
 		p := Phase{Number: num(r, "number"), Title: str(r, "title"), Description: str(r, "description"),
 			CreatedBy: str(r, "by"), CreatedAt: str(r, "at"),
 			UpdatedBy: str(r, "updated_by"), UpdatedAt: str(r, "updated_at"), Goals: []Goal{},
-			StoriesTotal: num(r, "total"), StoriesComplete: num(r, "done")}
+			StoriesTotal: num(r, "total"), StoriesComplete: num(r, "done"),
+			Closed: str(r, "closed_at") != "", ClosedBy: str(r, "closed_by"), ClosedAt: str(r, "closed_at")}
 		raw, _ := r.Get("goals")
 		list, _ := raw.([]any)
 		for _, x := range list {
