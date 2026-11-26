@@ -67,6 +67,14 @@
     <label class="check"><input type="checkbox" name="kind" value="bug"{{if eq .Story.Kind "bug"}} checked{{end}}> Bug</label>
     <button type="submit">Save</button>
   </form>
+  <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/phase">
+    <h2>Phase</h2>
+    <select name="phase" aria-label="Phase">
+      <option value="">No phase</option>
+      {{range .Phases}}{{if or (not .Complete) (eq .Number $.Data.Story.Phase)}}<option value="{{.Number}}"{{if eq .Number $.Data.Story.Phase}} selected{{end}}>{{.Number}}. {{.Title}}</option>{{end}}{{end}}
+    </select>
+    <button type="submit">Save</button>
+  </form>
   {{if eq .Story.Status "in_progress"}}
   <form class="panel" method="post" action="/w/{{$ws}}/stories/{{$id}}/activity">
     <h2>Doing</h2>

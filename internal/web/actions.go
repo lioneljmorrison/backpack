@@ -26,6 +26,7 @@ func (s *site) routeActions(mux *http.ServeMux) {
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/status", s.setStatus)
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/activity", s.setActivity)
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/kind", s.setKind)
+	mux.HandleFunc("POST /w/{ws}/stories/{id}/phase", s.setPhase)
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/log", s.addLog)
 	mux.HandleFunc("POST /w/{ws}/ideas", s.addIdea)
 	mux.HandleFunc("POST /w/{ws}/ideas/{id}/refine", s.refineIdea)
@@ -185,6 +186,22 @@ func (s *site) setKind(w http.ResponseWriter, r *http.Request) {
 	kind := r.PostFormValue("kind")
 	_, err := s.board.UpdateStory(r.PathValue("ws"), actor(r), r.PathValue("id"), board.StoryPatch{Kind: &kind})
 	s.done(w, r, storyURL(r, r.PathValue("id")), err)
+}
+
+// setPhase moves a story into a phase, or out of any (an empty choice).
+func (s *site) setPhase(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	phase := 0
+	if v := r.PostFormValue("phase"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			s.done(w, r, storyURL(r, id), &board.Error{Kind: board.Invalid, Msg: "phase is a phase number"})
+			return
+		}
+		phase = n
+	}
+	_, err := s.board.UpdateStory(r.PathValue("ws"), actor(r), id, board.StoryPatch{Phase: &phase})
+	s.done(w, r, storyURL(r, id), err)
 }
 
 func (s *site) addLog(w http.ResponseWriter, r *http.Request) {

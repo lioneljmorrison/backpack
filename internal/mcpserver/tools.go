@@ -53,7 +53,7 @@ type addStoryIn struct {
 	Plan        string `json:"plan,omitempty"`
 	Kind        string `json:"kind,omitempty" jsonschema:"bug"`
 	FoundIn     string `json:"found_in,omitempty" jsonschema:"story it was found in"`
-	Phase       int    `json:"phase,omitempty" jsonschema:"fixed once set"`
+	Phase       int    `json:"phase,omitempty" jsonschema:"phase number; move it later with update_story"`
 	Repo        string `json:"repo,omitempty" jsonschema:"repository, fixed; needed when there are several"`
 	Reasoning   string `json:"reasoning" jsonschema:"why this spot"`
 	position
@@ -81,6 +81,7 @@ type updateStoryIn struct {
 	Branch      *string `json:"branch,omitempty"`
 	PRURL       *string `json:"pr_url,omitempty"`
 	Kind        *string `json:"kind,omitempty" jsonschema:"bug; empty clears"`
+	Phase       *int    `json:"phase,omitempty" jsonschema:"phase number; 0 removes it"`
 }
 
 type markReviewedIn struct {
@@ -442,7 +443,7 @@ func (t tools) add(ctx context.Context, a addStoryIn, straight *board.StraightIn
 func (t tools) updateStory(ctx context.Context, a updateStoryIn) (any, error) {
 	u, err := t.b.UpdateStoryDetail(a.Workspace, actor(ctx), a.ID, board.StoryPatch{Title: a.Title,
 		Description: a.Description, Goal: a.Goal, Plan: a.Plan, Activity: a.Activity, WaitingOn: a.WaitingOn,
-		Branch: a.Branch, PRURL: a.PRURL, Kind: a.Kind})
+		Branch: a.Branch, PRURL: a.PRURL, Kind: a.Kind, Phase: a.Phase})
 	if err != nil {
 		return nil, err
 	}
