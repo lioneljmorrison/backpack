@@ -717,3 +717,18 @@ func TestAStoryMovesBetweenPhasesOverHTTP(t *testing.T) {
 		t.Fatalf("moved out %v", s)
 	}
 }
+
+func TestAPhaseIsClosedAndReopenedOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "One"}`), http.StatusCreated)
+	p := want(t, call(t, h, "PATCH", "/v1/workspaces/demo/phases/1", `{"closed": true}`), http.StatusOK)
+	if p["closed"] != true || p["closed_by"] != "tester" || p["title"] != "One" {
+		t.Fatalf("closed %v", p)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A", "phase": 1}`), http.StatusConflict)
+	p = want(t, call(t, h, "PATCH", "/v1/workspaces/demo/phases/1", `{"closed": false}`), http.StatusOK)
+	if p["closed"] != false {
+		t.Fatalf("reopened %v", p)
+	}
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A", "phase": 1}`), http.StatusCreated)
+}

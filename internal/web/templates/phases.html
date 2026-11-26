@@ -4,7 +4,7 @@
 {{range .Data}}
 <section class="phase" id="phase-{{.Phase.Number}}">
   {{with .Phase}}
-  <h2>{{.Number}}. {{.Title}} {{if .Complete}}<span class="tag good">Complete</span>{{end}}{{if .GoalsMetEarly}}<span class="tag good">Goals met</span>{{end}}</h2>
+  <h2>{{.Number}}. {{.Title}} {{if .Complete}}<span class="tag good">Complete</span>{{end}}{{if .GoalsMetEarly}}<span class="tag good">Goals met</span>{{end}}{{if .Closed}}<span class="tag">Closed</span>{{end}}</h2>
   {{with .Description}}<p class="text">{{.}}</p>{{end}}
   <div class="progress" aria-hidden="true"><span style="width: {{percent .StoriesComplete .StoriesTotal}}%"></span></div>
   <p class="muted">{{.StoriesComplete}} of {{.StoriesTotal}} complete</p>

@@ -91,6 +91,8 @@ type phaseSummary struct {
 	Goals           []goalSummary `json:"goals"`
 	// GoalsMetEarly is sent only when true.
 	GoalsMetEarly bool `json:"goals_met_early,omitempty"`
+	// Closed is sent only when true.
+	Closed bool `json:"closed,omitempty"`
 }
 
 func phaseSummaries(ps []board.Phase) []phaseSummary {
@@ -101,7 +103,7 @@ func phaseSummaries(ps []board.Phase) []phaseSummary {
 			gs = append(gs, goalSummary{ID: g.ID, Text: g.Text, Met: g.Met})
 		}
 		out = append(out, phaseSummary{Number: p.Number, Title: p.Title, Description: p.Description, Complete: p.Complete,
-			StoriesComplete: p.StoriesComplete, StoriesTotal: p.StoriesTotal, Goals: gs, GoalsMetEarly: p.GoalsMetEarly})
+			StoriesComplete: p.StoriesComplete, StoriesTotal: p.StoriesTotal, Goals: gs, GoalsMetEarly: p.GoalsMetEarly, Closed: p.Closed})
 	}
 	return out
 }

@@ -365,6 +365,13 @@ Each slice is its own branch and pull request into `dev`.
   it (no stories, or all closed), it is complete once it has goals and all
   are met. A phase is flagged when it has goals, all are met, and some of its
   stories are still open.
+- **Closed phases** (2026-11-26). A phase can be closed and reopened
+  (`update_phase` / `PATCH` take `closed`; each change is logged on the phase).
+  An empty or ongoing phase would otherwise stay the current phase for good.
+  A closed phase is skipped when choosing the current phase, takes no new
+  stories (adding or moving one in is refused; moving one out is allowed) and
+  is not offered for them on the web. Closing never makes a phase complete:
+  the completion rules above are unchanged.
 - **Where are we** also lists what is on hold and why. Plain text is chosen
   with `Accept: text/plain`.
 

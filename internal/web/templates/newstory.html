@@ -20,7 +20,7 @@
   <label>Phase
     <select name="phase">
       <option value="">No phase</option>
-      {{range .Phases}}{{if not .Complete}}<option value="{{.Number}}">{{.Number}}. {{.Title}}</option>{{end}}{{end}}
+      {{range .Phases}}{{if not (or .Complete .Closed)}}<option value="{{.Number}}">{{.Number}}. {{.Title}}</option>{{end}}{{end}}
     </select>
   </label>
   <label>Place it

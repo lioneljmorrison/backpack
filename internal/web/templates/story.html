@@ -71,7 +71,7 @@
     <h2>Phase</h2>
     <select name="phase" aria-label="Phase">
       <option value="">No phase</option>
-      {{range .Phases}}{{if or (not .Complete) (eq .Number $.Data.Story.Phase)}}<option value="{{.Number}}"{{if eq .Number $.Data.Story.Phase}} selected{{end}}>{{.Number}}. {{.Title}}</option>{{end}}{{end}}
+      {{range .Phases}}{{if or (not (or .Complete .Closed)) (eq .Number $.Data.Story.Phase)}}<option value="{{.Number}}"{{if eq .Number $.Data.Story.Phase}} selected{{end}}>{{.Number}}. {{.Title}}</option>{{end}}{{end}}
     </select>
     <button type="submit">Save</button>
   </form>

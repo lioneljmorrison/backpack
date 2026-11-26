@@ -159,3 +159,28 @@ func TestReadLogSaysWhyItRefusesBothOrNeitherOfIDAndPhase(t *testing.T) {
 		t.Fatalf("neither: %q", why)
 	}
 }
+
+func TestUpdatePhaseClosesAndReopensAPhase(t *testing.T) {
+	_, cs := connect(t)
+	use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Foundations"})
+	use(t, cs, "update_phase", map[string]any{"workspace": "demo", "number": 1, "closed": true})
+	p := use(t, cs, "list_phases", map[string]any{"workspace": "demo"})["phases"].([]any)[0].(map[string]any)
+	if p["closed"] != true || p["title"] != "Foundations" {
+		t.Fatalf("phase %v", p)
+	}
+	use(t, cs, "update_phase", map[string]any{"workspace": "demo", "number": 1, "closed": false})
+	p = use(t, cs, "list_phases", map[string]any{"workspace": "demo"})["phases"].([]any)[0].(map[string]any)
+	if _, ok := p["closed"]; ok {
+		t.Fatalf("an open phase says closed: %v", p)
+	}
+}
+
+func TestAddStoryRefusesAClosedPhase(t *testing.T) {
+	_, cs := connect(t)
+	use(t, cs, "add_phase", map[string]any{"workspace": "demo", "title": "Foundations"})
+	use(t, cs, "update_phase", map[string]any{"workspace": "demo", "number": 1, "closed": true})
+	msg := refused(t, cs, "add_story", map[string]any{"workspace": "demo", "title": "Late", "phase": 1, "reasoning": "why"})
+	if !strings.Contains(msg, "closed") {
+		t.Fatalf("reason %q", msg)
+	}
+}

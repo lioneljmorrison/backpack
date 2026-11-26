@@ -42,7 +42,8 @@ func (b *Board) Next(ws, repo string) (*Story, error) {
 
 // Where is the short answer to "where are we".
 type Where struct {
-	// Phase is the first phase that is not complete; nil when there is none.
+	// Phase is the first phase that is neither complete nor closed; nil when
+	// there is none.
 	Phase *Phase `json:"phase"`
 	// Proposed is what is waiting for a person to approve it.
 	Proposed   []Story `json:"proposed"`
@@ -103,7 +104,7 @@ func (b *Board) WhereFor(ws, repo string) (Where, error) {
 		}
 	}
 	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, StraightIn: []Story{}, Unreleased: []Story{}, UpstreamChanged: []Story{}, several: len(rs) > 1}
-	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete }); i >= 0 {
+	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete && !p.Closed }); i >= 0 {
 		w.Phase = &ps[i]
 	}
 	for _, s := range ss {
