@@ -288,6 +288,17 @@ Each slice is its own branch and pull request into `dev`.
 8. **The UI.** Web pages served by Backpack itself: sign in with a token,
    see the board, then act on it. Tracked in Backpack as the Visual UI phase.
 
+**Next follows the current phase** (2026-11-26, S-85). Rank is still the order
+inside a phase, and only dependencies constrain rank across phases (a later
+phase's story may rank above earlier ones). But what is *next* now prefers the
+current phase: `Next` (`whats_next`, `GET /next`, the board header) is the top
+ready backlog story (nothing blocking it) in the current phase, the first phase
+that is neither complete nor closed. With no ready story there, or no current
+phase (including every phase closed), it falls back to the top ready story in
+the whole backlog. "Where are we" lists the current phase's ready stories first
+in rank order, then fills up to three from the backlog by rank, blocked stories
+included, without repeats. The phase page's own "next" mark is unchanged.
+
 **The phase page** (2026-11-26, S-84). `/w/{ws}/phases` is an index: each
 phase's number, title, tags (Complete, Goals met, Closed), progress and a link,
 and a form to create a phase. `/w/{ws}/phases/{n}` is the phase itself: edit
