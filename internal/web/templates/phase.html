@@ -30,7 +30,7 @@
 <div class="panel goal{{if .Met}} met{{end}}">
   <form method="post" action="/w/{{$ws}}/phases/{{$n}}/goals/{{.ID}}/text">
     <label><span>{{if .Met}}✓ Met{{else}}○ Not met{{end}}</span> <input name="text" value="{{.Text}}" required></label>
-    <button type="submit" class="secondary">Save text</button>
+    <button type="submit">Save text</button>
   </form>
   <form method="post" action="/w/{{$ws}}/phases/{{$n}}/goals/{{.ID}}/met">
     <input type="hidden" name="met" value="{{if .Met}}false{{else}}true{{end}}">
