@@ -1,6 +1,7 @@
 package mcpserver_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -330,4 +331,24 @@ func TestGetStoryWithOnlyCompleteDependenciesLeavesOutBlockedFields(t *testing.T
 	}
 	s := use(t, cs, "get_story", map[string]any{"workspace": "demo", "id": "S-2"})
 	absent(t, s, "blocked_by", "blocks", "blocked")
+}
+
+func TestUpdateStoryMovesAStoryIntoAndOutOfAPhase(t *testing.T) {
+	b, cs := connect(t)
+	if _, err := b.AddPhase("demo", "tester", "One", ""); err != nil {
+		t.Fatal(err)
+	}
+	addStory(t, b, "First")
+	got := use(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1", "phase": 1})
+	if fmt.Sprint(got["changed"]) != "[phase]" {
+		t.Fatalf("answered %v", got)
+	}
+	if s := readStory(t, cs, "S-1"); s["phase"] != float64(1) {
+		t.Fatalf("story %v", s)
+	}
+	use(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1", "phase": 0})
+	if s := readStory(t, cs, "S-1"); s["phase"] != nil {
+		t.Fatalf("story %v", s)
+	}
+	refused(t, cs, "update_story", map[string]any{"workspace": "demo", "id": "S-1", "phase": 7})
 }

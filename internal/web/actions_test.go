@@ -424,3 +424,46 @@ func TestTheBugMarkCanBeSetAndClearedOnTheStoryPage(t *testing.T) {
 		t.Fatalf("kind %q, want it cleared", k)
 	}
 }
+
+func TestAStoryCanBeMovedToAPhaseFromItsPage(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Phase](t)(b.AddPhase("demo", "tester", "Foundations", ""))
+	s := story(t, b, board.NewStory{Title: "Work"})
+	back := "/w/demo/stories/" + s.ID
+	wantPage(t, get(h, back, "bp_good"), `action="`+back+`/phase"`, "No phase", "1. Foundations")
+	act(t, h, back+"/phase", url.Values{"phase": {"1"}}, back)
+	if p := must[board.Story](t)(b.Story("demo", s.ID)).Phase; p != 1 {
+		t.Fatalf("phase %d, want 1", p)
+	}
+	act(t, h, back+"/phase", url.Values{"phase": {""}}, back)
+	if p := must[board.Story](t)(b.Story("demo", s.ID)).Phase; p != 0 {
+		t.Fatalf("phase %d, want none", p)
+	}
+}
+
+func TestAMoveToAPhaseThatBreaksADependencyShowsTheReason(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Phase](t)(b.AddPhase("demo", "tester", "One", ""))
+	must[board.Phase](t)(b.AddPhase("demo", "tester", "Two", ""))
+	on := story(t, b, board.NewStory{Title: "Target", Phase: 2})
+	dep := story(t, b, board.NewStory{Title: "Dependent", Phase: 2})
+	must[board.Story](t)(b.AddDependency("demo", "tester", dep.ID, on.ID))
+	back := "/w/demo/stories/" + dep.ID
+	page := act(t, h, back+"/phase", url.Values{"phase": {"1"}}, back)
+	if !strings.Contains(page, on.ID) || !strings.Contains(page, "later phase 2") {
+		t.Fatalf("no reason on the page")
+	}
+}
+
+func TestAStoryPageOffersOnlyPhasesThatAreNotCompleteToMoveInto(t *testing.T) {
+	h, b := withDemo(t)
+	must[board.Phase](t)(b.AddPhase("demo", "tester", "Done one", ""))
+	must[board.Phase](t)(b.AddPhase("demo", "tester", "Open two", ""))
+	must[board.Goal](t)(b.AddGoal("demo", "tester", 1, "All done"))
+	must[board.Goal](t)(b.SetGoalMet("demo", "tester", "G-1", true))
+	s := story(t, b, board.NewStory{Title: "Work"})
+	page := get(h, "/w/demo/stories/"+s.ID, "bp_good").Body.String()
+	if strings.Contains(page, "1. Done one") || !strings.Contains(page, "2. Open two") {
+		t.Fatal("the picker offers the wrong phases")
+	}
+}

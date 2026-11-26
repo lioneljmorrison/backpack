@@ -178,6 +178,9 @@ type StoryPatch struct {
 	PRURL       *string `json:"pr_url"`
 	// Kind "bug" marks the story as a bug; "" clears the mark.
 	Kind *string `json:"kind"`
+	// Phase is the number of the phase to move the story into; 0 takes it out of
+	// its phase.
+	Phase *int `json:"phase"`
 }
 
 // kindBug is the one story kind there is. A story of no kind is just a story.
@@ -468,6 +471,9 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 	if err := checkKind(deref(patch.Kind)); err != nil {
 		return StoryUpdate{}, err
 	}
+	if patch.Phase != nil && *patch.Phase < 0 {
+		return StoryUpdate{}, refuse(Invalid, "phase is a phase number, or 0 for none")
+	}
 	if err := plainText(deref(patch.Title), deref(patch.Description), deref(patch.Goal), deref(patch.Plan),
 		deref(patch.WaitingOn), deref(patch.Branch), deref(patch.PRURL)); err != nil {
 		return StoryUpdate{}, err
@@ -476,21 +482,40 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 	if err != nil {
 		return StoryUpdate{}, err
 	}
+	var phase any
+	if patch.Phase != nil {
+		phase = *patch.Phase
+	}
 	res, err := g.Query(`
 		MATCH (w:Workspace), (s:Story {id: $id})
 		WITH w, s, coalesce($activity, s.activity) AS activity, coalesce(w.next_log, 1) AS n,
 			[coalesce(s.title, ''), coalesce(s.description, ''), coalesce(s.goal, ''), coalesce(s.plan, ''),
 				coalesce(s.activity, ''), coalesce(s.waiting_on, ''), coalesce(s.branch, ''), coalesce(s.pr_url, ''), coalesce(s.kind, '')] AS old
-		WITH w, s, activity, n, old, CASE
+		OPTIONAL MATCH (sp:Phase)-[ce:CONTAINS]->(s)
+		OPTIONAL MATCH (tp:Phase {number: $phase})
+		WITH w, s, activity, n, old, sp, ce, tp,
+			$phase IS NOT NULL AND $phase <> coalesce(sp.number, 0) AS moves
+		OPTIONAL MATCH (s)-[:DEPENDS_ON]->(up:Story)<-[:CONTAINS]-(upp:Phase)
+			WHERE moves AND $phase > 0 AND upp.number > $phase
+		WITH w, s, activity, n, old, sp, ce, tp, moves, collect(up.id)[0] AS lateOn, collect(upp.number)[0] AS lateOnPhase
+		OPTIONAL MATCH (dn:Story)-[:DEPENDS_ON]->(s), (dn)<-[:CONTAINS]-(dnp:Phase)
+			WHERE moves AND $phase > 0 AND dnp.number < $phase
+		WITH w, s, activity, n, old, sp, ce, tp, moves, lateOn, lateOnPhase,
+			collect(dn.id)[0] AS earlyDep, collect(dnp.number)[0] AS earlyDepPhase
+		WITH w, s, activity, n, old, sp, ce, tp, moves, lateOn, lateOnPhase, earlyDep, earlyDepPhase, CASE
 			WHEN $activity IS NOT NULL AND s.status <> 'in_progress' THEN 'not started'
 			WHEN $waiting IS NOT NULL AND coalesce(activity, '') <> 'waiting' THEN 'not waiting'
+			WHEN moves AND $phase > 0 AND tp IS NULL THEN 'no phase'
+			WHEN lateOn IS NOT NULL THEN 'depends later'
+			WHEN earlyDep IS NOT NULL THEN 'depended on earlier'
 		END AS violation,
 			$goal IS NOT NULL AND $goal <> coalesce(s.goal, '') AS goalChanged,
 			$plan IS NOT NULL AND $plan <> coalesce(s.plan, '') AS planChanged
 		OPTIONAL MATCH p = (d:Story)-[:DEPENDS_ON*1..]->(s)
 			WHERE violation IS NULL AND (goalChanged OR planChanged)
 				AND all(x IN nodes(p) WHERE x = s OR NOT x.status IN $done)
-		WITH w, s, activity, n, old, violation, goalChanged, planChanged, collect(DISTINCT d) AS ds,
+		WITH w, s, activity, n, old, sp, ce, tp, moves, lateOn, lateOnPhase, earlyDep, earlyDepPhase, violation, goalChanged, planChanged,
+			collect(DISTINCT d) AS ds,
 			CASE WHEN goalChanged AND planChanged THEN 'goal and plan' WHEN goalChanged THEN 'goal' ELSE 'plan' END AS what
 		FOREACH (_ IN CASE WHEN violation IS NULL THEN [1] ELSE [] END |
 			SET s.title = coalesce($title, s.title),
@@ -508,25 +533,46 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 			FOREACH (i IN range(0, size(ds) - 1) | FOREACH (d IN [ds[i]] |
 				SET d.upstream_id = $id, d.upstream_at = $now
 				CREATE (d)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + i), at: $now, actor: $actor, kind: 'note',
-					text: 'The ' + what + ' of ' + $id + ' changed; review this story'}))))
-		RETURN violation, s.status AS status, [d IN ds | d.id] AS marked, old`,
+					text: 'The ' + what + ' of ' + $id + ' changed; review this story'})))
+			FOREACH (__ IN CASE WHEN moves THEN [1] ELSE [] END |
+				FOREACH (e IN CASE WHEN ce IS NULL THEN [] ELSE [ce] END | DELETE e)
+				FOREACH (q IN CASE WHEN tp IS NULL THEN [] ELSE [tp] END | CREATE (q)-[:CONTAINS]->(s))
+				SET w.next_log = n + size(ds) + 1
+				CREATE (s)-[:LOGGED]->(:LogEntry {id: 'L-' + toString(n + size(ds)), at: $now, actor: $actor, kind: 'note',
+					text: CASE
+						WHEN sp IS NULL THEN 'Moved into phase ' + toString($phase)
+						WHEN tp IS NULL THEN 'Removed from phase ' + toString(sp.number)
+						ELSE 'Moved from phase ' + toString(sp.number) + ' to phase ' + toString($phase) END})))
+		RETURN violation, s.status AS status, [d IN ds | d.id] AS marked, old,
+			moves, sp.number AS fromPhase, lateOn, lateOnPhase, earlyDep, earlyDepPhase`,
 		map[string]any{"id": id, "title": opt(patch.Title), "description": opt(patch.Description),
 			"goal": opt(patch.Goal), "plan": opt(patch.Plan), "activity": opt(patch.Activity),
 			"waiting": opt(patch.WaitingOn), "branch": opt(patch.Branch), "pr": opt(patch.PRURL), "kind": opt(patch.Kind),
-			"done": append(slices.Clone(complete), Closed), "actor": actor, "now": now()}, nil)
+			"phase": phase,
+			"done":  append(slices.Clone(complete), Closed), "actor": actor, "now": now()}, nil)
 	if err != nil {
 		return StoryUpdate{}, fmt.Errorf("update story: %w", err)
 	}
 	if !res.Next() {
 		return StoryUpdate{}, refuse(NotFound, "no story %q", id)
 	}
+	moved, from := false, 0
 	var marked, old []string
 	switch r := res.Record(); str(r, "violation") {
 	case "not started":
 		return StoryUpdate{}, refuse(Conflict, "%s is %s; activity is set only while a story is in progress", id, label(str(r, "status")))
 	case "not waiting":
 		return StoryUpdate{}, refuse(Invalid, "waiting_on is set only while a story's activity is waiting")
+	case "no phase":
+		return StoryUpdate{}, refuse(NotFound, "no phase %d", *patch.Phase)
+	case "depends later":
+		return StoryUpdate{}, refuse(Conflict, "%s cannot move to phase %d: it depends on %s in the later phase %d",
+			id, *patch.Phase, str(r, "lateOn"), num(r, "lateOnPhase"))
+	case "depended on earlier":
+		return StoryUpdate{}, refuse(Conflict, "%s cannot move to phase %d: %s depends on it and is in the earlier phase %d",
+			id, *patch.Phase, str(r, "earlyDep"), num(r, "earlyDepPhase"))
 	default:
+		moved, from = flag(r, "moves"), num(r, "fromPhase")
 		marked = byNumber(strs(r, "marked"))
 		for _, m := range marked {
 			b.changed(nil, Change{ws, KindStory, m})
@@ -546,6 +592,13 @@ func (b *Board) UpdateStoryDetail(ws, actor, id string, patch StoryPatch) (_ Sto
 	for i, f := range given {
 		if f.to != nil && i < len(old) && *f.to != old[i] {
 			changed = append(changed, f.name)
+		}
+	}
+	if moved {
+		changed = append(changed, "phase")
+		b.changed(nil, Change{ws, KindPhase, phaseID(*patch.Phase)})
+		if from != 0 {
+			b.changed(nil, Change{ws, KindPhase, phaseID(from)})
 		}
 	}
 	return StoryUpdate{Story: s, Changed: changed, Marked: marked}, nil

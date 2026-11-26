@@ -192,6 +192,8 @@ type storyData struct {
 	Log   []board.LogEntry
 	// Titles names every story in the workspace, for its dependencies.
 	Titles map[string]string
+	// Phases are the workspace's phases, for the phase picker.
+	Phases []board.Phase
 }
 
 func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
@@ -223,6 +225,10 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Tone = repoTones(rs)[d.Story.Repo]
+	if d.Phases, err = s.board.Phases(ws.Slug); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	d.Titles = make(map[string]string, len(all))
 	for _, st := range all {
 		d.Titles[st.ID] = st.Title

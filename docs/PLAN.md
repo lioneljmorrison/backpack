@@ -312,7 +312,10 @@ Each slice is its own branch and pull request into `dev`.
 - Until story logs arrive in slice 3, everything created records who created
   it and when. A move, an edit, or a removed dependency records who made it
   and when, on the story or phase it changed.
-- A story's phase is set when the story is created and can't be changed yet.
+- A story's phase is set when the story is created and can be changed at any
+  time (2026-11-26): `update_story` / `PATCH` take `phase` (0 removes it) and the
+  story page has a phase picker. The move keeps the dependency rule in both
+  directions, and is logged on the story.
 - A story is placed directly before or after a named story, or at the bottom
   of the backlog when neither is given.
 - Stories are numbered `S-1`, `S-2` … and goals `G-1` … within each

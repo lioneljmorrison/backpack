@@ -17,7 +17,7 @@
     </select>
   </label>
   {{end}}
-  <label>Phase (can't be changed later)
+  <label>Phase
     <select name="phase">
       <option value="">No phase</option>
       {{range .Phases}}{{if not .Complete}}<option value="{{.Number}}">{{.Number}}. {{.Title}}</option>{{end}}{{end}}

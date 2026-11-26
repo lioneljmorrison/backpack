@@ -702,3 +702,18 @@ func TestTheBoardsMergedColumnsNameTheirRepositoryAndBranch(t *testing.T) {
 		}
 	}
 }
+
+func TestAStoryMovesBetweenPhasesOverHTTP(t *testing.T) {
+	h := withDemo(t)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/phases", `{"title": "One"}`), http.StatusCreated)
+	want(t, call(t, h, "POST", "/v1/workspaces/demo/stories", `{"title": "A"}`), http.StatusCreated)
+	s := want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"phase": 1}`), http.StatusOK)
+	if s["phase"] != float64(1) {
+		t.Fatalf("moved in %v", s)
+	}
+	want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"phase": 9}`), http.StatusNotFound)
+	s = want(t, call(t, h, "PATCH", "/v1/workspaces/demo/stories/S-1", `{"phase": 0}`), http.StatusOK)
+	if s["phase"] != nil {
+		t.Fatalf("moved out %v", s)
+	}
+}
