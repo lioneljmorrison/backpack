@@ -16,6 +16,7 @@ func (s *site) routePages(mux *http.ServeMux) {
 	mux.HandleFunc("GET /w/{ws}", s.boardPage)
 	mux.HandleFunc("GET /w/{ws}/stories/{id}", s.storyPage)
 	mux.HandleFunc("GET /w/{ws}/phases", s.phasesPage)
+	mux.HandleFunc("GET /w/{ws}/phases/{n}", s.phasePage)
 	mux.HandleFunc("GET /w/{ws}/releases", s.releasesPage)
 	mux.HandleFunc("GET /w/{ws}/releases/{id}", s.releasePage)
 	mux.HandleFunc("GET /w/{ws}/ideas", s.ideasPage)
@@ -236,36 +237,71 @@ func (s *site) storyPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "story", page{Title: d.Story.ID + " " + d.Story.Title, WS: ws, Nav: "board", Live: "story branch", Data: d})
 }
 
-type phaseData struct {
-	Phase   board.Phase
-	Stories []board.Story
-}
-
 func (s *site) phasesPage(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.workspace(r.PathValue("ws"))
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	var ps []board.Phase
+	ps, err := s.board.Phases(ws.Slug)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, "phases", page{Title: "Phases · " + ws.Name, WS: ws, Nav: "phases", Live: "story phase", Data: ps})
+}
+
+// phaseData is the phase page: what is left to finish the phase, in delivery
+// order, what is done, and the open stories that have no phase.
+type phaseData struct {
+	Phase board.Phase
+	Left  []board.Story
+	Done  []board.Story
+	// Next is the id of the top backlog story of the phase that nothing blocks.
+	Next string
+	// Unphased are the open stories in no phase, offered for adding.
+	Unphased []board.Story
+	// Titles names every story in the workspace, for what blocks one.
+	Titles map[string]string
+}
+
+func (s *site) phasePage(w http.ResponseWriter, r *http.Request) {
+	ws, err := s.workspace(r.PathValue("ws"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	n, convErr := strconv.Atoi(r.PathValue("n"))
+	if convErr != nil {
+		s.fail(w, r, &board.Error{Kind: board.NotFound, Msg: "no phase " + r.PathValue("n")})
+		return
+	}
+	var d phaseData
 	var all []board.Story
-	if ps, err = s.board.Phases(ws.Slug); err == nil {
+	if d.Phase, err = s.board.Phase(ws.Slug, n); err == nil {
 		all, err = s.board.Stories(ws.Slug)
 	}
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	d := make([]phaseData, len(ps))
-	for i, p := range ps {
-		d[i].Phase = p
-		for _, st := range all {
-			if st.Phase == p.Number {
-				d[i].Stories = append(d[i].Stories, st)
+	d.Titles = make(map[string]string, len(all))
+	for _, st := range all {
+		d.Titles[st.ID] = st.Title
+		finished := st.Status == board.Merged || st.Status == board.Released
+		switch {
+		case st.Phase == n && finished:
+			d.Done = append(d.Done, st)
+		case st.Phase == n && st.Status != board.Closed:
+			d.Left = append(d.Left, st)
+			if d.Next == "" && st.Status == board.Backlog && !st.Blocked {
+				d.Next = st.ID
 			}
+		case st.Phase == 0 && !finished && st.Status != board.Closed:
+			d.Unphased = append(d.Unphased, st)
 		}
 	}
-	s.render(w, r, http.StatusOK, "phases", page{Title: "Phases · " + ws.Name, WS: ws, Nav: "phases", Data: d})
+	s.render(w, r, http.StatusOK, "phase", page{Title: "Phase " + strconv.Itoa(n) + " · " + ws.Name, WS: ws, Nav: "phases", Live: "story phase", Data: d})
 }
 
 func (s *site) releasesPage(w http.ResponseWriter, r *http.Request) {

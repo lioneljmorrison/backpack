@@ -28,6 +28,13 @@ func (s *site) routeActions(mux *http.ServeMux) {
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/kind", s.setKind)
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/phase", s.setPhase)
 	mux.HandleFunc("POST /w/{ws}/stories/{id}/log", s.addLog)
+	mux.HandleFunc("POST /w/{ws}/phases", s.addPhase)
+	mux.HandleFunc("POST /w/{ws}/phases/{n}/edit", s.editPhase)
+	mux.HandleFunc("POST /w/{ws}/phases/{n}/closed", s.setPhaseClosed)
+	mux.HandleFunc("POST /w/{ws}/phases/{n}/goals", s.addGoal)
+	mux.HandleFunc("POST /w/{ws}/phases/{n}/goals/{id}/text", s.editGoal)
+	mux.HandleFunc("POST /w/{ws}/phases/{n}/goals/{id}/met", s.setGoalMet)
+	mux.HandleFunc("POST /w/{ws}/phases/{n}/stories", s.addPhaseStories)
 	mux.HandleFunc("POST /w/{ws}/ideas", s.addIdea)
 	mux.HandleFunc("POST /w/{ws}/ideas/{id}/refine", s.refineIdea)
 	mux.HandleFunc("POST /w/{ws}/ideas/{id}/drop", s.dropIdea)
@@ -301,4 +308,75 @@ func (s *site) refineIdea(w http.ResponseWriter, r *http.Request) {
 func (s *site) dropIdea(w http.ResponseWriter, r *http.Request) {
 	_, err := s.board.DropIdea(r.PathValue("ws"), actor(r), r.PathValue("id"), strings.TrimSpace(r.PostFormValue("reason")))
 	s.done(w, r, ideasURL(r), err)
+}
+
+func (s *site) addPhase(w http.ResponseWriter, r *http.Request) {
+	_, err := s.board.AddPhase(r.PathValue("ws"), actor(r), strings.TrimSpace(r.PostFormValue("title")), strings.TrimSpace(r.PostFormValue("description")))
+	s.done(w, r, boardURL(r)+"/phases", err)
+}
+
+// phaseURL is the page of the phase in the request's path. A path that is not
+// a number gets the board's refusal when the action runs.
+func phaseURL(r *http.Request) string {
+	return boardURL(r) + "/phases/" + url.PathEscape(r.PathValue("n"))
+}
+
+// phaseNumber reads the phase in the request's path; 0 is no phase, which the
+// board refuses.
+func phaseNumber(r *http.Request) int {
+	n, _ := strconv.Atoi(r.PathValue("n"))
+	return n
+}
+
+func (s *site) editPhase(w http.ResponseWriter, r *http.Request) {
+	title, description := strings.TrimSpace(r.PostFormValue("title")), strings.TrimSpace(r.PostFormValue("description"))
+	_, err := s.board.UpdatePhase(r.PathValue("ws"), actor(r), phaseNumber(r), board.PhasePatch{Title: &title, Description: &description})
+	s.done(w, r, phaseURL(r), err)
+}
+
+func (s *site) setPhaseClosed(w http.ResponseWriter, r *http.Request) {
+	closed := r.PostFormValue("closed") == "true"
+	_, err := s.board.UpdatePhase(r.PathValue("ws"), actor(r), phaseNumber(r), board.PhasePatch{Closed: &closed})
+	s.done(w, r, phaseURL(r), err)
+}
+
+func (s *site) addGoal(w http.ResponseWriter, r *http.Request) {
+	_, err := s.board.AddGoal(r.PathValue("ws"), actor(r), phaseNumber(r), strings.TrimSpace(r.PostFormValue("text")))
+	s.done(w, r, phaseURL(r), err)
+}
+
+func (s *site) editGoal(w http.ResponseWriter, r *http.Request) {
+	_, err := s.board.UpdateGoal(r.PathValue("ws"), actor(r), r.PathValue("id"), strings.TrimSpace(r.PostFormValue("text")))
+	s.done(w, r, phaseURL(r), err)
+}
+
+func (s *site) setGoalMet(w http.ResponseWriter, r *http.Request) {
+	_, err := s.board.SetGoalMet(r.PathValue("ws"), actor(r), r.PathValue("id"), r.PostFormValue("met") == "true")
+	s.done(w, r, phaseURL(r), err)
+}
+
+// addPhaseStories moves every chosen story into the phase. Each is answered
+// on its own, so one refusal doesn't stop the rest.
+func (s *site) addPhaseStories(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	ws, ids, phase := r.PathValue("ws"), r.PostForm["id"], phaseNumber(r)
+	if len(ids) == 0 {
+		s.done(w, r, phaseURL(r), &board.Error{Kind: board.Invalid, Msg: "Choose at least one story."})
+		return
+	}
+	var refused []string
+	for _, id := range ids {
+		if _, err := s.board.UpdateStory(ws, actor(r), id, board.StoryPatch{Phase: &phase}); err != nil {
+			if e := (*board.Error)(nil); !errors.As(err, &e) {
+				s.done(w, r, phaseURL(r), err)
+				return
+			}
+			refused = append(refused, id+": "+err.Error())
+		}
+	}
+	var err error
+	if len(refused) > 0 {
+		err = &board.Error{Kind: board.Conflict, Msg: strings.Join(refused, "; ")}
+	}
+	s.done(w, r, phaseURL(r), err)
 }

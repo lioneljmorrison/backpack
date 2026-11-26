@@ -2,25 +2,19 @@
 {{$ws := .WS.Slug}}
 <h1>Phases</h1>
 {{range .Data}}
-<section class="phase" id="phase-{{.Phase.Number}}">
-  {{with .Phase}}
-  <h2>{{.Number}}. {{.Title}} {{if .Complete}}<span class="tag good">Complete</span>{{end}}{{if .GoalsMetEarly}}<span class="tag good">Goals met</span>{{end}}{{if .Closed}}<span class="tag">Closed</span>{{end}}</h2>
+<section class="phase" id="phase-{{.Number}}">
+  <h2><a href="/w/{{$ws}}/phases/{{.Number}}">{{.Number}}. {{.Title}}</a> {{if .Complete}}<span class="tag good">Complete</span>{{end}}{{if .GoalsMetEarly}}<span class="tag good">Goals met</span>{{end}}{{if .Closed}}<span class="tag">Closed</span>{{end}}</h2>
   {{with .Description}}<p class="text">{{.}}</p>{{end}}
   <div class="progress" aria-hidden="true"><span style="width: {{percent .StoriesComplete .StoriesTotal}}%"></span></div>
   <p class="muted">{{.StoriesComplete}} of {{.StoriesTotal}} complete</p>
-  {{with .Goals}}
-  <ul class="goals">
-    {{range .}}<li class="{{if .Met}}met{{end}}"><span aria-hidden="true">{{if .Met}}✓{{else}}○{{end}}</span> {{.Text}}{{if .Met}} <span class="muted">(met)</span>{{end}}</li>{{end}}
-  </ul>
-  {{end}}
-  {{end}}
-  <div class="list">
-    {{range .Stories}}
-    <a class="row" href="/w/{{$ws}}/stories/{{.ID}}"><span class="id">{{.ID}}</span> {{.Title}} <span class="tag status">{{storyLabel .}}</span></a>
-    {{end}}
-  </div>
 </section>
 {{else}}
 <p class="muted">No phases yet.</p>
 {{end}}
+<form class="panel" method="post" action="/w/{{$ws}}/phases">
+  <h2>New phase</h2>
+  <label>Title <input name="title" required></label>
+  <label>Description <textarea name="description" rows="3"></textarea></label>
+  <button type="submit">Add phase</button>
+</form>
 {{end}}

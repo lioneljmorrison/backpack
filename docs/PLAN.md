@@ -288,6 +288,19 @@ Each slice is its own branch and pull request into `dev`.
 8. **The UI.** Web pages served by Backpack itself: sign in with a token,
    see the board, then act on it. Tracked in Backpack as the Visual UI phase.
 
+**The phase page** (2026-11-26, S-84). `/w/{ws}/phases` is an index: each
+phase's number, title, tags (Complete, Goals met, Closed), progress and a link,
+and a form to create a phase. `/w/{ws}/phases/{n}` is the phase itself: edit
+its title and description, add and edit goals and mark them met, close or
+reopen it, see **what is left** (its stories that are not complete or closed,
+in delivery order, each with its status and the stories blocking it, and the
+next ready backlog story marked: the same "blocked" the board uses), see what
+is done, and add stories with a checklist of the open stories that have no
+phase. The checklist moves each story through the board's phase move (one
+query each); a move the board refuses (the dependency rule, a closed phase)
+is reported and does not stop the rest, as with approving proposals. Both
+pages refresh live. `GET /v1/workspaces/{ws}/phases/{n}` reads one phase.
+
 **Out of scope, each needing its own approval:**
 - Moving any existing project onto Backpack. Each move is its own task in that
   project.
@@ -1113,8 +1126,10 @@ fields writes two entries, from one block of ids; setting a field to the value
 it has writes none. Entries are never edited. They are read with `read_log`
 (`phase` for a phase, `id` of a goal such as `G-3` for a goal; stories as
 before) and `GET /phases/{n}/log`, `GET /goals/{id}/log`. Adding a phase or
-goal is not logged. The web phases page is read-only, so these edits are
-MCP and HTTP only. No migration: the `LogEntry` id index already covers the
+goal is not logged. Marking a goal met or not met is logged on the goal
+(`field` `met`, `from`/`to` `met` or `not met`; setting what it already is
+writes none) and reports the phase as changed (2026-11-26, S-84). The web
+phase page makes these edits too (see "The phase page"). No migration: the `LogEntry` id index already covers the
 entries.
 
 `batch` makes many board changes in one call: a list of `{tool, args}`,

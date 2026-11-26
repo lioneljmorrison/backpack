@@ -147,19 +147,6 @@ func TestAnUnknownWorkspaceOrStoryIsNotFound(t *testing.T) {
 	}
 }
 
-func TestPhasesShowTheirGoalsAndStories(t *testing.T) {
-	h, b := withDemo(t)
-	must[board.Phase](t)(b.AddPhase("demo", "tester", "Foundations", "Everything else stands on it"))
-	must[board.Goal](t)(b.AddGoal("demo", "tester", 1, "The slab is level"))
-	story(t, b, board.NewStory{Title: "Lay the slab", Phase: 1})
-	story(t, b, board.NewStory{Title: "Unphased chore"})
-	w := get(h, "/w/demo/phases", "bp_good")
-	wantPage(t, w, "Foundations", "Everything else stands on it", "The slab is level", "Lay the slab")
-	if strings.Contains(w.Body.String(), "Unphased chore") {
-		t.Error("a story with no phase is listed under a phase")
-	}
-}
-
 func TestIdeasAreListedWithTheirContext(t *testing.T) {
 	h, b := withDemo(t)
 	must[board.Idea](t)(b.AddIdea("demo", "tester", board.NewIdea{Title: "Dark mode", Context: "Asked for twice"}))

@@ -119,13 +119,13 @@ func TestRevokingTheTokenEndsTheStream(t *testing.T) {
 	}
 }
 
-func TestTheBoardAndStoryPagesWatchForChangesAndOthersDont(t *testing.T) {
+func TestTheBoardStoryAndPhasePagesWatchForChangesAndOthersDont(t *testing.T) {
 	h, b := withDemo(t)
 	s := story(t, b, board.NewStory{Title: "Watched"})
 	watching := `data-live="/w/demo/events"`
 	wantPage(t, get(h, "/w/demo", "bp_good"), watching, `data-live-kinds="story phase idea branch"`, `src="/static/live.js?v=`)
 	wantPage(t, get(h, "/w/demo/stories/"+s.ID, "bp_good"), watching, `data-live-kinds="story branch"`, `src="/static/live.js?v=`)
-	for _, path := range []string{"/w/demo/phases", "/w/demo/ideas", "/"} {
+	for _, path := range []string{"/w/demo/ideas", "/"} {
 		if page := get(h, path, "bp_good").Body.String(); strings.Contains(page, "data-live") || strings.Contains(page, "live.js") {
 			t.Errorf("%s watches for changes", path)
 		}

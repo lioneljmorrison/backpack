@@ -638,6 +638,17 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/PhaseNumber"
+    get:
+      summary: One phase, with its goals and progress
+      responses:
+        "200":
+          description: The phase
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Phase" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       summary: Edit a phase's title or description, or close or reopen it
       description: >-

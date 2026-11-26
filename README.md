@@ -30,7 +30,8 @@ current state is hard to find. Backpack replaces that document: agents ask it
   to check whether something is already covered before adding it.
 - Agents use it through an **MCP server**, people through **web pages** at
   `/`, and scripts through the **HTTP API** (`api/openapi.yaml`). Every
-  request needs a token; in a browser you paste it once to sign in.
+  request needs a token; in a browser you paste it once to sign in. Each phase
+  has its own page there, to see what is left and to manage it.
 
 The full design is in [docs/PLAN.md](docs/PLAN.md).
 
