@@ -11,10 +11,12 @@ import (
 // upcoming is how many backlog stories "where are we" shows.
 const upcoming = 3
 
-// Next is the highest-ranked backlog story that is not blocked, or nil when
-// there is none. With a repository it is that repository's: a story is still
-// blocked by unfinished work in any repository. An unknown repository is
-// NotFound.
+// Next is the top backlog story that is not blocked in the current phase (the
+// first that is neither complete nor closed), or, when that phase has none or
+// there is no current phase, the highest-ranked one in the whole backlog; nil
+// when there is none. Rank orders the stories inside a phase. With a
+// repository it is that repository's: a story is still blocked by unfinished
+// work in any repository. An unknown repository is NotFound.
 func (b *Board) Next(ws, repo string) (*Story, error) {
 	g, err := b.workspace(ws)
 	if err != nil {
@@ -33,11 +35,52 @@ func (b *Board) Next(ws, repo string) (*Story, error) {
 	if err != nil {
 		return nil, err
 	}
-	i := slices.IndexFunc(ss, func(s Story) bool { return s.Status == Backlog && !s.Blocked && (repo == "" || s.Repo == repo) })
+	ps, err := phases(g, 0)
+	if err != nil {
+		return nil, err
+	}
+	ready := func(s Story) bool { return s.Status == Backlog && !s.Blocked && (repo == "" || s.Repo == repo) }
+	i := -1
+	if cur := currentPhase(ps); cur != nil {
+		i = slices.IndexFunc(ss, func(s Story) bool { return ready(s) && s.Phase == cur.Number })
+	}
+	if i < 0 {
+		i = slices.IndexFunc(ss, ready)
+	}
 	if i < 0 {
 		return nil, nil
 	}
 	return &ss[i], nil
+}
+
+// currentPhase is the first phase that is neither complete nor closed; nil
+// when there is none.
+func currentPhase(ps []Phase) *Phase {
+	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete && !p.Closed }); i >= 0 {
+		return &ps[i]
+	}
+	return nil
+}
+
+// upNext is the stories "where are we" lists as next: the current phase's
+// ready backlog stories first, in rank order, then the rest of the backlog in
+// rank order (blocked included), up to upcoming.
+func upNext(ss []Story, cur *Phase, repo string) []Story {
+	out := []Story{}
+	inBacklog := func(s Story) bool { return s.Status == Backlog && (repo == "" || s.Repo == repo) }
+	if cur != nil {
+		for _, s := range ss {
+			if len(out) < upcoming && inBacklog(s) && !s.Blocked && s.Phase == cur.Number {
+				out = append(out, s)
+			}
+		}
+	}
+	for _, s := range ss {
+		if len(out) < upcoming && inBacklog(s) && !slices.ContainsFunc(out, func(o Story) bool { return o.ID == s.ID }) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Where is the short answer to "where are we".
@@ -50,7 +93,8 @@ type Where struct {
 	InProgress []Story `json:"in_progress"`
 	InReview   []Story `json:"in_review"`
 	OnHold     []Story `json:"on_hold"`
-	// Next is the top of the backlog, blocked stories included.
+	// Next is up to three backlog stories: the current phase's ready ones first,
+	// then the rest by rank, blocked stories included.
 	Next []Story `json:"next"`
 	// StraightIn is the bugs that skipped approval and are not yet started.
 	StraightIn []Story `json:"straight_in"`
@@ -104,9 +148,7 @@ func (b *Board) WhereFor(ws, repo string) (Where, error) {
 		}
 	}
 	w := Where{Proposed: []Story{}, InProgress: []Story{}, InReview: []Story{}, OnHold: []Story{}, Next: []Story{}, StraightIn: []Story{}, Unreleased: []Story{}, UpstreamChanged: []Story{}, several: len(rs) > 1}
-	if i := slices.IndexFunc(ps, func(p Phase) bool { return !p.Complete && !p.Closed }); i >= 0 {
-		w.Phase = &ps[i]
-	}
+	w.Phase = currentPhase(ps)
 	for _, s := range ss {
 		if s.UpstreamChanged != nil && !slices.Contains(complete, s.Status) && s.Status != Closed {
 			w.UpstreamChanged = append(w.UpstreamChanged, s)
@@ -128,11 +170,9 @@ func (b *Board) WhereFor(ws, repo string) (Where, error) {
 			if s.StraightIn {
 				w.StraightIn = append(w.StraightIn, s)
 			}
-			if len(w.Next) < upcoming && (repo == "" || s.Repo == repo) {
-				w.Next = append(w.Next, s)
-			}
 		}
 	}
+	w.Next = upNext(ss, w.Phase, repo)
 	return w, nil
 }
 

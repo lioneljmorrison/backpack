@@ -114,7 +114,10 @@ paths:
     get:
       summary: What's next
       description: |
-        The highest-ranked backlog story that is not blocked. With `repo` it is
+        The top backlog story that is not blocked in the current phase (the
+        first that is neither complete nor closed); when that phase has none,
+        or there is no current phase, the highest-ranked one in the whole
+        backlog. Rank orders the stories inside a phase. With `repo` it is
         the top ready story in that repository, even when another repository's
         story ranks higher; a story blocked by unfinished work in another
         repository is still blocked. Without `repo` it is the whole
@@ -153,7 +156,9 @@ paths:
         With several repositories the text names each story's repository and
         waits for a release per repository. `repo` narrows only the top three
         of the backlog, by the rule of `next`; everything else stays the whole
-        workspace's.
+        workspace's. The list is the current phase's ready backlog stories
+        first, in rank order, then the rest of the backlog in rank order
+        (blocked stories included), without repeats.
       parameters:
         - name: repo
           in: query
@@ -1744,7 +1749,7 @@ components:
           items: { $ref: "#/components/schemas/Story" }
         next:
           type: array
-          description: The top three of the backlog, blocked stories included
+          description: "Up to three: the current phase's ready backlog stories first, then the rest of the backlog by rank (blocked stories included)"
           items: { $ref: "#/components/schemas/Story" }
         unreleased:
           type: array

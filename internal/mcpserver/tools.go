@@ -289,7 +289,7 @@ func addTools(s *mcp.Server, t tools) {
 	r := &registry{s: s, steps: map[string]stepFunc{}}
 	tool(s, "list_workspaces", "Every workspace: slug, name, repositories (name and URL).", t.listWorkspaces)
 	laterRead(r, "list_branches", "The branches in merge order. Each has the branch it merges into.", t.listBranches)
-	tool(s, "whats_next", "The highest-ranked backlog story whose dependencies are complete, in full. Null when none is ready.", t.whatsNext)
+	tool(s, "whats_next", "The top ready backlog story of the current phase, else the highest-ranked one, in full. Null when none is ready.", t.whatsNext)
 	tool(s, "where_are_we", "Where the project stands in brief: phase, in progress, in review, on hold, awaiting release, next up, proposals.", t.whereAreWe)
 	tool(s, "get_story", "One story: status, what blocks it and what it blocks.", t.getStory)
 	laterRead(r, "get_context", "A story's neighbourhood in summaries. Phase and goals, source idea, dependencies and dependents (finished too) with recent decisions, found-in, found, open bugs. Detail: get_story, read_log.", t.getContext)

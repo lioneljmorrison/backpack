@@ -247,8 +247,8 @@ On hold:
 Merged, waiting for a release: 1 (latest: S-1 Done)
 Next:
   S-6 Next one
-  S-7 Then — blocked by S-6
   S-8 After
+  S-9 Later
 `
 	if got := w.Text(); got != wantText {
 		t.Fatalf("where are we changed:\n%s\nwant:\n%s", got, wantText)

@@ -86,7 +86,8 @@ func TestWhereAreWeShowsThePhaseTheWorkUnderWayAndWhatComesNext(t *testing.T) {
 		"in progress": {w.InProgress, []string{"S-2", "S-3"}},
 		"in review":   {w.InReview, []string{"S-4"}},
 		"on hold":     {w.OnHold, []string{"S-5"}},
-		"next":        {w.Next, []string{"S-6", "S-7", "S-8"}},
+		// the current phase's ready stories first; blocked S-7 only fills
+		"next": {w.Next, []string{"S-6", "S-8", "S-9"}},
 	} {
 		if !slices.Equal(ids(c.got), c.want) {
 			t.Errorf("%s %v, want %v", name, ids(c.got), c.want)
@@ -108,14 +109,15 @@ func TestWhereAreWeReadsAsAFewLinesOfText(t *testing.T) {
 		"  S-4 Reviewing — https://example.com/pr/4",
 		"  S-5 Unclear — needs more info (was in backlog)",
 		"  S-6 Next one",
-		"  S-7 Then — blocked by S-6",
+		"  S-8 After",
+		"  S-9 Later",
 	} {
 		if !strings.Contains(text, line+"\n") {
 			t.Errorf("missing %q in:\n%s", line, text)
 		}
 	}
-	if strings.Contains(text, "S-9") {
-		t.Errorf("more than three upcoming stories:\n%s", text)
+	if strings.Contains(text, "S-7") {
+		t.Errorf("a blocked story took a place from ready ones in the current phase:\n%s", text)
 	}
 }
 
@@ -243,6 +245,7 @@ func TestWhereAreWeNamesOnlyTheDependenciesThatStillBlock(t *testing.T) {
 	b := whereBoard(t)
 	depend(t, b, "S-8", "S-1") // S-1 is merged
 	depend(t, b, "S-8", "S-6")
+	depend(t, b, "S-9", "S-6") // with S-7 also blocked, the list has to take blocked stories to fill up
 	w, err := b.Where("demo")
 	if err != nil {
 		t.Fatal(err)
