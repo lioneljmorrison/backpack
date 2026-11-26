@@ -67,7 +67,8 @@ phase) in its own Docker volume, `backpack-files`, mounted at `/data/files`
 service's user, so a fresh volume is writable. Back the volume up together
 with FalkorDB's: the board names each file, and the volume holds its bytes.
 On the pages, each story, idea and phase has an Attachments section to attach,
-view and remove them.
+view and remove them. Agents attach markdown with `attach_markdown` and read
+any attachment with `get_attachment`; an image is uploaded over the HTTP API.
 
 Locally, Backpack answers on `http://127.0.0.1:8780`.
 

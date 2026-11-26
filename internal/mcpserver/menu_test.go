@@ -12,9 +12,10 @@ import (
 // menu is what ListTools offers: the tools every agent loads.
 //
 // This is the growth guard. Adding a tool to the menu needs the owner's
-// approval; a new action goes on request by default: a change runs through
+// approval (get_attachment, the 14th, was approved on 2026-11-26: an image can
+// only come back from a tool of its own); a new action goes on request by default: a change runs through
 // batch, a read through actions, and `actions` describes both.
-var menu = []string{"actions", "add_dependency", "add_idea", "add_story", "batch", "get_story",
+var menu = []string{"actions", "add_dependency", "add_idea", "add_story", "batch", "get_attachment", "get_story",
 	"list_workspaces", "log", "search", "set_status", "update_story", "whats_next", "where_are_we"}
 
 func menuNames(t *testing.T, cs *mcp.ClientSession) []string {
@@ -87,8 +88,10 @@ func TestActionsListsEachOnRequestActionOnceAndNoMenuTool(t *testing.T) {
 	if reads < 0 || changes < reads || strings.Index(got, "list_ideas: ") > changes || strings.Index(got, "add_phase: ") < changes {
 		t.Errorf("reads and changes are not marked apart:\n%s", got)
 	}
-	if len(got) > 1800 {
-		t.Errorf("the list is %d bytes, want under 1,800", len(got))
+	// The cap was 1,800; the owner raised it to 2,000 on 2026-11-26 for
+	// attach_markdown and remove_attachment.
+	if len(got) > 2000 {
+		t.Errorf("the list is %d bytes, want under 2,000", len(got))
 	}
 	t.Logf("actions listed %d bytes", len(got))
 }
