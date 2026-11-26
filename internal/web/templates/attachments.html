@@ -1,0 +1,20 @@
+{{define "attachments"}}
+<section class="attachments">
+  <h2>Attachments</h2>
+  {{with .Items}}
+  <ul class="files">
+    {{range .}}
+    <li>
+      {{if hasPrefix .Type "image/"}}<a href="/w/{{$.WS}}/attachments/{{.ID}}"><img src="/w/{{$.WS}}/attachments/{{.ID}}" alt="{{.Name}}" loading="lazy"></a>{{end}}
+      <a href="/w/{{$.WS}}/attachments/{{.ID}}">{{.Name}}</a> <span class="muted">{{.Size}} bytes</span>
+      <form method="post" action="{{$.Base}}/{{.ID}}/remove"><button type="submit" class="secondary">Remove</button></form>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}<p class="muted">No files attached.</p>{{end}}
+  <form class="panel" method="post" action="{{.Base}}" enctype="multipart/form-data">
+    <label>Attach a PNG, JPEG, GIF or WebP image or a .md file, up to 10 MiB <input type="file" name="file" required accept="image/png,image/jpeg,image/gif,image/webp,.md"></label>
+    <button type="submit">Attach</button>
+  </form>
+</section>
+{{end}}

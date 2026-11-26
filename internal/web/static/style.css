@@ -299,3 +299,9 @@ button.secondary { background: transparent; color: var(--bad); border-color: var
 #move-prompt .field { margin: 0 0 0.6rem; }
 #move-prompt label { display: block; }
 #move-prompt input { display: block; width: 100%; box-sizing: border-box; margin-top: 0.2rem; }
+
+.attachments { max-width: 48rem; }
+.files { list-style: none; padding: 0; display: grid; gap: 0.75rem; }
+.files li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.files img { display: block; max-width: 12rem; max-height: 8rem; border: 1px solid var(--line); border-radius: 4px; }
+.files form { margin-left: auto; }

@@ -12,6 +12,7 @@
   <h2><span class="id">{{.ID}}</span> {{.Title}} {{if ne .State "open"}}<span class="tag">{{label .State}}</span>{{end}}</h2>
   {{with .Context}}<p class="text">{{.}}</p>{{end}}
   <p class="muted">Added by {{.CreatedBy}} · {{when .CreatedAt}}</p>
+  {{template "attachments" (attachments $ws (print "ideas/" .ID) .Attachments)}}
   <details>
     <summary>Refine or drop</summary>
     <form class="inline" method="post" action="/w/{{$ws}}/ideas/{{.ID}}/refine">

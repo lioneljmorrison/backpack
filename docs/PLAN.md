@@ -268,6 +268,20 @@ extension, because the service sits behind Cloudflare, which caches by
 extension. A markdown file is also sent as a download
 (`Content-Disposition: attachment`).
 
+On the web pages (S-87), the story, idea and phase pages each have an
+Attachments section: a file picker to attach, images shown as thumbnails that
+open full size, markdown files as download links (markdown is not rendered),
+and a Remove button on each. The pages fetch a file from
+`GET /w/{ws}/attachments/{aid}`, which reads the sign-in cookie (an `<img>`
+cannot send a bearer header) and sends the same locked-down headers as the
+API. Attach and remove are form posts to `/w/{ws}/{stories|ideas|phases}/{id}/attachments`
+and `.../attachments/{aid}/remove`, under the same 10 MiB limit and longer
+deadline, behind the same cross-site protection as every other form. A refusal
+shows at the top of the page like any other action's. The code that reads the
+file part and sends the headers is shared with the API (`internal/transfer`).
+The Ideas page does not update live on its own (it never has); the story and
+phase pages do.
+
 Known limits: 10 MiB a file; only the four image types and `.md`; no
 renaming or replacing (remove and attach again); removing deletes the bytes
 and cannot be undone; an upload or download has five minutes, longer than the
