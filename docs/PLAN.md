@@ -58,6 +58,9 @@ description, goals and stories. Phases are numbered in order.
 - Its goals are listed alongside, each marked as met when it is. If every goal
   is met while stories are still open, Backpack flags the phase: something may
   have gone sideways.
+- A phase can be **closed** (and reopened) when it will not be finished: it
+  takes no new stories and is skipped when choosing the current phase.
+- A story can be moved into, between or out of phases.
 
 **Stories.** Each story has:
 - a description, a goal and a plan;
@@ -163,8 +166,10 @@ fixed with a correction that points to the entry it corrects. That lets an
 agent see what was done in which commit, and what was later found wrong.
 
 **Two quick reads.**
-- **What's next:** the highest-ranked backlog story whose dependencies are all
-  complete, with its description, goal and plan. It reads nothing else. With
+- **What's next:** the top backlog story whose dependencies are all complete,
+  with its description, goal and plan: the top one in the current phase if it
+  has one, otherwise the highest-ranked in the backlog ("Next follows the
+  current phase" below). With
   a `repo` (MCP `whats_next`, `GET .../next?repo=`) it is the top ready story
   in that repository, even when another repository's story ranks higher; a
   story blocked by unfinished work in another repository is still blocked, and
@@ -174,7 +179,7 @@ agent see what was done in which commit, and what was later found wrong.
   - the current phase and how far along it is;
   - what is in progress and what each story is doing;
   - what is in review;
-  - the next three in the backlog;
+  - the next three in the backlog, the current phase's ready stories first;
   - what is merged into the release branch and waiting for a release. The
     text shows one line, the count and the latest three (last in delivery
     order), for example `Merged, waiting for a release: 12 (latest: S-9 …,
@@ -249,7 +254,9 @@ other type, SVG included, is refused (SVG can run script when a browser
 opens it). The type is read from the file's bytes, never from its name or from
 what the sender claims; a markdown file must be valid text with none of the
 control characters other text refuses. A file's name is plain text of at most
-255 bytes with no `/` or `\`.
+255 bytes with no `/` or `\`. Over HTTP the upload's file name loses any folder part first
+(Go's multipart reader keeps only the last element), so `dir/a.png` is stored
+as `a.png`; a name sent through MCP is checked as given.
 
 Adding a file to a story or a phase writes a log line saying who attached
 what, and removing one writes a line saying who removed which file name (never
@@ -504,7 +511,8 @@ pages refresh live. `GET /v1/workspaces/{ws}/phases/{n}` reads one phase.
   `{id, title, state}` (`get_idea` has the context); `list_phases` items are
   `{number, title, description, complete, stories_complete, stories_total,
   goals}` with each goal `{id, text, met}`, plus `goals_met_early` only when
-  true; the description stays (omitted when empty) because there is no
+  true (and, since S-83 and S-86, `closed` only when true and `attachments`
+  only when there are some); the description stays (omitted when empty) because there is no
   single-phase read over MCP and it carries decisions; `list_releases` items
   are `{id, version, tag, stories}` (the count; `get_release` has the commit,
   notes and stories); `list_workspaces` and `list_branches` drop who and when.
@@ -518,7 +526,8 @@ pages refresh live. `GET /v1/workspaces/{ws}/phases/{n}` reads one phase.
   test. The rules the descriptions used to
   carry live in the refusals, which name the reason, and in this document: a
   story ranks below what it depends on, and a dependency points to the same or
-  an earlier phase; a story's phase is fixed at creation; `batch` takes up to
+  an earlier phase; a story's phase is fixed at creation (until S-82, when
+  `update_story` began moving a story between phases); `batch` takes up to
   100 actions and only names items that already exist, not ones an earlier
   action adds; a branch name has no whitespace and at most 100 characters;
   `into` is required on `add_branch` (one release branch exists already) and
@@ -542,9 +551,11 @@ pages refresh live. `GET /v1/workspaces/{ws}/phases/{n}` reads one phase.
   `read_log`, `list_phases`, `list_ideas` and `get_idea` leave the menu too and
   run through `actions`. `batch` still refuses reads. Called directly, a moved
   tool is an unknown tool (a JSON-RPC error).
-  The menu is exactly 13 tools: `where_are_we`, `whats_next`, `get_story`,
+  The menu was then exactly 13 tools: `where_are_we`, `whats_next`, `get_story`,
   `search`, `add_story`, `add_dependency`, `add_idea`, `set_status`,
   `update_story`, `log`, `batch`, `list_workspaces` and `actions`.
+  `get_attachment` became the 14th on 2026-11-26 (S-88, approved by the
+  owner), because only a tool of its own can answer with an image.
   `actions` takes `{name, args}`. One rule: a name alone describes the action
   (its description and arguments, each with its hint); a name with `args`
   (even `{}`) runs a read, and its arguments, `workspace` included, are
@@ -553,7 +564,8 @@ pages refresh live. `GET /v1/workspaces/{ws}/phases/{n}` reads one phase.
   `args` is refused ("run it with batch"); a change is never run here, and
   `actions` stays free of side effects. With no name it answers the list: the
   reads first (run here), then the changes (run with batch), one short line
-  each (capped by a test at 1,800 bytes). The descriptions, lines and
+  each (capped by a test at 1,800 bytes, raised to 2,000 with the owner's
+  approval in S-88 to fit the attachment actions). The descriptions, lines and
   arguments come from each action's own registered description and argument
   schema, so they cannot drift from what runs; the `actions` and `batch`
   descriptions name branches, releases, phases, goals, ideas and logs so a
@@ -810,7 +822,7 @@ not part of the board.
   A workspace with one repository needs none; with several, none named is
   refused (400, "demo has several repos; name the repo: api or web", before
   any other check, a straight-in bug fix included) and an unknown one is 404.
-  The repository is fixed at creation, like the phase: no update changes it,
+  The repository is fixed at creation (a phase is not, since S-82): no update changes it,
   and a `repo` on `PATCH` or `update_story` is refused as an unknown field.
   Dependencies cross repositories freely and the rank rule is unchanged,
   since there is one backlog. Over MCP a story read (`get_story`,
@@ -906,16 +918,18 @@ Questions about remaining work are logged on their stories in Backpack.
 
 `appendonly yes`, `appendfsync always` (the default `everysec` can lose up to
 one second of writes; this is the only copy of the board), plus RDB snapshots on
-the data volume. Backup copies the RDB file off the host.
+the data volume. Backup copies the RDB file off the host, together with the
+`backpack-files` volume (attachments, since S-86): the graph names each file
+and only that volume holds its bytes.
 
 ### Graph model (one graph per workspace, `ws:<slug>`)
 
 | Node | Key properties |
 |---|---|
-| `Workspace` | `slug`, `next_story`, `next_goal`, `next_log`, `next_idea` (counters for `S-n`, `G-n`, `L-n` and `I-n` IDs), and `next_release` (the `R-n` counter) once releases exist. `has_release_stage` is history: replaced by `Branch` nodes |
+| `Workspace` | `slug`, `next_story`, `next_goal`, `next_log`, `next_idea` (counters for `S-n`, `G-n`, `L-n` and `I-n` IDs), `next_release` (the `R-n` counter) once releases exist, and `next_attachment` (the `A-n` counter) once a file is attached. `has_release_stage` is history: replaced by `Branch` nodes |
 | `Repo` | `name` (the slug rule; unique in the workspace), `url` (optional), `created_by`, `created_at`. Owns the branches, stories and releases of one git repository |
 | `Branch` | `name`, `into` (the name of the branch it merges into, a property rather than an edge; none for the release branch), `alias` (display only), `created_by`, `created_at` |
-| `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at` |
+| `Phase` | `number`, `title`, `description`, `created_by`, `created_at`, `updated_by`, `updated_at`, `closed_by`, `closed_at` (both absent while open) |
 | `Goal` | `id` (`G-n`), `text`, `created_by`, `created_at`, `met_at`, `met_by` |
 | `Story` | `id` (`S-n`), `title`, `description`, `goal`, `plan`, `kind` (`bug`, absent for any other story), `straight_in` (`true` on a bug that skipped approval, absent otherwise), `rank`, `status`, `created_by`, `created_at`, `moved_by`, `moved_at`, `updated_by`, `updated_at` (an edit, or a dependency removed), `held_from`, `hold_reason`, `activity`, `waiting_on`, `branch`, `pr_url`, `workaround`, `into` (the furthest branch a merged story reached, a `Branch.name`) `upstream_id`, `upstream_at` (the upstream-changed mark, absent when none) |
 | `Release` | `id` (`R-n`), `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` |
@@ -929,7 +943,7 @@ the data volume. Backup copies the RDB file off the host.
 | `(Phase)-[:CONTAINS]->(Story)` | optional; a story without one sits directly in the backlog |
 | `(Story)-[:DEPENDS_ON {created_by, created_at}]->(Story)` | read in reverse as "blocks" |
 | `(Story)-[:FOUND_IN]->(Story)` | the story this one was found while building; read in reverse as what was found while building it |
-| `(Story\|Phase\|Goal)-[:LOGGED]->(LogEntry)` | phases and goals log edits only (see "Editing phases and goals") |
+| `(Story\|Phase\|Goal)-[:LOGGED]->(LogEntry)` | phases and goals log edits only (see "Editing phases and goals"), plus a phase's close and reopen, a goal's met and unmet, and files attached to or removed from a phase |
 | `(LogEntry)-[:CORRECTS]->(LogEntry)` | |
 | `(Story\|Idea\|Phase)-[:HAS_ATTACHMENT]->(Attachment)` | adding one is a single query (node, edge and, on a story or phase, a log line); so is removing one. The bytes are saved before the query and deleted after it, so a failure leaves at worst a file nothing names |
 | `(Idea)-[:BECAME]->(Story\|Phase)` | |
@@ -1005,7 +1019,8 @@ order kept and no rank ending in `0`); `Story`, `Idea`, `Goal`, `Release` and
 `Phase` gain `old_id` and `old_workspace`; every other property, text
 included, is copied as it is. The report gives, per source, its repositories,
 branches, counts and old range to new range for each kind of id, then the
-target's counters, the join notes' block, the story that would top the merged
+target's counters (`next_attachment` included, since attachments' `A-n` ids
+are renumbered too), the join notes' block, the story that would top the merged
 backlog, and warnings: stories in progress or in review that get new ids, and
 how many text fields (a story's description, goal and plan, an idea's context,
 a phase's description, a goal's text, a release's notes) name an id such as
@@ -1142,13 +1157,14 @@ GET  /v1/workspaces/{ws}/status                      where are we (JSON, or text
 GET  /v1/workspaces/{ws}/board                       stories by column, ranked
 GET  /v1/workspaces/{ws}/events                      the latest events; ?before= ?after= ?since=
 GET  /v1/workspaces/{ws}/releases                    POST (cut); GET /releases/{id}
-GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{n} (title, description)
+GET  /v1/workspaces/{ws}/phases                      POST, PATCH /phases/{n} (title, description, closed)
+GET  /v1/workspaces/{ws}/phases/{n}                  one phase
 POST /v1/workspaces/{ws}/stories/{id}/reviewed          clear the upstream-changed mark ({reason}; 409 when not marked)
 GET  /v1/workspaces/{ws}/phases/{n}/log              a phase's log
 POST /v1/workspaces/{ws}/phases/{n}/goals            PATCH /goals/{id} (met, or text)
 GET  /v1/workspaces/{ws}/goals/{id}/log              a goal's log
 GET  /v1/workspaces/{ws}/stories                     POST (with position)
-PATCH /v1/workspaces/{ws}/stories/{id}               fields, kind, activity, branch, pr_url
+PATCH /v1/workspaces/{ws}/stories/{id}               fields, kind, activity, branch, pr_url, phase (0 removes it)
 POST /v1/workspaces/{ws}/stories/{id}/move           new position
 POST /v1/workspaces/{ws}/stories/{id}/status         to (+ branch / pr_url / commit / reason / workaround)
 POST /v1/workspaces/{ws}/stories/{id}/dependencies   DELETE /dependencies/{dep}
@@ -1181,13 +1197,16 @@ true or false). Every tool takes `workspace`. Since slice 6, `add_story`
 proposes: the story goes in as `proposed`, with a required `reasoning`.
 Ideas add `add_idea` (open at once, with optional `context`),
 `list_ideas`, `get_idea`, `update_idea`, `move_idea`,
-`refine_idea` and `drop_idea`. Search adds `search`. `cut_release` (2026-10-13, S-31) takes a `version` and a `tag` (both required, plain text) and an optional `commit` and `notes`, answers with the release (`id`, `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` and `stories`, the ids it released in delivery order), and is the same action as `POST /v1/workspaces/{ws}/releases` (201); a version already released or nothing to release is a 409, a missing version or tag or odd text a 400, and it runs inside `batch`. It is one query: it makes the Release (R-n, from the workspace's `next_release` counter), marks each story merged into the release branch Released, links it with `IN_RELEASE`, and logs a status entry (merged to released, naming the release, with the commit when given) from one block of log ids. `list_releases` and `get_release` (2026-10-13, S-32) read releases: `GET /v1/workspaces/{ws}/releases` answers `{releases}` newest first (by number, so R-10 before R-9), each as `cut_release` answers, with the ids of its stories; `GET /v1/workspaces/{ws}/releases/{id}` (tool `get_release`, with `id`) answers the release with `stories` as full stories in delivery order, and an unknown id is a 404. "Where are we" (`where_are_we`, `GET .../status`, and its text) gains `unreleased`: the stories merged into the release branch that are not in a release yet, in delivery order (an empty list when none). The web has `/w/{ws}/releases` (the list, in the navigation, newest first) and `/w/{ws}/releases/{id}` (version, tag, commit, date, notes and its stories as links), and the board's where-are-we area counts the stories waiting for a release. A story read (`get_story`, `GET .../stories/{id}`, the lists and the board, all from the one story read) carries `release` (`id` and `version`) when the story shipped in a release, and omits it otherwise, including for stories released before releases were recorded; the web story page links it to the release page (2026-10-13, S-33). `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `merge_branch` (2026-10-13, S-25) takes a branch and its merge commit and answers
+`refine_idea` and `drop_idea`. Search adds `search`. Attachments (S-88) add
+`get_attachment` (on the menu), `attach_markdown` and `remove_attachment`
+(see "Attachments"). `cut_release` (2026-10-13, S-31) takes a `version` and a `tag` (both required, plain text) and an optional `commit` and `notes`, answers with the release (`id`, `version`, `tag`, `commit`, `notes`, `created_by`, `created_at` and `stories`, the ids it released in delivery order), and is the same action as `POST /v1/workspaces/{ws}/releases` (201); a version already released or nothing to release is a 409, a missing version or tag or odd text a 400, and it runs inside `batch`. It is one query: it makes the Release (R-n, from the workspace's `next_release` counter), marks each story merged into the release branch Released, links it with `IN_RELEASE`, and logs a status entry (merged to released, naming the release, with the commit when given) from one block of log ids. `list_releases` and `get_release` (2026-10-13, S-32) read releases: `GET /v1/workspaces/{ws}/releases` answers `{releases}` newest first (by number, so R-10 before R-9), each as `cut_release` answers, with the ids of its stories; `GET /v1/workspaces/{ws}/releases/{id}` (tool `get_release`, with `id`) answers the release with `stories` as full stories in delivery order, and an unknown id is a 404. "Where are we" (`where_are_we`, `GET .../status`, and its text) gains `unreleased`: the stories merged into the release branch that are not in a release yet, in delivery order (an empty list when none). The web has `/w/{ws}/releases` (the list, in the navigation, newest first) and `/w/{ws}/releases/{id}` (version, tag, commit, date, notes and its stories as links), and the board's where-are-we area counts the stories waiting for a release. A story read (`get_story`, `GET .../stories/{id}`, the lists and the board, all from the one story read) carries `release` (`id` and `version`) when the story shipped in a release, and omits it otherwise, including for stories released before releases were recorded; the web story page links it to the release page (2026-10-13, S-33). `list_branches` (2026-10-13) answers with a workspace's branches in merge order, the same JSON as `GET /v1/workspaces/{ws}/branches`. `merge_branch` (2026-10-13, S-25) takes a branch and its merge commit and answers
 `{"stories": [...]}`, the ids of the stories it moved (over HTTP, the stories); it is the same action as `POST /v1/workspaces/{ws}/branches/{name}/merged` and runs inside `batch`. `add_branch` (2026-10-13, S-28) takes a `name`, the branch it merges `into` (required) and an optional `alias`, answers with the branch, and is the same action as `POST /v1/workspaces/{ws}/branches` (201); an unknown `into` is a 404, a taken name a 409, a missing `into` or a bad name a 400, and it runs inside `batch`. `update_branch` (2026-10-13, S-26, S-27, S-28) takes a branch and an optional new `name`, `alias` and `into`, answers with the branch, and is the same action as `PATCH /v1/workspaces/{ws}/branches/{name}`; `into` re-points where the branch merges (nothing moves; one query, with the cycle check a bounded walk of the branches' `into` names, since `into` is a property and not an edge), and is refused for the branch itself or one leading back to it, an unknown branch, the release branch, or empty on any other branch (409, or 404 for an unknown one); fields not given are left alone, a name already in use or with whitespace or over 100 characters is refused, and renaming to the branch's own name changes nothing. An `alias` (plain text, at most 100 characters; empty clears it) replaces only the branch name inside its web column heading, "Merged (Production)"; the story page, API, tools and logs keep the name. `remove_branch` (2026-10-13, S-29) takes a branch, answers `{"removed": true}`, and is the same action as `DELETE /v1/workspaces/{ws}/branches/{name}` (204, as removing a dependency); it is one query and runs inside `batch`. It is refused with 409 for the release branch, the only starting branch, and a branch that still has stories merged into it or branches merging into it (the reason names them), and with 404 for an unknown branch. `list_workspaces` is the
 one tool that takes no `workspace`: it answers with every workspace, the same
 JSON as `GET /v1/workspaces`.
 
 Editing phases and goals (2026-10-31, S-55): `update_phase` (`number`, and
-`title` and `description`, each optional) and `update_goal` (`id`, `text`)
+`title` and `description`, each optional; `closed` since S-83, see "Closed
+phases") and `update_goal` (`id`, `text`)
 answer with only the phase's number or the goal's id; over HTTP they are
 `PATCH /phases/{n}` and `PATCH /goals/{id}` (with `text`; one request gives
 `met` or `text`, not both), which answer with the full phase or goal. Fields
@@ -1247,8 +1266,11 @@ project's CLAUDE.md.
   therefore creates `/data/files` owned by 65532. Backups cover this volume as
   well as FalkorDB's;
 - `cloudflared` (`cloudflare/cloudflared:2026.9.3`), under the `tunnel`
-  profile: `make up` leaves it off, `make tunnel` starts it with
-  `CLOUDFLARE_TOKEN`. The tunnel is token-managed; its public hostname routes
+  profile: `make tunnel` starts it with `CLOUDFLARE_TOKEN`. `make down` stops
+  the containers rather than removing them, so a stopped tunnel keeps its
+  token, and `make up` starts a stopped (exited) tunnel again through
+  `deploy/tunnel-resume.sh`, after the same guard as `make tunnel` (S-89);
+  with no tunnel container it leaves the tunnel off. The tunnel is token-managed; its public hostname routes
   to `http://backpack:8780` in the Cloudflare dashboard. `make tunnel` first
   runs `deploy/tunnel-guard.sh`, which refuses when the public address already
   answers and the tunnel isn't running on this Docker host: two copies on one
@@ -1256,8 +1278,8 @@ project's CLAUDE.md.
 
 The commands drive whichever Docker host `BACKPACK_DOCKER_CONTEXT` names (the
 local one when unset; `local.mk`, gitignored, remembers it per checkout, and an
-environment variable overrides it). Commands that exec into the container run
-`deploy/running.sh` first, which names the Docker it checked when Backpack
+environment variable overrides it). Commands that exec into the container,
+and `make logs`, run `deploy/running.sh` first, which names the Docker it checked when Backpack
 isn't running there. For a remote host reached over SSH, `make forward`
 (`deploy/forward.sh`) forwards its ports to this machine's `127.0.0.1`.
 
@@ -1273,14 +1295,18 @@ tests run against the real thing.
 ### Layout
 
 ```
-cmd/backpack/        main: serve, token create|revoke, reindex
+cmd/backpack/        main: serve, token create|revoke, reindex, join
 internal/falkor/     connection and numbered migrations, applied at start-up
 internal/auth/       tokens, the actor store, the bearer middleware
 internal/health/     dependency checks
 internal/board/      the operations and their rules (Cypher)
 internal/search/     Typesense indexing and queries
+internal/files/      attachment bytes on disk (BACKPACK_FILES_DIR)
+internal/transfer/   reading an upload and serving a file, shared by the API and the pages
 internal/httpapi/    handlers
 internal/mcpserver/  tool definitions
+internal/web/        the web pages, their templates and static files
+internal/live/       live updates to open pages
 api/openapi.yaml
-deploy/              Dockerfile, docker-compose.yml, hook, tunnel guard and forward scripts
+deploy/              Dockerfile, docker-compose.yml, hook, tunnel guard and resume, running check and forward scripts
 ```

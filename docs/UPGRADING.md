@@ -151,6 +151,68 @@ Projects get this by downloading the hook again (the same command as in
 [ADOPTING.md](ADOPTING.md) step 6, which overwrites the old copy). A project
 with the old hook keeps working, but still prints "unreachable" for a refusal.
 
+## Upgrading to the next release
+
+<!-- Renamed to the version number when the release is cut. -->
+
+Nothing a project calls was removed or renamed, so a project that does
+nothing keeps working. What is new:
+
+- **Attachments.** A story, idea or phase can carry images (PNG, JPEG, GIF,
+  WebP) and markdown files, up to 10 MiB each. `get_attachment` is a new menu
+  tool: it reads one by id (`A-n`), markdown as text and an image as an image.
+  `attach_markdown` (`item`, `name`, `text`) and `remove_attachment` (`id`)
+  are on request, run through `batch`. Reads of a story, idea or phase list
+  its attachments. An image is uploaded over the HTTP API with a token
+  ([ADOPTING.md](ADOPTING.md), after step 7).
+- **Phases.** `update_story` takes `phase` to move a story into, between or
+  out of phases (`0` takes it out). `update_phase` (through `batch`) takes
+  `closed`: a closed phase takes no new stories and is skipped when choosing
+  the current phase. `list_phases` shows `closed` when true.
+- **Next follows the current phase.** `whats_next` is the top ready story in
+  the current phase (the first neither complete nor closed), or the top ready
+  story in the backlog when that phase has none. "Where are we" lists the
+  current phase's ready stories first.
+
+The tracking section in [ADOPTING.md](ADOPTING.md) step 7 and the session hook
+are unchanged.
+
+### 1. Permission rules
+
+Look at the rules that name Backpack's tools (`mcp__backpack__<name>`), as in
+"Upgrading to 0.5.0", step 2: read only the `permissions` entries of
+`.claude/settings.local.json`.
+
+- A rule for the whole server (`mcp__backpack` or `mcp__backpack__*`) already
+  covers `get_attachment`. If the tools are allowed one by one, ask the person
+  whether to allow `mcp__backpack__get_attachment` too; it only reads.
+- Allowing `batch` now also allows `attach_markdown` and `remove_attachment`.
+  Removing a file deletes it for good; only the log keeps its name. If `batch`
+  is allowed, tell the person.
+
+### 2. Check it works
+
+After the person restarts Claude Code:
+
+- `get_attachment` is listed among the `backpack` tools (`/mcp`);
+- `actions` with no name lists `attach_markdown` and `remove_attachment`;
+- `get_attachment` with an id that does not exist (`A-0`) is refused with a
+  reason that names it.
+
+If `get_attachment` is not there, the server is older: tell the person.
+
+### For the person running the board
+
+Tell them, if it is news to them:
+
+- Attachments are kept in a new Docker volume, `backpack-files`. Back it up
+  with FalkorDB's: the board names each file, and only that volume holds its
+  bytes.
+- `make down` now stops the containers instead of removing the tunnel, and
+  `make up` starts a stopped tunnel again.
+- `BACKPACK_DOCKER_CONTEXT ?= <context>` in `local.mk` (gitignored) remembers
+  which Docker host the `make` commands drive.
+
 ## Your workspaces were joined
 
 Follow this only when the person tells you the project's workspace was joined

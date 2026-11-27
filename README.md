@@ -26,6 +26,11 @@ current state is hard to find. Backpack replaces that document: agents ask it
   API and MCP board listings still carry them). A story an agent
   adds is Proposed until a person approves it.
 - Dependencies are explicit, and a story always ranks below what it depends on.
+- Stories can be grouped into **phases** (epics with a description and goals).
+  "What's next" is the top ready story in the current phase (the first that is
+  neither complete nor closed), or the top ready story in the backlog when
+  that phase has none.
+- A story, idea or phase can carry **attachments**: images and markdown files.
 - Agents can **search** stories, ideas and phases by keyword or by meaning,
   to check whether something is already covered before adding it.
 - Agents use it through an **MCP server**, people through **web pages** at
@@ -41,9 +46,10 @@ You need Docker. The stack is Backpack, FalkorDB (the store) and Typesense (the
 search index).
 
 ```bash
-make up                  # build and start the stack (and the tunnel, if it was running)
+make up                  # build and start the stack (and a stopped tunnel)
 make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
+make logs                # follow Backpack's log
 make forward             # bring a remote stack's ports here over SSH
 make token ACTOR=<name>  # issue a token for a person or agent (shown once)
 make reindex             # rebuild the search index from the board
@@ -51,6 +57,8 @@ make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"  # what joining
 make join INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"          # join workspaces into a new one, search included (preview first)
 make join-abort INTO=<slug>                                         # undo an interrupted join
 make gates               # gofmt, vet, tests, build
+make test                # the tests alone, against the stack's ports here
+make coverage            # fail when coverage.out is under the minimum (run by make gates)
 ```
 
 The search index is rebuilt from the board at every start. The first start on
@@ -88,20 +96,29 @@ container it means the tunnel itself. Before starting, `make tunnel` checks
 the public address in `.backpack.json`: if Backpack already answers there and
 the tunnel isn't running on the Docker host being started, it refuses, since
 two copies on one tunnel would split requests between two boards.
-`make down` stops the tunnel; `make up` starts it again if it was running, after
-the same check.
+`make down` stops the tunnel with the rest of the stack, and `make up` starts a
+stopped tunnel again after the same check. If the check fails, the stack is up
+and only the tunnel stays stopped.
 
 ## Using the pages
 
 Open Backpack's address in a browser (`http://127.0.0.1:8780` locally) and
 paste a token from `make token ACTOR=<your name>`. The browser keeps it until
 you sign out or the token is revoked. Each workspace has its board, with where
-it stands above, and pages for each story, its phases, its ideas and search.
+it stands above, and pages for each story, its phases (an index and a page for
+each phase), its releases, its ideas and search.
 From the pages you can approve or decline proposed stories, re-rank the
 backlog (drag a card, or use its arrows), move a story across the board, say
-what it is doing, add to its log, add stories and ideas, and refine or drop
-ideas. Every change is recorded under the token's actor, and the board's
-rules apply exactly as they do for agents.
+what it is doing, mark it a bug, move it into, between or out of phases, add
+to its log, add stories and ideas, and refine or drop ideas. On the phases
+pages you create a phase, and on a phase's own page see what is left (with
+what blocks each story) and what is done, edit its title, description and
+goals, mark goals met, close or reopen it, and add stories to it from a
+checklist. A closed phase takes no new stories and is skipped when Backpack
+picks the current phase. Each story, idea and phase also has an Attachments
+section to attach PNG, JPEG, GIF or WebP images and `.md` files (up to 10 MiB),
+view them and remove them. Every change is recorded under the token's actor,
+and the board's rules apply exactly as they do for agents.
 
 On the board with a mouse, a card can be dragged to the columns it may go to,
 which light up while you drag: drop a proposed story in the backlog where it
