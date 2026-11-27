@@ -66,11 +66,14 @@ standard or the API contract, stop and ask.
 ## Commands
 
 ```bash
-make up                  # build and start backpack, FalkorDB and Typesense (and the tunnel, if it was running)
+make up                  # build and start backpack, FalkorDB and Typesense (and a stopped tunnel)
 make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
+make logs                # follow Backpack's log
 make forward             # bring a remote stack's ports here over SSH
 make gates               # gofmt, vet, tests against the stack's ports here, build
+make test                # the tests alone, against the stack's ports here
+make coverage            # fail when coverage.out is under the minimum (run by make gates)
 make token ACTOR=<name>  # issue a bearer token (shown once)
 make reindex             # rebuild the search index from the board
 make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"  # what joining workspaces would do; writes nothing
@@ -83,11 +86,14 @@ Typesense 18108. The commands drive the local Docker unless
 `BACKPACK_DOCKER_CONTEXT` names another Docker host (a `docker context`; set
 `BACKPACK_DOCKER_CONTEXT ?= <context>` in the gitignored `local.mk`, never in
 a tracked file; an environment variable overrides it). Commands that run
-inside the container first check Backpack is running on that Docker and say
-how to fix it if not. With a remote stack, run
+inside the container, and `make logs`, first check Backpack is running on that
+Docker and say how to fix it if not. With a remote stack, run
 `make forward` before `make gates`. `make tunnel` refuses to start when the
-public address is already served from another host, as does `make up` when it
-restarts a tunnel that `make down` stopped. Configuration is environment variables: `BACKPACK_ADDR`,
+public address is already served from another host. `make down` stops the
+containers, tunnel included, and `make up` starts a stopped tunnel again after
+the same check; when the check fails, the stack is up and only the tunnel is
+left stopped. The stack's Typesense key is `TYPESENSE_API_KEY` (the Makefile
+defaults it to `local-dev-only`; set a real one where the stack is reachable). Configuration is environment variables: `BACKPACK_ADDR`,
 `BACKPACK_FALKORDB_URL`, `BACKPACK_TYPESENSE_URL`,
 `BACKPACK_TYPESENSE_API_KEY`, `BACKPACK_SYSTEM_GRAPH`, `BACKPACK_FILES_DIR`
 (where attachments are kept, default `/data/files`; the stack gives it its own

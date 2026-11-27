@@ -382,8 +382,8 @@ is never committed. `actions` lists rarer actions; run rarer changes through
 
 Agents can also keep files on a story, idea or phase. Over MCP,
 `attach_markdown` (`item` is `S-n`, `I-n` or a phase number; `name` ends in
-`.md`) attaches a note, run through `batch`, and `get_attachment` reads any
-attachment back, an image as an image. An agent cannot send an image over MCP,
+`.md`; `text` is the note itself) attaches a note, run through `batch`, and
+`get_attachment` reads any attachment back, an image as an image. An agent cannot send an image over MCP,
 so a person or a script uploads one with a token:
 
 ```bash

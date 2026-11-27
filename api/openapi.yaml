@@ -150,8 +150,9 @@ paths:
       summary: Where are we
       description: >-
         The first phase that is neither complete nor closed, what is in progress, in review
-        and on hold, the top three of the backlog, and the stories and ideas
-        waiting for approval. Send
+        and on hold, the next three backlog stories (see below), the bugs that
+        went straight in and are not started, and the stories waiting for
+        approval. Send
         `Accept: text/plain` for a few lines of text, as the session hook does.
         With several repositories the text names each story's repository and
         waits for a release per repository. `repo` narrows only the top three
@@ -692,8 +693,12 @@ paths:
         Multipart form with the file in a part named `file`. Images (PNG, JPEG,
         GIF, WebP, by their bytes) and markdown (a `.md` name, valid text) are
         accepted, up to 10 MiB; anything else, SVG included, is 415, and a
-        larger file is 413. The name is plain text, at most 255 bytes, with no
-        `/` or `\`. Writes a log line on a story or phase.
+        larger file is 413. The name is plain text, at most 255 bytes; any
+        folder part of the sent file name is dropped (`dir/a.png` is stored as
+        `a.png`), and a name that is then empty, `.` or `..`, or holds a `\`
+        or a control or invisible formatting character, is 400. Writes a log
+        line on a story or phase. An upload cannot go through `batch`, which
+        sends JSON only.
       requestBody:
         required: true
         content:
@@ -768,7 +773,9 @@ paths:
       description: >-
         Needs a token like every route. The address has no file extension, on
         purpose: the service sits behind Cloudflare, which caches by extension.
-        A markdown file is also sent as a download.
+        A markdown file is also sent as a download. HEAD is answered too, and
+        a `Range` request gets part of the file (206), or 416 when the range
+        cannot be met.
       responses:
         "200":
           description: The file, as the type it was stored with
@@ -777,7 +784,7 @@ paths:
             Content-Security-Policy: { schema: { type: string, const: "default-src 'none'; sandbox" } }
             Cache-Control: { schema: { type: string, const: "private, no-store" } }
             Content-Disposition:
-              description: "Markdown only: attachment; filename=<name>"
+              description: "Markdown only: attachment; filename=<name>, the name quoted when it needs it, or as filename*=utf-8''<encoded> when it is not ASCII"
               schema: { type: string }
           content:
             image/png: { schema: { type: string, format: binary } }
@@ -785,8 +792,10 @@ paths:
             image/gif: { schema: { type: string, format: binary } }
             image/webp: { schema: { type: string, format: binary } }
             text/markdown: { schema: { type: string, format: binary } }
+        "206": { description: "The part of the file the Range asked for" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "416": { description: "The Range cannot be met (plain text)" }
     delete:
       summary: Remove an attachment and delete its bytes
       description: >-
@@ -832,8 +841,8 @@ paths:
       summary: Mark a goal met or unmark it, or change its text
       description: >-
         Give met or text, one of them. A change of text is logged on the goal
-        with the old and new text; setting the text it already has changes
-        and logs nothing.
+        with the old and new text, and a change of met with `met` / `not met`;
+        setting what it already is changes and logs nothing.
       requestBody:
         required: true
         content:
@@ -861,7 +870,10 @@ paths:
       - $ref: "#/components/parameters/PhaseNumber"
     get:
       summary: The phase's log, oldest entry first
-      description: One edit entry for each field an edit changed.
+      description: >-
+        One edit entry for each field an edit changed (title, description, or
+        closed, from and to `open` / `closed`), and a note for each file
+        attached or removed.
       responses:
         "200":
           description: The entries
@@ -886,7 +898,7 @@ paths:
         schema: { type: string, example: G-1 }
     get:
       summary: The goal's log, oldest entry first
-      description: One edit entry for each change of its text.
+      description: One edit entry for each change of its text, or of whether it is met.
       responses:
         "200":
           description: The entries
@@ -942,7 +954,7 @@ paths:
                 plan: { type: string }
                 kind: { type: string, enum: [bug], description: "Mark the story as a bug; omit for any other story" }
                 found_in: { type: string, example: S-3, description: "The story this one was found while building; 404 if unknown, 409 if closed" }
-                phase: { type: integer, minimum: 1, description: "Omit for a story with no phase" }
+                phase: { type: integer, minimum: 1, description: "Omit for a story with no phase; 404 if unknown, 409 if the phase is closed" }
                 repo: { type: string, description: "The repository that holds the story, fixed from then on. Left out when the workspace has one repository; with several, none is refused (400, naming the choices) and an unknown one is 404" }
                 before: { type: string, example: S-3 }
                 after: { type: string, example: S-2 }
@@ -979,7 +991,8 @@ paths:
         the story into that phase (0 takes it out); it is refused with 404 when
         the phase does not exist, and with 409 when the move would put a story
         in a later phase than one it depends on, or earlier than one that
-        depends on it. The move is logged on the story.
+        depends on it, or into a closed phase (moving out of one is allowed).
+        The move is logged on the story.
       requestBody:
         required: true
         content:
@@ -1468,7 +1481,8 @@ paths:
         the rest; nothing is undone. Only POST, PATCH and DELETE requests can
         be batched, and each path is relative to the workspace. A request can
         name only items that already exist, not one an earlier request in the
-        batch adds. A batch holds 1 to 100 requests.
+        batch adds. A batch holds 1 to 100 requests. Each request is sent as
+        JSON, so a file upload cannot be batched (removing one can).
       requestBody:
         required: true
         content:
@@ -1857,7 +1871,7 @@ components:
         at: { type: string, format: date-time }
         actor: { type: string }
         kind: { type: string, enum: [note, decision, commit, pr, status, correction, edit] }
-        field: { type: string, enum: [title, description, text], description: "An edit entry: the field changed" }
+        field: { type: string, enum: [title, description, text, closed, met], description: "An edit entry: the field changed (closed on a phase, met on a goal)" }
         text: { type: string }
         reason: { type: string }
         commit: { type: string }
@@ -1877,7 +1891,7 @@ components:
           items: { type: string }
     Where:
       type: object
-      required: [phase, proposed, in_progress, in_review, on_hold, next, unreleased, upstream_changed]
+      required: [phase, proposed, in_progress, in_review, on_hold, next, straight_in, unreleased, upstream_changed]
       properties:
         phase:
           description: The first phase that is neither complete nor closed; null when there is none
@@ -1900,6 +1914,10 @@ components:
         next:
           type: array
           description: "Up to three: the current phase's ready backlog stories first, then the rest of the backlog by rank (blocked stories included)"
+          items: { $ref: "#/components/schemas/Story" }
+        straight_in:
+          type: array
+          description: Bugs that skipped approval (add_bug_fix) and are still in the backlog, in delivery order
           items: { $ref: "#/components/schemas/Story" }
         unreleased:
           type: array
@@ -1977,7 +1995,7 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     NotFound:
-      description: No such workspace, phase, goal, story, log entry or dependency. A workspace that was joined into another is a 404 too, and the error names the workspace and repository to use instead
+      description: No such workspace, phase, goal, story, idea, attachment, log entry or dependency. A workspace that was joined into another is a 404 too, and the error names the workspace and repository to use instead
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
