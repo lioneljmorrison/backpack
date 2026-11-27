@@ -1,0 +1,11 @@
+# Lint settings for api/openapi.yaml, run by `make lint-api` (Redocly CLI 1.34.3).
+extends:
+  - recommended
+
+rules:
+  # The spec's server is local development, on purpose.
+  no-server-example.com: off
+  # /healthz takes no input and needs no sign-in, so it has no 4xx response.
+  # Redocly 1.34.3 cannot scope a rule to one path, so this is off for every
+  # operation.
+  operation-4xx-response: off

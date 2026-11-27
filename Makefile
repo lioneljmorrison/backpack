@@ -20,7 +20,7 @@ TEST_ENV := BACKPACK_TEST_FALKORDB=falkor://localhost:16379 \
 # The lowest total test coverage, in percent, the gates accept.
 COVERAGE_MIN := 70
 
-.PHONY: up tunnel down logs forward test gates coverage token reindex join-preview join join-abort
+.PHONY: up tunnel down logs forward test gates lint-api coverage token reindex join-preview join join-abort
 
 up:            ## start the whole stack, rebuilding the service
 	$(COMPOSE) up -d --build
@@ -50,6 +50,10 @@ gates:         ## every gate in docs/ENGINEERING-STANDARD.md §7.3
 	$(TEST_ENV) go test -race -coverprofile=coverage.out ./...
 	@$(MAKE) --no-print-directory coverage
 	go build ./...
+	@$(MAKE) --no-print-directory lint-api
+
+lint-api:      ## lint api/openapi.yaml with Redocly (needs Node and npx)
+	npx --yes @redocly/cli@1.34.3 lint api/openapi.yaml
 
 coverage:      ## fail if total coverage in coverage.out is below COVERAGE_MIN
 	@go tool cover -func=coverage.out | awk -v min=$(COVERAGE_MIN) \

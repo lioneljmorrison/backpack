@@ -30,6 +30,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Wait for Typesense
         run: |
           for i in $(seq 30); do curl -fs localhost:8108/health && exit 0; sleep 1; done
@@ -54,3 +57,5 @@ jobs:
         run: make coverage
       - name: go build
         run: go build ./...
+      - name: API spec lint
+        run: make lint-api
