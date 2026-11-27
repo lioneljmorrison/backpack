@@ -173,6 +173,7 @@ Do not claim a task is tested when a required check was skipped or failed.
 | `go test -race ./...` | pass |
 | total test coverage | at least 70% |
 | `go build ./...` | pass |
+| API spec lint, `make lint-api` | 0 errors, 0 warnings |
 
 ### 7.4 Commit boundaries
 

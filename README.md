@@ -42,8 +42,8 @@ The full design is in [docs/PLAN.md](docs/PLAN.md).
 
 ## Running it
 
-You need Docker. The stack is Backpack, FalkorDB (the store) and Typesense (the
-search index).
+You need Docker. Running `make gates` also needs Go and Node (for `npx`). The
+stack is Backpack, FalkorDB (the store) and Typesense (the search index).
 
 ```bash
 make up                  # build and start the stack (and a stopped tunnel)
@@ -56,9 +56,10 @@ make reindex             # rebuild the search index from the board
 make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"  # what joining workspaces would do; writes nothing
 make join INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"          # join workspaces into a new one, search included (preview first)
 make join-abort INTO=<slug>                                         # undo an interrupted join
-make gates               # gofmt, vet, tests, build
+make gates               # gofmt, vet, tests, build, API spec lint
 make test                # the tests alone, against the stack's ports here
 make coverage            # fail when coverage.out is under the minimum (run by make gates)
+make lint-api            # lint api/openapi.yaml with Redocly (run by make gates; needs Node and npx)
 ```
 
 The search index is rebuilt from the board at every start. The first start on

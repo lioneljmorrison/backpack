@@ -2,6 +2,7 @@ openapi: 3.1.0
 info:
   title: Backpack
   version: 0.6.0
+  license: { name: MIT, identifier: MIT }
   description: >-
     A Kanban board for agentic projects. Every route under /v1, and the MCP
     server at /mcp, requires a bearer token issued with `backpack token
@@ -14,6 +15,7 @@ security:
 paths:
   /healthz:
     get:
+      operationId: get_health
       summary: Service and dependency health
       description: >-
         The only unauthenticated route. Reports each dependency as `ok` or
@@ -32,6 +34,7 @@ paths:
               schema: { $ref: "#/components/schemas/Health" }
   /v1/whoami:
     get:
+      operationId: get_whoami
       summary: The actor the presented token belongs to
       responses:
         "200":
@@ -47,6 +50,7 @@ paths:
         "503": { $ref: "#/components/responses/Unavailable" }
   /mcp:
     post:
+      operationId: call_mcp
       summary: The MCP server, for agents
       description: >-
         MCP over streamable HTTP, stateless: no sessions are kept, and every
@@ -66,6 +70,7 @@ paths:
         "503": { $ref: "#/components/responses/Unavailable" }
   /v1/workspaces:
     get:
+      operationId: list_workspaces
       summary: Every workspace, by slug
       responses:
         "200":
@@ -81,6 +86,7 @@ paths:
                     items: { $ref: "#/components/schemas/Workspace" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
+      operationId: create_workspace
       summary: Create a workspace
       requestBody:
         required: true
@@ -112,6 +118,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: whats_next
       summary: What's next
       description: |
         The top backlog story that is not blocked in the current phase (the
@@ -147,6 +154,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: where_are_we
       summary: Where are we
       description: >-
         The first phase that is neither complete nor closed, what is in progress, in review
@@ -189,6 +197,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: get_board
       summary: Every story by column, each column in delivery order
       description: >-
         Merged has one column per branch of every repository (repositories in
@@ -223,6 +232,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: list_repos
       summary: The workspace's repositories
       description: Every repository, by name.
       responses:
@@ -240,6 +250,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
+      operationId: add_repo
       summary: Add a repository
       description: >-
         Adds a repository with `main` alone, its release branch. Shape it with
@@ -257,8 +268,8 @@ paths:
               required: [name]
               additionalProperties: false
               properties:
-                name: { type: string, maxLength: 64, description: The repository's name, a slug }
-                url: { type: string, description: Where it lives, plain text }
+                name: { type: string, maxLength: 64, description: "The repository's name, a slug" }
+                url: { type: string, description: "Where it lives, plain text" }
       responses:
         "201":
           description: The new repository
@@ -273,6 +284,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: list_branches
       summary: The workspace's branches, by repository and in merge order
       description: >-
         Every repository's branches, each labelled with its `repo`: by
@@ -303,6 +315,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
+      operationId: add_branch
       summary: Add a branch
       description: >-
         Adds a branch that merges into an existing one, such as staging into
@@ -323,9 +336,9 @@ paths:
               required: [name, into]
               additionalProperties: false
               properties:
-                name: { type: string, maxLength: 100, description: The new branch's name, plain text with no whitespace }
+                name: { type: string, maxLength: 100, description: "The new branch's name, plain text with no whitespace" }
                 into: { type: string, description: The existing branch it merges into }
-                alias: { type: string, maxLength: 100, description: The web column heading's name for the branch, plain text }
+                alias: { type: string, maxLength: 100, description: "The web column heading's name for the branch, plain text" }
                 repo: { type: string, description: "The repository the branch joins, and the one `into` is looked for in. Left out when the workspace has one repository; with several, none is refused (400) and an unknown one is 404" }
       responses:
         "201":
@@ -355,6 +368,7 @@ paths:
           an unknown one is 404.
         schema: { type: string }
     patch:
+      operationId: update_branch
       summary: Change a branch
       description: >-
         Fields not given are left as they are. A new name replaces the old one
@@ -382,7 +396,7 @@ paths:
               type: object
               additionalProperties: false
               properties:
-                name: { type: string, maxLength: 100, description: The new name, plain text with no whitespace }
+                name: { type: string, maxLength: 100, description: "The new name, plain text with no whitespace" }
                 alias: { type: string, maxLength: 100, description: "The web column heading's name for the branch, plain text; an empty string clears it" }
                 into: { type: string, description: The existing branch it merges into from now on }
       responses:
@@ -396,6 +410,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
     delete:
+      operationId: remove_branch
       summary: Remove a branch
       description: >-
         Removes a branch only when nothing refers to it: no story is merged
@@ -429,6 +444,7 @@ paths:
           an unknown one is 404.
         schema: { type: string }
     post:
+      operationId: merge_branch
       summary: Record a branch merged into the next, moving every story on it
       description: >-
         Moves every story merged into the branch to the branch it merges into,
@@ -467,6 +483,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: list_events
       summary: The latest events, however old
       description: >-
         What happened lately, as short lines, oldest first: decisions,
@@ -516,6 +533,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: list_releases
       summary: The workspace's releases, newest first
       description: >-
         Newest first by number (R-10 before R-9), every repository's, each
@@ -543,6 +561,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
+      operationId: cut_release
       summary: Cut a release, releasing every story merged into the repository's release branch
       description: >-
         Records an official release (R-n) of one repository with a version and
@@ -569,7 +588,7 @@ paths:
               properties:
                 repo: { type: string, description: "The repository to release. Left out when the workspace has one repository; with several, none is refused (400) and an unknown one is 404" }
                 version: { type: string, example: v1.0.0 }
-                tag: { type: string, description: The git tag that marks the release, example: v1.0.0 }
+                tag: { type: string, description: "The git tag that marks the release", example: v1.0.0 }
                 commit: { type: string, description: The commit the tag points at }
                 notes: { type: string }
       responses:
@@ -590,6 +609,7 @@ paths:
         required: true
         schema: { type: string, example: R-1 }
     get:
+      operationId: get_release
       summary: One release with its stories, as a changelog
       responses:
         "200":
@@ -603,6 +623,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: list_phases
       summary: The workspace's phases in order, each with its goals
       responses:
         "200":
@@ -619,6 +640,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
+      operationId: add_phase
       summary: Add a phase, numbered after the last one
       requestBody:
         required: true
@@ -645,6 +667,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/PhaseNumber"
     get:
+      operationId: get_phase
       summary: One phase, with its goals and progress
       responses:
         "200":
@@ -656,6 +679,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
+      operationId: update_phase
       summary: Edit a phase's title or description, or close or reopen it
       description: >-
         Fields left out are unchanged. Each field that changes is logged on
@@ -688,6 +712,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/StoryID"
     post:
+      operationId: add_story_attachment
       summary: Attach a file to a story
       description: &attach >-
         Multipart form with the file in a part named `file`. Images (PNG, JPEG,
@@ -720,6 +745,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/IdeaID"
     post:
+      operationId: add_idea_attachment
       summary: Attach a file to an idea
       description: *attach
       requestBody:
@@ -743,6 +769,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/PhaseNumber"
     post:
+      operationId: add_phase_attachment
       summary: Attach a file to a phase
       description: *attach
       requestBody:
@@ -769,6 +796,7 @@ paths:
         required: true
         schema: { type: string, example: A-3 }
     get:
+      operationId: get_attachment
       summary: The bytes of an attachment
       description: >-
         Needs a token like every route. The address has no file extension, on
@@ -797,6 +825,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "416": { description: "The Range cannot be met (plain text)" }
     delete:
+      operationId: remove_attachment
       summary: Remove an attachment and delete its bytes
       description: >-
         Logs who removed which file name on a story or phase (never the
@@ -810,6 +839,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/PhaseNumber"
     post:
+      operationId: add_goal
       summary: Add a goal to a phase
       requestBody:
         required: true
@@ -838,6 +868,7 @@ paths:
         required: true
         schema: { type: string, example: G-1 }
     patch:
+      operationId: update_goal
       summary: Mark a goal met or unmark it, or change its text
       description: >-
         Give met or text, one of them. A change of text is logged on the goal
@@ -869,6 +900,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/PhaseNumber"
     get:
+      operationId: read_phase_log
       summary: The phase's log, oldest entry first
       description: >-
         One edit entry for each field an edit changed (title, description, or
@@ -897,6 +929,7 @@ paths:
         required: true
         schema: { type: string, example: G-1 }
     get:
+      operationId: read_goal_log
       summary: The goal's log, oldest entry first
       description: One edit entry for each change of its text, or of whether it is met.
       responses:
@@ -917,6 +950,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: list_stories
       summary: The backlog in delivery order, top first
       responses:
         "200":
@@ -933,6 +967,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
+      operationId: add_story
       summary: Add a story
       description: >-
         Placed directly before or after a named story, or at the bottom of the
@@ -973,6 +1008,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/StoryID"
     get:
+      operationId: get_story
       summary: One story, with its dependencies in both directions
       responses:
         "200":
@@ -983,6 +1019,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
+      operationId: update_story
       summary: Edit a story, or say what it is doing
       description: >-
         Fields left out are unchanged. Activity is set only while the story is
@@ -1026,6 +1063,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/StoryID"
     post:
+      operationId: move_story
       summary: Move a story in the backlog
       description: >-
         Refused when the story would rank above something it depends on, or
@@ -1050,6 +1088,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/StoryID"
     post:
+      operationId: set_status
       summary: Move a story to another column
       description: >-
         Forward one column, or back one before Merged: Backlog, In progress,
@@ -1100,6 +1139,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/StoryID"
     post:
+      operationId: mark_reviewed
       summary: Clear the story's upstream-changed mark
       description: >-
         Says the story was looked at after a story it depends on changed its
@@ -1131,6 +1171,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/StoryID"
     get:
+      operationId: get_context
       summary: A story's neighbourhood in summaries
       description: >-
         One read in place of many: the story's phase with its goals, the idea
@@ -1153,6 +1194,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/StoryID"
     get:
+      operationId: read_story_log
       summary: The story's log, oldest entry first
       responses:
         "200":
@@ -1169,6 +1211,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
+      operationId: log
       summary: Append an entry to the story's log
       description: >-
         Entries are never edited or deleted. A note needs text; a decision,
@@ -1204,6 +1247,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/StoryID"
     post:
+      operationId: add_dependency
       summary: Record that this story depends on another
       description: >-
         The story depended on must rank above this one, be in the same or an
@@ -1239,6 +1283,7 @@ paths:
         required: true
         schema: { type: string, example: S-1 }
     delete:
+      operationId: remove_dependency
       summary: Remove a dependency
       responses:
         "204": { description: Removed }
@@ -1248,6 +1293,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: list_ideas
       summary: The ideas that are not closed, in order, top first
       responses:
         "200":
@@ -1264,6 +1310,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
+      operationId: add_idea
       summary: Add an idea
       description: >-
         Placed directly before or after a named idea, or at the bottom of the
@@ -1302,6 +1349,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/IdeaID"
     get:
+      operationId: get_idea
       summary: One idea, closed or not
       responses:
         "200":
@@ -1312,6 +1360,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
+      operationId: update_idea
       summary: Edit an idea that is not closed
       description: Fields not given are left as they are.
       requestBody:
@@ -1339,6 +1388,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/IdeaID"
     post:
+      operationId: move_idea
       summary: Move an idea that is not closed
       requestBody:
         required: true
@@ -1360,6 +1410,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/IdeaID"
     post:
+      operationId: refine_idea
       summary: Close an open idea, linking it to what it became
       description: >-
         The stories and the phase are added first, the usual way. At least
@@ -1391,6 +1442,7 @@ paths:
       - $ref: "#/components/parameters/Workspace"
       - $ref: "#/components/parameters/IdeaID"
     post:
+      operationId: drop_idea
       summary: Close an idea that became nothing, with the reason
       requestBody:
         required: true
@@ -1416,6 +1468,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     get:
+      operationId: search
       summary: Find stories, ideas and phases by keyword and by meaning
       description: >-
         Answers "do we already have something about this?". Keywords match
@@ -1473,6 +1526,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Workspace"
     post:
+      operationId: batch
       summary: Make many board changes in one call
       description: >-
         Sends each request, in order, to its own route in this workspace, as
@@ -1775,7 +1829,7 @@ components:
       required: [id, at, kind, line]
       properties:
         id: { type: string, example: L-41, description: Its position. }
-        at: { type: string, example: "2026-10-29T14:03:09Z", description: When, in UTC to the second. }
+        at: { type: string, example: "2026-10-29T14:03:09Z", description: "When, in UTC to the second." }
         kind: { type: string, enum: [decision, correction, status, story, idea, release] }
         story: { type: string, example: S-50, description: The story a log entry belongs to. }
         to: { type: string, example: merged, description: The status a status entry moved to. }

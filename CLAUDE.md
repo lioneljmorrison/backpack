@@ -71,9 +71,10 @@ make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLAR
 make down                # stop (data volumes are kept)
 make logs                # follow Backpack's log
 make forward             # bring a remote stack's ports here over SSH
-make gates               # gofmt, vet, tests against the stack's ports here, build
+make gates               # gofmt, vet, tests against the stack's ports here, build, API spec lint
 make test                # the tests alone, against the stack's ports here
 make coverage            # fail when coverage.out is under the minimum (run by make gates)
+make lint-api            # lint api/openapi.yaml with Redocly (run by make gates; needs Node and npx)
 make token ACTOR=<name>  # issue a bearer token (shown once)
 make reindex             # rebuild the search index from the board
 make join-preview INTO=<slug> NAME=<name> ACTOR=<who> FROM="a b"  # what joining workspaces would do; writes nothing
