@@ -2,6 +2,7 @@
 # chosen to avoid the usual 6379/8108/8080, which other stacks often hold.
 # `make tunnel` also starts cloudflared, the only way in from outside; its
 # public hostname routes to http://backpack:8780 in the Cloudflare dashboard.
+# `make up` restarts a tunnel that `make down` stopped.
 name: backpack
 
 services:

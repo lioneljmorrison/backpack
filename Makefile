@@ -24,6 +24,7 @@ COVERAGE_MIN := 70
 
 up:            ## start the whole stack, rebuilding the service
 	$(COMPOSE) up -d --build
+	@deploy/tunnel-resume.sh
 
 tunnel:        ## start the stack and the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 	@test -n "$$CLOUDFLARE_TOKEN" || (echo "tunnel: set CLOUDFLARE_TOKEN" && exit 1)
@@ -31,7 +32,7 @@ tunnel:        ## start the stack and the Cloudflare tunnel (needs CLOUDFLARE_TO
 	$(COMPOSE) --profile tunnel up -d --build
 
 down:          ## stop the stack (data volumes are kept)
-	$(COMPOSE) --profile tunnel down
+	$(COMPOSE) --profile tunnel stop
 
 logs:
 	@deploy/running.sh
