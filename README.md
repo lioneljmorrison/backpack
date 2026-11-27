@@ -41,7 +41,7 @@ You need Docker. The stack is Backpack, FalkorDB (the store) and Typesense (the
 search index).
 
 ```bash
-make up                  # build and start the stack
+make up                  # build and start the stack (and the tunnel, if it was running)
 make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
 make forward             # bring a remote stack's ports here over SSH
@@ -88,6 +88,8 @@ container it means the tunnel itself. Before starting, `make tunnel` checks
 the public address in `.backpack.json`: if Backpack already answers there and
 the tunnel isn't running on the Docker host being started, it refuses, since
 two copies on one tunnel would split requests between two boards.
+`make down` stops the tunnel; `make up` starts it again if it was running, after
+the same check.
 
 ## Using the pages
 

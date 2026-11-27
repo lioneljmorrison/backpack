@@ -66,7 +66,7 @@ standard or the API contract, stop and ask.
 ## Commands
 
 ```bash
-make up                  # build and start backpack, FalkorDB and Typesense
+make up                  # build and start backpack, FalkorDB and Typesense (and the tunnel, if it was running)
 make tunnel              # the same, plus the Cloudflare tunnel (needs CLOUDFLARE_TOKEN)
 make down                # stop (data volumes are kept)
 make forward             # bring a remote stack's ports here over SSH
@@ -86,7 +86,8 @@ a tracked file; an environment variable overrides it). Commands that run
 inside the container first check Backpack is running on that Docker and say
 how to fix it if not. With a remote stack, run
 `make forward` before `make gates`. `make tunnel` refuses to start when the
-public address is already served from another host. Configuration is environment variables: `BACKPACK_ADDR`,
+public address is already served from another host, as does `make up` when it
+restarts a tunnel that `make down` stopped. Configuration is environment variables: `BACKPACK_ADDR`,
 `BACKPACK_FALKORDB_URL`, `BACKPACK_TYPESENSE_URL`,
 `BACKPACK_TYPESENSE_API_KEY`, `BACKPACK_SYSTEM_GRAPH`, `BACKPACK_FILES_DIR`
 (where attachments are kept, default `/data/files`; the stack gives it its own
